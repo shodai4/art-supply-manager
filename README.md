@@ -1,5 +1,7 @@
 # 画材管理アプリ（Art Supply Manager）
 
+**公開URL: https://shodai4.github.io/art-supply-manager/** （GitHub Pages / HTTPS・インストール不要・サーバー代0円）
+
 翔大さん（絵描き・個人開発者）向けの、**サーバー代0円でそのまま実用できる画材在庫管理Webアプリ**です。
 `index.html` を開くだけで動き、データは端末のブラウザ内（localStorage）だけに保存されます。PWA対応（ホーム画面に追加してオフライン起動）。
 
@@ -28,10 +30,11 @@ python3 -m http.server 8080      # または任意の静的サーバー
 | `app.js` | UI・localStorage保存・バーコード読取（BarcodeDetector＋html5-qrcodeフォールバック） |
 | `core.js` | DOM非依存のロジック（JAN検証・在庫増減・絞り込み・フォルダ操作・JSON入出力） |
 | `jan-database.js` | 実在確認済みJAN辞書＋メーカープレフィックス表 |
-| `sw.js` / `manifest.webmanifest` / `icon.svg` | PWA（オフラインキャッシュ・ホーム画面追加） |
+| `sw.js` / `manifest.webmanifest` | PWA（オフラインキャッシュ・ホーム画面追加） |
+| `icon.svg` / `icon-192.png` / `icon-512.png` | アプリアイコン（manifest の192/512px用PNGを含む） |
 | `tests/core.test.js` | ロジックの単体テスト |
 | `tests/jan.test.js` | 辞書データの妥当性テスト |
-| `preview-375.html` | 375px幅での表示確認用（iframe） |
+| `preview-375.html` | 375px幅での表示確認用（iframe）。`preview-375.html?src=<URL>` で任意URLを375×812で表示 |
 
 ## テスト
 
