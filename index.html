@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#2f6fd0">
+<meta name="description" content="画材の在庫をフォルダ（家・アトリエ・持ち出し・ストック）で管理。JANバーコード読み取り対応の画材管理アプリ。">
+<title>画材管理 ｜ Art Supply Manager</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="styles.css">
+<link rel="apple-touch-icon" href="icon.svg">
+</head>
+<body>
+<header class="app-header">
+  <div class="logo" aria-hidden="true">🎨</div>
+  <div>
+    <h1>画材管理</h1>
+    <p class="sub" id="hdrSub">在庫と保管場所</p>
+  </div>
+  <div class="header-stat">
+    <b id="hdrKinds">0</b>
+    <span>種類 / <span id="hdrQty">0</span>点</span>
+  </div>
+</header>
+
+<div class="searchbar">
+  <input id="q" type="search" placeholder="商品名・色名・メーカー・JANで検索" autocomplete="off" inputmode="search">
+  <button class="btn-scan" id="btnScan" aria-label="バーコードをスキャン">📷 読取</button>
+</div>
+
+<nav class="chips" id="folderChips" aria-label="保管場所フォルダ"></nav>
+
+<div class="filters">
+  <select id="fCategory" aria-label="カテゴリで絞り込み"></select>
+  <select id="fStatus" aria-label="残量で絞り込み"></select>
+</div>
+
+<main>
+  <!-- 在庫 -->
+  <section id="view-stock">
+    <div id="itemList"></div>
+  </section>
+
+  <!-- 買い物リスト -->
+  <section id="view-shopping" hidden>
+    <div class="card" style="background:var(--warn-soft);border-color:#f2d7b0">
+      <p style="margin:0;font-size:13px;color:var(--warn)"><b>🛒 補充リスト</b><br>「残りわずか」「使い切り」を自動で集めます。買ったら在庫を＋してください。</p>
+    </div>
+    <div id="shoppingList"></div>
+  </section>
+
+  <!-- フォルダ -->
+  <section id="view-folders" hidden>
+    <p class="hint" style="margin:0 0 8px">タップで名前・アイコン・色を編集。↑↓で並び替え、削除時は中身を移動します。</p>
+    <div class="card" id="folderList"></div>
+    <button class="btn primary" id="btnAddFolder" style="width:100%">＋ フォルダを追加</button>
+  </section>
+
+  <!-- 設定 -->
+  <section id="view-settings" hidden>
+    <div class="stat-grid">
+      <div class="stat"><b id="stKinds">0</b><span>種類</span></div>
+      <div class="stat"><b id="stQty">0</b><span>在庫合計</span></div>
+      <div class="stat"><b id="stRestock">0</b><span>要補充</span></div>
+    </div>
+    <div class="card">
+      <h2 style="font-size:14px;margin:0 0 8px">バックアップ（JSON）</h2>
+      <p class="hint" style="margin:0 0 10px">機種変更・データ消失対策。エクスポートしたファイルは Google ドライブ等に保存してください。</p>
+      <div class="actions">
+        <button class="btn primary" id="btnExport">書き出す</button>
+        <button class="btn" id="btnImport">読み込む</button>
+      </div>
+      <input type="file" id="fileImport" accept="application/json,.json" class="sr">
+    </div>
+    <div class="card">
+      <h2 style="font-size:14px;margin:0 0 6px">内蔵JAN辞書</h2>
+      <p class="hint" style="margin:0 0 10px" id="dictInfo">—</p>
+      <button class="btn" id="btnDict" style="width:100%">収録一覧を見る</button>
+    </div>
+    <div class="card">
+      <h2 style="font-size:14px;margin:0 0 8px">危険な操作</h2>
+      <button class="btn danger" id="btnWipe" style="width:100%">全データを削除（端末内のみ）</button>
+      <p class="hint" style="margin:8px 0 0">このアプリのデータは端末のブラウザ内（localStorage）だけに保存され、サーバーへは送信されません。</p>
+    </div>
+    <p class="hint" style="text-align:center;margin:18px 0 0">Created with for お絵描き楽しも委員会（しょうだい）</p>
+  </section>
+</main>
+
+<button class="fab" id="btnAdd" aria-label="画材を追加">＋</button>
+
+<nav class="tabbar" id="tabbar">
+  <button data-tab="stock" aria-selected="true"><span class="ico">📦</span>在庫</button>
+  <button data-tab="shopping" aria-selected="false"><span class="ico">🛒</span>買い物</button>
+  <button data-tab="folders" aria-selected="false"><span class="ico">🗂️</span>フォルダ</button>
+  <button data-tab="settings" aria-selected="false"><span class="ico">⚙️</span>設定</button>
+</nav>
+
+<!-- 追加/編集シート -->
+<div class="sheet-mask" id="mask"></div>
+<div class="sheet" id="sheetItem" role="dialog" aria-modal="true" aria-labelledby="sheetItemTitle">
+  <h2 id="sheetItemTitle">画材を追加<button class="close" data-close="sheetItem" aria-label="閉じる">✕</button></h2>
+  <form id="itemForm">
+    <div class="field">
+      <label for="fName">商品名 *</label>
+      <input id="fName" required placeholder="例：ホルベイン 油絵具 シルバー 6号">
+    </div>
+    <div class="field-row">
+      <div class="field"><label for="fMaker">メーカー/ブランド</label><input id="fMaker" list="makerList" placeholder="ホルベイン"><datalist id="makerList"></datalist></div>
+      <div class="field"><label for="fCategory">カテゴリ</label><select id="fCategoryInput"></select></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label for="fColorName">色名</label><input id="fColorName" placeholder="シルバー"></div>
+      <div class="field"><label for="fColorCode">色番号</label><input id="fColorCode" placeholder="H191"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label for="fSize">号数/容量</label><input id="fSize" placeholder="6号(20ml)"></div>
+      <div class="field"><label for="fQty">在庫数</label><input id="fQty" type="number" min="0" step="1" value="1" inputmode="numeric"></div>
+    </div>
+    <div class="field"><label for="fStatus">残量ステータス</label><select id="fStatusInput"></select></div>
+    <div class="field"><label for="fFolder">保管フォルダ</label><select id="fFolderInput"></select></div>
+    <div class="field"><label for="fJan">JANコード</label><input id="fJan" inputmode="numeric" placeholder="13桁（読取ボタンでも可）">
+      <p class="hint" id="janHint" style="margin:4px 0 0"></p>
+    </div>
+    <div class="field-row">
+      <div class="field"><label for="fShop">購入店</label><input id="fShop" placeholder="世界堂"></div>
+      <div class="field"><label for="fPrice">単価(円)</label><input id="fPrice" type="number" min="0" inputmode="numeric"></div>
+    </div>
+    <div class="field"><label for="fMemo">メモ</label><textarea id="fMemo" rows="2" placeholder="使いかけ、混色メモなど"></textarea></div>
+    <div class="actions">
+      <button type="button" class="btn" data-close="sheetItem">キャンセル</button>
+      <button type="submit" class="btn primary">保存</button>
+    </div>
+    <button type="button" class="btn danger" id="btnDeleteItem" hidden style="width:100%;margin-top:8px">この画材を削除</button>
+  </form>
+</div>
+
+<!-- スキャンシート -->
+<div class="sheet" id="sheetScan" role="dialog" aria-modal="true" aria-labelledby="scanTitle">
+  <h2 id="scanTitle">JANバーコード読取<button class="close" data-close="sheetScan" aria-label="閉じる">✕</button></h2>
+  <div class="scan-box" id="scanBox">
+    <video id="scanVideo" playsinline muted hidden></video>
+    <div class="reticle" id="scanReticle" hidden></div>
+    <p id="scanMsg" style="margin:0;padding:12px">カメラを起動しています…</p>
+  </div>
+  <div class="field" style="margin-top:12px">
+    <label for="manualJan">JANコードを手入力（カメラが使えない時）</label>
+    <input id="manualJan" inputmode="numeric" placeholder="4900669001911" autocomplete="off">
+  </div>
+  <div class="actions">
+    <button class="btn primary" id="btnManualLookup">照合する</button>
+    <button class="btn" id="btnRescan">カメラ再起動</button>
+  </div>
+  <p class="section-title" style="margin-top:16px">テスト用（実在JAN・カメラ無しでも動作確認）</p>
+  <div class="pill-row" id="testPills"></div>
+</div>
+
+<!-- フォルダ編集シート -->
+<div class="sheet" id="sheetFolder" role="dialog" aria-modal="true" aria-labelledby="folderTitle">
+  <h2 id="folderTitle">フォルダ編集<button class="close" data-close="sheetFolder" aria-label="閉じる">✕</button></h2>
+  <div class="field"><label for="fFolderName">名前</label><input id="fFolderName"></div>
+  <div class="field-row">
+    <div class="field"><label for="fFolderIcon">アイコン</label><input id="fFolderIcon" maxlength="4" placeholder="🎨"></div>
+    <div class="field"><label for="fFolderColor">色</label><input id="fFolderColor" type="color"></div>
+  </div>
+  <div class="actions">
+    <button class="btn" data-close="sheetFolder">キャンセル</button>
+    <button class="btn primary" id="btnSaveFolder">保存</button>
+  </div>
+  <button class="btn danger" id="btnDeleteFolder" style="width:100%;margin-top:8px">このフォルダを削除（中身は「家」へ移動）</button>
+</div>
+
+<!-- 移動シート -->
+<div class="sheet" id="sheetMove" role="dialog" aria-modal="true" aria-labelledby="moveTitle">
+  <h2 id="moveTitle">フォルダへ移動<button class="close" data-close="sheetMove" aria-label="閉じる">✕</button></h2>
+  <div class="pill-row" id="moveOptions"></div>
+</div>
+
+<!-- 辞書一覧シート -->
+<div class="sheet" id="sheetDict" role="dialog" aria-modal="true" aria-labelledby="dictTitle">
+  <h2 id="dictTitle">内蔵JAN辞書<button class="close" data-close="sheetDict" aria-label="閉じる">✕</button></h2>
+  <p class="hint" id="dictNote"></p>
+  <div id="dictList" style="font-size:12px"></div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
