@@ -68,7 +68,7 @@ main { padding: 0 12px 6px; }
 .badge.warn { background: var(--warn-soft); color: var(--warn); }
 .badge.bad { background: var(--bad-soft); color: var(--bad); }
 .folder-tag {
-  flex: 0 0 auto; max-width: 42%; font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 7px;
+  flex: 0 0 auto; max-width: 46%; font-size: 10.5px; font-weight: 700; padding: 1px 5px; border-radius: 7px;
   background: #fff; border: 1px dashed #ccd6e2; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
