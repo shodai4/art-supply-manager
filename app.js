@@ -1248,13 +1248,23 @@ document.addEventListener('click', (e) => {
 });
 
 const DICT_RENDER_LIMIT = 300;
+// 絞り込み用の検索文字列は辞書が変わったときだけ作り直す（2万件超を毎打鍵で連結しない）
+let dictHayCache = { dict: null, hay: [] };
+function dictHaystack(dict) {
+  if (dictHayCache.dict !== dict || dictHayCache.hay.length !== dict.length) {
+    dictHayCache = {
+      dict,
+      hay: dict.map((d) => `${d.name} ${d.colorName} ${d.maker} ${d.size} ${d.code} ${d.jan}`.toLowerCase()),
+    };
+  }
+  return dictHayCache.hay;
+}
 function renderDictList(query) {
   const q = String(query || '').trim().toLowerCase();
   const merged = mergeDictionaries(JAN_DICTIONARY, extraEntries);
   $('dictNote').textContent = describeCounts(merged);
-  const hit = q
-    ? mergedDict.filter((d) => [d.name, d.colorName, d.maker, d.size, d.code, d.jan].join(' ').toLowerCase().includes(q))
-    : mergedDict;
+  const hay = dictHaystack(mergedDict);
+  const hit = q ? mergedDict.filter((d, i) => hay[i].includes(q)) : mergedDict;
   const shown = hit.slice(0, DICT_RENDER_LIMIT);
   $('dictList').innerHTML = shown.map((d) => `
     <div style="padding:8px 0;border-bottom:1px solid #eef2f7">
