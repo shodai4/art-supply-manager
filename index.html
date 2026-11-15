@@ -244,7 +244,7 @@
     <div class="field"><label for="fFolderInput">保管場所</label><select id="fFolderInput"></select></div>
     <div class="field"><label for="fJan">JANコード</label><input id="fJan" inputmode="numeric" placeholder="13桁（読取ボタンでも可）">
       <p class="hint" id="janHint" style="margin:4px 0 0"></p>
-      <button type="button" class="btn mini wide" id="btnFetchImage">このJANで画像を取得（楽天）</button>
+      <button type="button" class="btn mini wide" id="btnFetchImage">画像を取得</button>
     </div>
     <div class="field-row">
       <div class="field"><label for="fShop">購入店</label><input id="fShop" placeholder="世界堂"></div>
@@ -252,11 +252,11 @@
     </div>
     <div class="field"><label for="fMemo">メモ</label><textarea id="fMemo" rows="2" placeholder="使いかけ、混色メモなど"></textarea></div>
     <div class="field">
-      <label>写真（実物）</label>
+      <label>写真</label>
       <div class="photo-edit">
         <div class="photo-prev" id="photoPrev"><span class="ph-txt">写真なし<br>アイコン表示</span></div>
         <div class="photo-btns">
-          <button type="button" class="btn mini" id="btnPhotoPick">写真を追加／変更</button>
+          <button type="button" class="btn mini" id="btnPhotoPick">写真を選ぶ</button>
           <button type="button" class="btn mini danger" id="btnPhotoClear" hidden>写真を削除</button>
         </div>
       </div>
@@ -266,7 +266,7 @@
     <div class="field">
       <label for="fImageUrl">画像URL</label>
       <input id="fImageUrl" type="url" inputmode="url" placeholder="https://..." autocomplete="off" autocapitalize="off" spellcheck="false">
-      <p class="hint" id="imageUrlHint" style="margin:4px 0 0">JANから取得するか、画像URLを貼り付け</p>
+      <p class="hint" id="imageUrlHint" style="margin:4px 0 0">画像URLを貼り付け</p>
     </div>
     <div class="field">
       <label>通販</label>
@@ -280,7 +280,7 @@
       <button type="button" class="btn" data-close="sheetItem">キャンセル</button>
       <button type="submit" class="btn primary">保存</button>
     </div>
-    <button type="button" class="btn danger" id="btnDeleteItem" hidden style="width:100%;margin-top:8px">この画材を削除</button>
+    <button type="button" class="btn danger" id="btnDeleteItem" hidden style="width:100%;margin-top:8px">削除</button>
   </form>
 </div>
 

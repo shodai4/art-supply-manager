@@ -556,7 +556,7 @@ $('btnFetchImage').addEventListener('click', async () => {
     toast(err.message || '画像を取得できませんでした');
   } finally {
     btn.disabled = false;
-    btn.textContent = 'このJANで画像を取得（楽天）';
+    btn.textContent = '画像を取得';
   }
 });
 
