@@ -1144,9 +1144,13 @@ function applyJAN(jan) {
   }
 }
 
-// テスト用ボタンは色名の重複を避けて先頭6件を出す
+// テスト用ボタンは色名の重複を避けて先頭6件を出す（油絵具を優先して、読取の動作が伝わる例にする）
 const _seenTest = new Set();
-const TEST_SAMPLES = JAN_DICTIONARY.filter((d) => {
+const _samplePool = [
+  ...JAN_DICTIONARY.filter((d) => d.category === 'oil' && d.colorName),
+  ...JAN_DICTIONARY,
+];
+const TEST_SAMPLES = _samplePool.filter((d) => {
   const k = d.colorName || d.name;
   if (_seenTest.has(k)) return false;
   _seenTest.add(k);
