@@ -1,0 +1,60 @@
+// Capacitor iOS の土台: www/ を作る（公開ファイルと同一のものをそのままコピー）
+// 使い方: npm run build
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+export const WWW_DIR = path.join(ROOT, 'www');
+
+/** Web版として公開しているファイル（capacitor.config.json の webDir に入れるもの） */
+export const WEB_ASSETS = [
+  'index.html',
+  'privacy.html',
+  'support.html',
+  'styles.css',
+  'core.js',
+  'images.js',
+  'jan-database.js',
+  'jan-extra.js',
+  'jan-extra.json',
+  'shops.js',
+  'scanner.js',
+  'app.js',
+  'manifest.webmanifest',
+  'icon.svg',
+  'icon-192.png',
+  'icon-512.png',
+  'vendor/html5-qrcode.min.js',
+];
+
+/**
+ * ASSETS を www/ へコピーする。
+ * @returns {{copied:string[], missing:string[]}}
+ */
+export function buildWebDir({ root = ROOT, outDir = WWW_DIR, assets = WEB_ASSETS } = {}) {
+  const copied = [];
+  const missing = [];
+  fs.mkdirSync(outDir, { recursive: true });
+  for (const rel of assets) {
+    const src = path.join(root, rel);
+    if (!fs.existsSync(src)) {
+      missing.push(rel);
+      continue;
+    }
+    const dest = path.join(outDir, rel);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.copyFileSync(src, dest);
+    copied.push(rel);
+  }
+  return { copied, missing };
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const { copied, missing } = buildWebDir();
+  console.log(`[build] www/ へ ${copied.length} ファイルをコピーしました`);
+  if (missing.length) {
+    console.error(`[build] 見つかりません: ${missing.join(', ')}`);
+    process.exitCode = 1;
+  }
+}
