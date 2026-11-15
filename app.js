@@ -9,10 +9,22 @@ import {
 import { JAN_DICTIONARY, JAN_PREFIXES, VERIFIED_AT } from './jan-database.js';
 
 const $ = (id) => document.getElementById(id);
-const clone = (v) => JSON.parse(JSON.stringify(v));
 
 let state = loadState();
-let ui = { tab: 'stock', folderId: 'all', query: '', category: 'all', status: 'all', maker: 'all', editingId: null, moveIds: [], folderEditId: null, scannedJAN: '' };
+let ui = {
+  tab: 'stock',
+  mode: 'folders',       // 'folders' = 保管場所グリッド / 'items' = 画材グリッド
+  folderId: 'all',
+  query: '',
+  category: 'all',
+  status: 'all',
+  maker: 'all',
+  layout: state.settings.layout === 'list' ? 'list' : 'grid',
+  searchOpen: false,
+  editingId: null,
+  moveIds: [],
+  folderEditId: null,
+};
 let scanner = null; // html5-qrcode instance
 let rafId = 0;
 
@@ -54,91 +66,180 @@ function folderOf(id) {
 function statusMeta(id) {
   return STATUSES.find((s) => s.id === id) || STATUSES[1];
 }
-function categoryLabel(id) {
-  return CATEGORIES.find((c) => c.id === id)?.label || 'その他';
-}
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+/* ---------------- 色見本の色を推測 ---------------- */
+// 色名に含まれる語から絵具の色を推測する（長い語を優先）
+const COLOR_HINTS = [
+  ['カドミウムレモン', '#f4cf3c'], ['カドミウムイエロー', '#f0b400'], ['カドミウムオレンジ', '#ef8b2c'],
+  ['カドミウムレッド', '#c2302a'], ['ウルトラマリンバイオレット', '#4a4aa0'], ['ウルトラマリン', '#2f4fa8'],
+  ['アリザリンクリムゾン', '#a3243c'], ['イエローオーカー', '#c99a3f'], ['ネープルスイエロー', '#eccf8a'],
+  ['バーントシェンナ', '#9a4a30'], ['バーントアンバー', '#6a3a29'], ['ローシェンナ', '#b4683c'], ['ローアンバー', '#8a6440'],
+  ['チタニウムホワイト', '#f8f8f5'], ['パーマネントホワイト', '#f8f8f5'], ['シルバーホワイト', '#f4f4f0'],
+  ['アイボリーブラック', '#2b2b2b'], ['マースブラック', '#26262a'], ['ニュートラルグレー', '#8d949c'],
+  ['プルシアンブルー', '#1d3a6b'], ['セルリアンブルー', '#3f8fc4'], ['コバルトブルー', '#2a5db0'],
+  ['スカイブルー', '#7fb6dd'], ['ピロールレッド', '#b32a2a'], ['サップグリーン', '#2b5f3f'],
+  ['レモンイエロー', '#f6d64a'], ['オリーブグリーン', '#6f7a3a'], ['バーントグリーン', '#54603a'],
+  ['ホワイト', '#f8f8f5'], ['ブラック', '#23262b'], ['イエロー', '#f2c81e'], ['オレンジ', '#ee8a2b'],
+  ['レッド', '#c0342c'], ['ピンク', '#e58aa0'], ['ローズ', '#e0798f'], ['マゼンタ', '#b1357a'],
+  ['バイオレット', '#6b4b9e'], ['パープル', '#6b4b9e'], ['ブルー', '#2f4fa8'], ['ネイビー', '#22355e'],
+  ['シアン', '#2f9fb5'], ['ターコイズ', '#2f9fb5'], ['グリーン', '#2f7d4f'], ['エメラルド', '#2f9e6b'],
+  ['ビリジアン', '#2f7d4f'], ['オリーブ', '#6f7a3a'], ['ブラウン', '#7a5230'], ['セピア', '#5a4632'],
+  ['テラコッタ', '#b6603f'], ['アンバー', '#8a6440'], ['シェンナ', '#b4683c'], ['オーカー', '#c99a3f'],
+  ['ゴールド', '#c9a227'], ['シルバー', '#c6ccd2'], ['グレー', '#8d949c'], ['アイボリー', '#efe6cf'],
+  ['クリーム', '#f2e7c9'], ['ベージュ', '#e3d6bf'], ['ラベンダー', '#c3b4dd'], ['ミント', '#a9d9c3'],
+  ['ワイン', '#6d2a3a'], ['ボルドー', '#5e2230'], ['スカーレット', '#cf3a27'], ['バーミリオン', '#d1482c'],
+  ['レモン', '#f6d64a'], ['ゴールデン', '#dfa72c'], ['ネープルス', '#eccf8a'], ['山吹', '#e8b23a'],
+  ['白', '#f8f8f5'], ['黒', '#23262b'], ['灰', '#8d949c'], ['銀', '#c6ccd2'], ['金', '#c9a227'],
+  ['黄', '#f2c81e'], ['橙', '#ee8a2b'], ['朱', '#d1482c'], ['赤', '#c0342c'], ['桃', '#e58aa0'],
+  ['紫', '#6b4b9e'], ['青', '#2f4fa8'], ['紺', '#1d3a6b'], ['緑', '#2f7d4f'], ['茶', '#7a5230'],
+].sort((a, b) => b[0].length - a[0].length);
+
+const CATEGORY_COLOR = {
+  oil: '#c0703f', acrylic: '#3d8f8f', watercolor: '#5a86c4', medium: '#9a8f7a',
+  brush: '#8a6b4f', canvas: '#d8cbb4', paper: '#e4dccb', other: '#9aa3ad',
+};
+
+// 絵の具はチューブ、それ以外は道具の形で棚に並べる
+const GLYPH = {
+  brush: { icon: 'i-brush', color: '#8a6b4f' },
+  canvas: { icon: 'i-canvas', color: '#a88a5e' },
+  paper: { icon: 'i-paper', color: '#8894a1' },
+};
+
+function guessColor(item) {
+  const hay = [item.colorName, item.name].filter(Boolean).join(' ');
+  const hit = COLOR_HINTS.find(([key]) => hay.includes(key));
+  if (hit) return hit[1];
+  return CATEGORY_COLOR[item.category] || CATEGORY_COLOR.other;
+}
+function shade(hex, amt = -0.13) {
+  const n = parseInt(String(hex).slice(1), 16);
+  if (!Number.isFinite(n)) return hex;
+  const ch = [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+    .map((v) => Math.max(0, Math.min(255, Math.round(v + 255 * amt))))
+    .map((v) => v.toString(16).padStart(2, '0'));
+  return `#${ch.join('')}`;
+}
+function rgba(hex, a) {
+  const n = parseInt(String(hex).slice(1), 16);
+  if (!Number.isFinite(n)) return `rgba(91,107,124,${a})`;
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
+/** タイル用の短い名前（先頭のメーカー名の重複を落とす） */
+function displayName(item) {
+  const name = String(item.name || '').trim();
+  const maker = itemMaker(item);
+  if (maker && name !== maker) {
+    const stripped = name.replace(new RegExp(`^${maker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s　]*`), '').trim();
+    if (stripped) return stripped;
+  }
+  return name;
 }
 
 /* ---------------- rendering ---------------- */
 function render() {
   renderHeader();
-  renderChips();
-  renderFilters();
-  renderList(currentList());
+  renderTools();
+  renderCrumb();
+  const folderMode = isFolderMode();
+  $('folderGrid').hidden = !folderMode;
+  $('itemList').hidden = folderMode;
+  if (folderMode) renderFolderGrid();
+  else renderTilesInto($('itemList'), currentList(), { group: state.settings.sort === 'maker', emptyKey: 'items' });
   renderShopping();
   renderFolders();
   renderSettings();
+  renderFilterSheet();
   document.querySelectorAll('#tabbar button').forEach((b) => {
     b.setAttribute('aria-selected', String(b.dataset.tab === ui.tab));
   });
   for (const t of ['stock', 'shopping', 'folders', 'settings']) $(`view-${t}`).hidden = t !== ui.tab;
+  $('tools').hidden = ui.tab !== 'stock';
+  $('crumb').hidden = ui.tab !== 'stock';
+  $('searchRow').hidden = !ui.searchOpen || ui.tab !== 'stock';
   $('btnAdd').style.visibility = ui.tab === 'stock' || ui.tab === 'shopping' ? 'visible' : 'hidden';
+}
+
+function isFolderMode() {
+  return ui.tab === 'stock' && ui.mode === 'folders';
 }
 
 function renderHeader() {
   const s = summarize(state.items);
-  $('hdrKinds').textContent = s.kinds;
-  $('hdrQty').textContent = s.qty;
-  $('hdrSub').textContent = ui.folderId === 'all' ? 'すべての保管場所' : `${folderOf(ui.folderId).name}の保管場所`;
+  $('hdrTotal').textContent = `全${s.kinds}種`;
 }
 
-function renderChips() {
+function renderTools() {
+  $('btnFolders').setAttribute('aria-pressed', String(isFolderMode()));
+  const searchOpen = ui.searchOpen && ui.tab === 'stock';
+  $('btnSearch').setAttribute('aria-pressed', String(searchOpen));
+  const filtering = ui.category !== 'all' || ui.status !== 'all' || ui.maker !== 'all';
+  $('btnFilter').setAttribute('aria-pressed', String(filtering));
+  const listMode = ui.layout === 'list';
+  $('layoutIcon').querySelector('use').setAttribute('href', listMode ? '#i-grid' : '#i-list');
+  $('btnLayout').setAttribute('aria-label', listMode ? 'グリッド表示に切り替え' : 'リスト表示に切り替え');
+  $('btnLayout').hidden = isFolderMode();
+}
+
+function renderCrumb() {
+  const folderMode = isFolderMode();
+  const crumb = $('crumb');
+  crumb.classList.toggle('root', folderMode);
+  $('crumbName').textContent = folderMode ? '' : (ui.folderId === 'all' ? 'すべて' : folderOf(ui.folderId).name);
+  $('btnUp').disabled = folderMode;
+}
+
+/** 保管場所フォルダのグリッド（＋すべて） */
+function renderFolderGrid() {
   const counts = countByFolder(state.items);
-  const chips = [{ id: 'all', name: 'すべて', count: counts.all_total }]
+  const tiles = [{ id: 'all', name: 'すべて', all: true, count: counts.all_total || 0 }]
     .concat(state.folders.map((f) => ({ ...f, count: counts[f.id] || 0 })));
-  $('folderChips').innerHTML = chips.map((c) => `
-    <button class="chip" data-folder="${esc(c.id)}" aria-pressed="${String(ui.folderId === c.id)}">
-      ${esc(c.name)}<span class="n">${c.count}</span>
-    </button>`).join('');
+  $('folderGrid').innerHTML = tiles.map((t) => {
+    const color = t.all ? '#2f6fd0' : (t.color || '#5b6b7c');
+    return `
+    <button class="ftile${t.all ? ' is-all' : ''}" data-folder="${esc(t.id)}" style="--c:${esc(color)};--cs:${rgba(color, t.all ? 0.1 : 0.13)}">
+      <span class="fico">
+        <svg class="ic" aria-hidden="true"><use href="#${t.all ? 'i-grid' : 'i-folder-solid'}"/></svg>
+        <span class="fcnt">${t.count}</span>
+      </span>
+      <span class="fname">${esc(t.name)}</span>
+    </button>`;
+  }).join('');
 }
 
-function renderFilters() {
-  const catSel = $('fCategory');
-  if (!catSel.dataset.ready) {
-    catSel.innerHTML = '<option value="all">カテゴリ：すべて</option>' +
-      CATEGORIES.map((c) => `<option value="${c.id}">${esc(c.label)}</option>`).join('');
-    $('fStatus').innerHTML = '<option value="all">残量：すべて</option>' +
-      STATUSES.map((s) => `<option value="${s.id}">${esc(s.label)}</option>`).join('');
-    $('fSort').innerHTML = SORT_MODES.map((m) => `<option value="${m.id}">${esc(m.label)}</option>`).join('');
-    catSel.dataset.ready = '1';
-  }
-  catSel.value = ui.category;
-  $('fStatus').value = ui.status;
-
-  // メーカー（登録内容から作る。未設定アイテムがある時だけ「未設定」を出す）
-  const makers = listMakers(state.items);
-  const hasNone = state.items.some((it) => !itemMaker(it));
-  if (ui.maker !== 'all' && (ui.maker === MAKER_NONE ? !hasNone : !makers.includes(ui.maker))) ui.maker = 'all';
-  const makerSel = $('fMakerFilter');
-  makerSel.innerHTML = '<option value="all">メーカー：すべて</option>' +
-    makers.map((m) => `<option value="${esc(m)}">${esc(m)}</option>`).join('') +
-    (hasNone ? `<option value="${MAKER_NONE}">メーカー未設定</option>` : '');
-  makerSel.value = ui.maker;
-  makerSel.disabled = !makers.length;
-
-  const sortSel = $('fSort');
-  sortSel.value = SORT_MODES.some((m) => m.id === state.settings.sort) ? state.settings.sort : 'updated';
-  $('q').value = ui.query;
+/** 画材タイル1枚 */
+function itemTile(it) {
+  const st = statusMeta(it.status);
+  const out = st.id === 'empty' || Number(it.qty) === 0;
+  const low = !out && st.id === 'low';
+  const glyph = GLYPH[it.category];
+  const base = glyph ? glyph.color : guessColor(it);
+  const icon = glyph ? glyph.icon : 'i-tube';
+  const f = folderOf(it.folderId);
+  const dot = ui.folderId === 'all' ? `<span class="fdot" style="background:${esc(f.color)}"></span>` : '';
+  const label = `${displayName(it)} ${Number(it.qty) || 0}点${out ? ' 要補充' : low ? ' 少なめ' : ''}`;
+  return `
+  <button class="tile${low ? ' low' : ''}${out ? ' out' : ''}" data-edit="${esc(it.id)}" aria-label="${esc(label)}" style="--c:${esc(base)};--c2:${esc(shade(base))};--cs:${rgba(base, 0.1)}">
+    <span class="sw">
+      ${dot}<span class="qbadge">${Number(it.qty) || 0}</span>
+      <svg class="inh" aria-hidden="true"><use href="#${icon}"/></svg>
+    </span>
+    <span class="tname">${esc(displayName(it))}</span>
+  </button>`;
 }
 
-/** 絞り込み＋並び替え済みの一覧 */
-function currentList() {
-  return sortItems(filterItems(state.items, {
-    query: ui.query, folderId: ui.folderId, category: ui.category, status: ui.status, maker: ui.maker,
-  }), state.settings.sort);
-}
-
-function itemCard(it, opts = {}) {
+/** 1件＝2行の高密度リスト行（ステッパー付き） */
+function itemRow(it) {
   const st = statusMeta(it.status);
   const f = folderOf(it.folderId);
-  const maker = opts.hideMaker ? '' : itemMaker(it);
-  const meta = [maker, it.colorName, it.size, it.colorCode].filter(Boolean).map(esc).join(' ・ ');
+  const meta = [itemMaker(it), it.colorName, it.size, it.colorCode].filter(Boolean).map(esc).join(' ・ ');
   return `
   <article class="item" data-id="${esc(it.id)}">
     <div class="it-main">
-      <h3 class="it-name" data-edit="${esc(it.id)}" title="タップで編集">${esc(it.name)}</h3>
+      <h3 class="it-name" data-edit="${esc(it.id)}" title="タップで編集">${esc(displayName(it))}</h3>
       <div class="it-sub">
         <button class="folder-tag" data-move="${esc(it.id)}">${esc(f.name)} ▾</button>
         <span class="badge ${st.tone}" title="${esc(st.label)}">${esc(st.short || st.label)}</span>
@@ -154,31 +255,36 @@ function itemCard(it, opts = {}) {
   </article>`;
 }
 
-function makerHeading(maker, count) {
-  return `<div class="maker-head"><span class="mh-name">${esc(maker || 'メーカー未設定')}</span><span class="mh-n">${count}</span></div>`;
-}
-
-function renderList(items) {
+/** アイテム群をグリッド／リストで描画（メーカー見出し対応） */
+function renderTilesInto(el, items, opts = {}) {
   if (!items.length) {
-    $('itemList').innerHTML = state.items.length
-      ? `<div class="empty"><b>条件に合う画材がありません</b>絞り込みや検索語を変えてみてください。</div>`
-      : '<div class="empty"><b>まだ画材がありません</b>右下の＋から登録、または読取でJANから追加できます。<br>（はじめての登録は「持ち出し用」などフォルダを選んで）</div>';
+    el.innerHTML = opts.emptyKey === 'shopping'
+      ? '<div class="empty"><b>補充はありません</b>残りわずか・使い切りがここに集まります</div>'
+      : (state.items.length
+        ? '<div class="empty"><b>見つかりません</b>検索や絞込を変えてみてください</div>'
+        : '<div class="empty"><b>まだ画材がありません</b>右下の＋ か 読取 から登録できます</div>');
     return;
   }
-  if (state.settings.sort === 'maker') {
-    $('itemList').innerHTML = groupByMaker(items)
-      .map((g) => makerHeading(g.maker, g.items.length) + g.items.map((it) => itemCard(it, { hideMaker: true })).join(''))
-      .join('');
-    return;
-  }
-  $('itemList').innerHTML = items.map((it) => itemCard(it)).join('');
+  const blocks = opts.group ? groupByMaker(items) : [{ maker: '', items }];
+  el.innerHTML = blocks.map((g) => {
+    const head = opts.group
+      ? `<div class="mhead"><span>${esc(g.maker || '未設定')}</span><b>${g.items.length}</b></div>`
+      : '';
+    const body = ui.layout === 'list'
+      ? g.items.map(itemRow).join('')
+      : `<div class="tgrid">${g.items.map(itemTile).join('')}</div>`;
+    return head + body;
+  }).join('');
 }
 
 function renderShopping() {
-  const list = computeShoppingList(state.items);
-  $('shoppingList').innerHTML = list.length
-    ? list.map((it) => itemCard(it)).join('')
-    : '<div class="empty"><b>補充の必要はありません</b>残量「残りわずか」「使い切り」の画材がここに自動で集まります。</div>';
+  renderTilesInto($('shoppingList'), computeShoppingList(state.items), { group: false, emptyKey: 'shopping' });
+}
+
+function currentList() {
+  return sortItems(filterItems(state.items, {
+    query: ui.query, folderId: ui.folderId, category: ui.category, status: ui.status, maker: ui.maker,
+  }), state.settings.sort);
 }
 
 function renderFolders() {
@@ -201,7 +307,88 @@ function renderSettings() {
   $('dictInfo').textContent = `収録 ${JAN_DICTIONARY.length}件（${JAN_DICTIONARY.filter((d) => d.category === 'oil').length}件が油絵具）/ メーカー判別 ${JAN_PREFIXES.length}件（実在確認済みのみ・${VERIFIED_AT}時点）`;
 }
 
-/* ---------------- タブ・絞り込み ---------------- */
+/* ---------------- 絞込・並替 ---------------- */
+function chip(kind, value, label, active) {
+  return `<button class="fchip" data-${kind}="${esc(value)}" aria-pressed="${active ? 'true' : 'false'}">${esc(label)}</button>`;
+}
+function renderFilterSheet() {
+  const makers = listMakers(state.items);
+  const hasNone = state.items.some((it) => !itemMaker(it));
+  if (ui.maker !== 'all' && (ui.maker === MAKER_NONE ? !hasNone : !makers.includes(ui.maker))) ui.maker = 'all';
+
+  $('makerChips').innerHTML = chip('maker', 'all', 'すべて', ui.maker === 'all')
+    + makers.map((m) => chip('maker', m, m, ui.maker === m)).join('')
+    + (hasNone ? chip('maker', MAKER_NONE, '未設定', ui.maker === MAKER_NONE) : '');
+  $('catChips').innerHTML = chip('cat', 'all', 'すべて', ui.category === 'all')
+    + CATEGORIES.map((c) => chip('cat', c.id, c.label, ui.category === c.id)).join('');
+  $('statusChips').innerHTML = chip('status', 'all', 'すべて', ui.status === 'all')
+    + STATUSES.map((s) => chip('status', s.id, s.short || s.label, ui.status === s.id)).join('');
+
+  $('sortChips').innerHTML = SORT_MODES.map((m) =>
+    `<button class="fchip" data-sort="${esc(m.id)}" aria-pressed="${state.settings.sort === m.id ? 'true' : 'false'}">${esc(m.label.replace(/^並び：/, ''))}</button>`).join('');
+}
+
+$('sheetFilter').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-maker],[data-cat],[data-status]');
+  if (!b) return;
+  if (b.dataset.maker !== undefined) ui.maker = b.dataset.maker;
+  if (b.dataset.cat !== undefined) ui.category = b.dataset.cat;
+  if (b.dataset.status !== undefined) ui.status = b.dataset.status;
+  if (ui.mode === 'folders') { ui.mode = 'items'; ui.folderId = 'all'; }
+  render();
+});
+$('sheetSort').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-sort]');
+  if (!b) return;
+  state = { ...state, settings: { ...state.settings, sort: b.dataset.sort } };
+  save();
+  closeSheet('sheetSort');
+  render();
+});
+
+/* ---------------- ツールバー・ナビ ---------------- */
+$('btnFolders').addEventListener('click', () => {
+  ui.mode = 'folders';
+  ui.folderId = 'all';
+  ui.tab = 'stock';
+  render();
+});
+$('btnHome').addEventListener('click', () => {
+  ui.mode = 'folders';
+  ui.folderId = 'all';
+  ui.tab = 'stock';
+  render();
+});
+$('btnUp').addEventListener('click', () => {
+  ui.mode = 'folders';
+  ui.folderId = 'all';
+  render();
+});
+$('btnSearch').addEventListener('click', () => {
+  ui.searchOpen = !ui.searchOpen;
+  render();
+  if (ui.searchOpen) setTimeout(() => $('q').focus({ preventScroll: true }), 30);
+});
+$('btnSearchClear').addEventListener('click', () => {
+  $('q').value = '';
+  ui.query = '';
+  ui.searchOpen = false;
+  render();
+});
+$('q').addEventListener('input', (e) => {
+  ui.query = e.target.value;
+  if (ui.query && ui.mode === 'folders') { ui.mode = 'items'; ui.folderId = 'all'; }
+  render();
+});
+$('btnFilter').addEventListener('click', () => { renderFilterSheet(); openSheet('sheetFilter'); });
+$('btnSort').addEventListener('click', () => { renderFilterSheet(); openSheet('sheetSort'); });
+$('btnLayout').addEventListener('click', () => {
+  ui.layout = ui.layout === 'list' ? 'grid' : 'list';
+  state = { ...state, settings: { ...state.settings, layout: ui.layout } };
+  save();
+  render();
+});
+
 $('tabbar').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-tab]');
   if (!b) return;
@@ -209,23 +396,15 @@ $('tabbar').addEventListener('click', (e) => {
   stopScanner();
   render();
 });
-$('q').addEventListener('input', (e) => { ui.query = e.target.value; renderListSafely(); });
-function renderListSafely() {
-  renderList(currentList());
-}
-$('fCategory').addEventListener('change', (e) => { ui.category = e.target.value; render(); });
-$('fStatus').addEventListener('change', (e) => { ui.status = e.target.value; render(); });
-$('fMakerFilter').addEventListener('change', (e) => { ui.maker = e.target.value; render(); });
-$('fSort').addEventListener('change', (e) => {
-  state = { ...state, settings: { ...state.settings, sort: e.target.value } };
-  save();
-  render();
-});
-$('folderChips').addEventListener('click', (e) => {
-  const b = e.target.closest('button[data-folder]');
+
+$('folderGrid').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-folder]');
   if (!b) return;
   ui.folderId = b.dataset.folder;
+  ui.mode = 'items';
+  ui.tab = 'stock';
   render();
+  window.scrollTo({ top: 0 });
 });
 
 /* ---------------- アイテム操作 ---------------- */
@@ -237,7 +416,7 @@ document.addEventListener('click', (e) => {
     const next = adjustStock(it, Number(step.dataset.step));
     state = upsertItem(state, next);
     save(); render();
-    if (next.qty === 0) toast('使い切りました。買い物リストに入れています');
+    if (next.qty === 0) toast('使い切りました。補充リストに入れています');
     return;
   }
   const edit = e.target.closest('[data-edit]');
@@ -274,6 +453,15 @@ function openItemSheet(id, preset = {}) {
   setTimeout(() => $('fName').focus({ preventScroll: true }), 120);
 }
 
+// 数量ステッパー（編集シート内）
+$('sheetItem').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-qstep]');
+  if (!b) return;
+  const input = $('fQty');
+  const next = Math.max(0, (Number(input.value) || 0) + Number(b.dataset.qstep));
+  input.value = String(next);
+});
+
 function updateJanHint() {
   const v = normalizeJAN($('fJan').value);
   const hint = $('janHint');
@@ -307,17 +495,22 @@ $('itemForm').addEventListener('submit', (e) => {
     price: $('fPrice').value,
     memo: $('fMemo').value,
   };
+  let savedFolder = partial.folderId;
   if (ui.editingId) {
     const prev = state.items.find((i) => i.id === ui.editingId);
     state = upsertItem(state, createItem({ ...partial, id: prev.id, createdAt: prev.createdAt }));
     toast('保存しました');
   } else {
-    state = upsertItem(state, createItem(partial));
+    const created = createItem(partial);
+    state = upsertItem(state, created);
+    savedFolder = created.folderId;
     toast('画材を追加しました');
   }
   save();
   closeSheet('sheetItem');
   ui.tab = 'stock';
+  ui.mode = 'items';
+  ui.folderId = savedFolder;
   render();
 });
 
@@ -545,7 +738,15 @@ function applyJAN(jan) {
   }
 }
 
-$('testPills').innerHTML = JAN_DICTIONARY.slice(0, 6).map((d) =>
+// テスト用ボタンは色名の重複を避けて先頭6件を出す
+const _seenTest = new Set();
+const TEST_SAMPLES = JAN_DICTIONARY.filter((d) => {
+  const k = d.colorName || d.name;
+  if (_seenTest.has(k)) return false;
+  _seenTest.add(k);
+  return true;
+}).slice(0, 6);
+$('testPills').innerHTML = TEST_SAMPLES.map((d) =>
   `<button class="pill" data-testjan="${esc(d.jan)}">${esc(d.colorName || d.name)}<br><span style="font-size:10px;color:#5b6b7c">${esc(d.jan)}</span></button>`).join('');
 $('testPills').addEventListener('click', (e) => {
   const b = e.target.closest('[data-testjan]');
