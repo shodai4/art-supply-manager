@@ -104,11 +104,13 @@ export function rakutenEndpoint(env = {}) {
 }
 
 /**
- * 楽天の商品検索APIのURL。秘密（applicationId・accessKey）は呼び出し側でヘッダーに入れ、
- * URLには載せない（ログ・Referer・プロキシ経由での漏えいを避ける）。
+ * 楽天の商品検索APIのURL。
+ * 楽天の仕様で applicationId はクエリ必須（ヘッダーでは受け付けられない）。
+ * アクセスキーは秘密なのでヘッダーで送り、URLには載せない。
  */
 export function rakutenApiUrl(env, jan, { hits = 1 } = {}) {
   const params = new URLSearchParams({
+    applicationId: String(env?.RAKUTEN_APPLICATION_ID ?? '').trim(),
     keyword: String(jan),
     hits: String(hits),
     format: 'json',
@@ -119,12 +121,11 @@ export function rakutenApiUrl(env, jan, { hits = 1 } = {}) {
   return `${rakutenEndpoint(env)}?${params.toString()}`;
 }
 
-/** 楽天APIへ送るヘッダー（アプリID・アクセスキー・Referer） */
+/** 楽天APIへ送るヘッダー（アクセスキー・Referer）。アプリIDはURLのクエリで渡す */
 export function rakutenRequestHeaders(env = {}) {
   const headers = {
     Accept: 'application/json',
     Referer: String(env?.RAKUTEN_REFERER ?? '').trim() || DEFAULT_RAKUTEN_REFERER,
-    applicationId: String(env?.RAKUTEN_APPLICATION_ID ?? '').trim(),
   };
   const key = String(env?.RAKUTEN_ACCESS_KEY ?? '').trim();
   if (key) headers.accessKey = key;
@@ -268,7 +269,7 @@ export async function handleRequest(request, env = {}, options = {}) {
     } catch { /* キャッシュ不調でも取得は続ける */ }
   }
 
-  // 2) 楽天APIを叩く（アプリID・アクセスキーはヘッダー、URLには載せない）
+  // 2) 楽天APIを叩く（アプリIDはクエリ、アクセスキーはヘッダー）
   const doFetch = fetchImpl || (typeof fetch === 'function' ? fetch.bind(globalThis) : null);
   if (!doFetch) return errorResponse(500, 'fetch_unavailable', '中継サーバーが通信できません', origin, env);
 

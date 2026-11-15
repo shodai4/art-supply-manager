@@ -93,12 +93,12 @@ test('13桁JANで商品画像を返し、認証情報はURLにも応答にも出
   assert.ok(call.url.startsWith(RAKUTEN_SEARCH_ENDPOINT));
   assert.match(call.url, new RegExp(`keyword=${JAN}`));
   assert.match(call.url, /formatVersion=2/);
-  assert.equal(call.headers.applicationId, 'app-id-123');
+  // アプリIDは楽天の仕様でクエリ必須、アクセスキーは秘密なのでヘッダー
+  assert.equal(new URL(call.url).searchParams.get('applicationId'), 'app-id-123');
   assert.equal(call.headers.accessKey, 'secret-access-key-999');
   assert.equal(call.headers.Referer, DEFAULT_RAKUTEN_REFERER);
-  // 秘密はURL・応答に出さない
+  // アクセスキーはURL・応答に出さない。アプリIDも応答には出さない
   assert.equal(call.url.includes('secret-access-key-999'), false);
-  assert.equal(call.url.includes('app-id-123'), false);
   assert.equal(body.includes('secret-access-key-999'), false);
   assert.equal(body.includes('app-id-123'), false);
 
@@ -245,11 +245,11 @@ test('エンドポイント差し替えとアフィリエイトIDの付与', () 
   assert.equal(url.origin + url.pathname, RAKUTEN_SEARCH_ENDPOINT);
   assert.equal(url.searchParams.get('affiliateId'), '1234abcd.5678efgh');
   assert.equal(url.searchParams.get('keyword'), JAN);
-  assert.equal(url.searchParams.get('applicationId'), null, 'アプリIDはURLに載せない');
+  assert.equal(url.searchParams.get('applicationId'), 'app-id-123', '楽天の仕様でアプリIDはクエリ必須');
 
   const headers = rakutenRequestHeaders(env);
-  assert.equal(headers.applicationId, 'app-id-123');
   assert.equal(headers.accessKey, 'secret-access-key-999');
+  assert.equal(headers.applicationId, undefined, 'アプリIDはクエリで渡す');
   assert.equal(headers.Referer, 'https://shodai4.com/app/');
 
   const legacy = { ...ENV, RAKUTEN_API_ENDPOINT: 'https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601' };

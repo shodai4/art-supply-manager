@@ -14,7 +14,7 @@
    ▼
 Cloudflare Workers（このフォルダ）── キャッシュ7日
    │  GET openapi.rakuten.co.jp/.../IchibaItem/Search/20260701
-   │  （アプリID・アクセスキーはヘッダー、URLには載せない）
+   │  （アプリIDはクエリ、アクセスキーはヘッダーで送る）
    ▼
 楽天ウェブサービス
 ```
@@ -136,7 +136,7 @@ export const DEFAULT_IMAGE_PROXY_URL = 'https://rakuten-image-proxy.<サブド�
 - 同じJANは Cloudflare のエッジキャッシュに7日（`Cache-Control: public, max-age=604800`）。
   キャッシュにはデータだけを入れ、CORSヘッダーは毎回付け直す（別オリジンでも取り違えない）
 - 返すのは `imageUrl`（https・`_ex=300x300`）と商品名・価格・商品URL・ショップ名だけ。
-  アプリID・アクセスキーは応答にもログにも出さない（楽天への送信もヘッダー）
+  アプリIDは楽天の仕様でクエリ必須（応答には出さない）、アクセスキーはヘッダーで送りURLにも出さない
 
 エラーコード（応答の `error`）:
 
@@ -180,3 +180,7 @@ cd workers/rakuten-image-proxy && npm test        # 中継サーバーのフォ�
   （楽天のアプリIDとアクセスキー、Cloudflareアカウントが手元にないため）
 - 楽天APIが Referer を必須にしているかは公式ドキュメントに明記がなく、実装者の報告に基づいています。
   初回の疎通確認で `not_configured` が出たら、まずアプリ登録の「許可されたウェブサイト」を確認してください
+- 確認できたこと: 中継サーバーと同じ形（URLのクエリに applicationId、ヘッダーに accessKey と Referer）で
+  楽天APIを直接叩くと、ダミーの認証情報では `403 Invalid Access Key` が返りました。つまりパラメータの形式と
+  Referer の付け方は受け付けられており、弾かれたのはキーの値だけです（2026年11月15日に確認）。
+  本物のアプリID・アクセスキーでの成功はまだ見ていません
