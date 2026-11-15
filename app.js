@@ -13,7 +13,7 @@ import {
 } from './pro.js';
 import { JAN_DICTIONARY } from './jan-database.js';
 import {
-  EXTRA_DICT_URL, mergeDictionaries, syncExtraDictionary, describeCounts, describeSyncState,
+  resolveDictionaryUrl, mergeDictionaries, syncExtraDictionary, describeCounts, describeSyncState,
   buildIssueUrl, buildProposalClipboardText,
 } from './jan-extra.js';
 import {
@@ -22,6 +22,7 @@ import {
 import {
   chooseScanStrategy, isNativeShell, nativeScannerPlugin, loadVendorScanner, VENDOR_SCANNER_PATH,
 } from './scanner.js';
+import { shouldOpenExternally, openInExternalBrowser } from './links.js';
 import {
   compressImageFile, listPhotos, putPhoto, deletePhoto, clearPhotos, fetchProductImageInfo,
   resolveImageProxyUrl, normalizeProxyUrl, canUseImageProxy, sourceLabel,
@@ -102,7 +103,8 @@ async function syncDictionary({ announce = false } = {}) {
   renderDictionaryState();
   try {
     const result = await syncExtraDictionary({
-      base: JAN_DICTIONARY, storage: safeStorage(), url: EXTRA_DICT_URL,
+      base: JAN_DICTIONARY, storage: safeStorage(),
+      url: resolveDictionaryUrl({ native: isNativeShell(window) }),
     });
     applyDictionarySync(result);
     if (announce) {
@@ -120,17 +122,14 @@ async function syncDictionary({ announce = false } = {}) {
   }
 }
 
-/** 外部URLを開く（Capacitorでは Safari、ブラウザでは新規タブ） */
-function openExternal(url) {
-  if (!url) return false;
-  const browser = window.Capacitor?.Plugins?.Browser;
-  if (browser && typeof browser.open === 'function') {
-    browser.open({ url });
-    return true;
-  }
-  const opened = window.open(url, '_blank', 'noopener,noreferrer');
+/** 外部URLを開く（アプリ内ではSafari、ブラウザでは新規タブ。開けなければURLをコピー） */
+async function openExternal(url) {
+  const href = String(url == null ? '' : url).trim();
+  if (!href) return false;
+  if (await openInExternalBrowser(href)) return true;
+  const opened = window.open(href, '_blank', 'noopener,noreferrer');
   if (!opened) {
-    copyText(url);
+    copyText(href);
     toast('リンクを開けません。URLをコピーしました');
     return false;
   }
@@ -1431,13 +1430,16 @@ $('btnProposeCopy').addEventListener('click', async () => {
   toast(ok ? '文面をコピーしました' : 'コピーできませんでした');
 });
 
-/* アプリ内（iOS）では外部リンクをSafariで開く */
+/* アプリ内（iOS）では外部リンクをSafariで開く（WebViewに閉じ込めない） */
 document.addEventListener('click', (e) => {
-  const a = e.target.closest('a.shop-link');
-  if (!a || !isNativeShell(window)) return;
+  if (!isNativeShell(window)) return;
+  const a = e.target?.closest?.('a[href]');
+  if (!a) return;
+  const href = a.getAttribute('href') || a.href || '';
+  if (!shouldOpenExternally(href, { native: true, base: location.href })) return;
   e.preventDefault();
-  openExternal(a.href);
-});
+  openExternal(a.href || href);
+}, true);
 
 const DICT_RENDER_LIMIT = 300;
 // 絞り込み用の検索文字列は辞書が変わったときだけ作り直す（2万件超を毎打鍵で連結しない）
@@ -1470,8 +1472,8 @@ function renderDictList(query) {
 }
 $('dictQ').addEventListener('input', (e) => renderDictList(e.target.value));
 
-/* ---------------- PWA ---------------- */
-if ('serviceWorker' in navigator) {
+/* ---------------- PWA（アプリ内では Service Worker を使わない） ---------------- */
+if ('serviceWorker' in navigator && !isNativeShell(window)) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   });

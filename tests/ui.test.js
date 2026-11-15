@@ -90,9 +90,11 @@ test('第2弾の導線（Pro案内・色見本・画材費・復元）がHTMLと
   assert.match(app, /recordPurchase\(/);
   assert.match(app, /buildItemsCsvText\(/);
   assert.match(app, /mergeStates\(/);
-  // 色見本は編集シートから撮影できる（写真メモ）
+  // 色見本は編集シートから撮影・選択できる（写真メモ。iOS では capture を外して
+  // 「撮る / 選ぶ」の選択シートを出す＝カメラ固定にしない）
   assert.match(html, /色見本・写真メモ/);
-  assert.match(html, /id="fPhoto" accept="image\/\*" capture="environment"/);
+  assert.match(html, /id="fPhoto" accept="image\/\*"/);
+  assert.equal(/id="fPhoto"[^>]*capture=/.test(html), false);
   // バックアップは言葉を短く（保存 / 復元）
   assert.match(html, /id="btnExport">バックアップ保存</);
   assert.match(html, /id="btnImport">復元</);

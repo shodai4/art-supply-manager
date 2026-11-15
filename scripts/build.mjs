@@ -14,6 +14,7 @@ export const WEB_ASSETS = [
   'support.html',
   'styles.css',
   'core.js',
+  'links.js',
   'pro.js',
   'images.js',
   'jan-database.js',

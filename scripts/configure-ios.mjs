@@ -32,7 +32,8 @@ export const CONFIG_ENTRIES = [
   { key: 'NSCameraUsageDescription', value: `<string>${CAMERA_USAGE}</string>`, mode: 'value' },
   { key: 'NSPhotoLibraryUsageDescription', value: `<string>${PHOTO_USAGE}</string>`, mode: 'value' },
   { key: 'ITSAppUsesNonExemptEncryption', value: '<false/>', mode: 'value' },
-  { key: 'UISupportedInterfaceOrientations', value: '<array>\n\t\t<string>UIInterfaceOrientationPortrait</string>\n\t</array>', mode: 'presence' },
+  // iPhone は縦固定（画面は縦前提で作っている）。iPad 用の ~ipad キーは Capacitor の既定（全向き）のまま
+  { key: 'UISupportedInterfaceOrientations', value: '<array>\n\t\t<string>UIInterfaceOrientationPortrait</string>\n\t</array>', mode: 'value' },
 ];
 
 function countOccurrences(haystack, needle) {

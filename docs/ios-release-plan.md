@@ -16,7 +16,8 @@
 | 辞書への提案導線 | GitHub Issue（プリフィル）／文面コピー（メール） |
 | 運用スクリプト | `scripts/add-jan-extra.mjs`（検証・重複チェックつき追記） |
 | 通販検索リンク | `shops.js` の `SHOP_AFFILIATE_CONFIG` 1か所でアフィリエイト付与を切替 |
-| Capacitor iOS の土台 | `capacitor.config.json`、`www/` ビルド、Info.plist 自動設定、CI テンプレート |
+| Capacitor iOS の土台 | `capacitor.config.json`、`www/` ビルド、Info.plist 自動設定、アイコン／起動画面の生成、CI ワークフロー（`docs/ios-build.yml.template`） |
+| 外部リンク | アプリ内では `@capacitor/browser` で Safari（SFSafariViewController）起動。判定は `links.js` |
 | 法務ページ | `privacy.html`（カメラ用途・アフィリエイト明記）、`support.html` |
 
 ---
@@ -132,13 +133,32 @@ export const SHOP_AFFILIATE_CONFIG = {
 | `NSCameraUsageDescription` | バーコード（JANコード）を読み取るためにカメラを使用します。映像は端末内だけで処理し、外部へ送信しません。 |
 | `NSPhotoLibraryUsageDescription` | 画材の実物写真を登録するために、写真を選択します。 |
 | `ITSAppUsesNonExemptEncryption` | false（TestFlight の輸出コンプライアンス保留を防ぐ） |
-| `UISupportedInterfaceOrientations` | 縦のみ（存在確認） |
+| `UISupportedInterfaceOrientations` | 縦のみ（値を検査して揃える。iPad 用の `~ipad` キーは全向きのまま） |
 
 Podfile と `project.pbxproj` の `IPHONEOS_DEPLOYMENT_TARGET` を **iOS 15.0** に揃えます（2027年4月からのApple要件に先回り。iPhone 6s 以降が対象）。
 
-### 4.3 外部リンク（通販・GitHub）
+写真の入力は `<input type="file" accept="image/*">`（`capture` は付けない）。`capture` を付けると iPhone ではカメラが直接開き、写真ライブラリから選べなくなるためです。iOS では「写真を撮る / 写真を選ぶ / ファイルを選択」のシートが出ます。
 
-WKWebView では `target="_blank"` が効かないため、`app.js` の `openExternal()` が Capacitor の `Browser` プラグイン → `window.open` → URLコピーの順に試します。**Safariで確実に開くには `@capacitor/browser` の追加が次の1歩**です（`npm i @capacitor/browser`、`npx cap sync ios`）。未導入でもコピーに退避するので機能は止まりません。
+### 4.3 外部リンク（通販・GitHub・法務）
+
+WKWebView では `target="_blank"` が開けないため、`@capacitor/browser`（6.0.6）を導入し、`app.js` が**アプリ内のすべての http/https・mailto・tel リンクのクリックを capture 段階で横取り**して `Browser.open()`（iOS は SFSafariViewController）へ渡します。通販（Amazon・楽天市場・Yahoo!）、辞書の出典、GitHub Issue、プライバシー／サポートのリンクがすべて対象です。
+
+- 判定は `links.js` の `shouldOpenExternally()`（純粋関数・`node --test` で検証）
+- プラグインが無い環境では `window.open` → 失敗したら URL をコピーして知らせる、の順に退避
+- Web版では同じサイト内のリンク（`privacy.html` など）はそのまま開く（別サイトだけ外部へ）
+- アプリ内では Service Worker を登録しない（`capacitor://` では失敗するだけなので）
+
+### 4.4 追加辞書の同期先（アプリ内だけ本番URL）
+
+アプリに同梱した `jan-extra.json` はインストール時のままで更新されないため、`resolveDictionaryUrl({ native })` が**アプリ内では `https://shodai4.com/art-supply-manager/jan-extra.json` を直接取得**します（GitHub Pages は `access-control-allow-origin: *` を返すため CORS も通る）。通信に失敗したときは localStorage のキャッシュ、それも無ければ内蔵辞書で動きます。
+
+### 4.5 アプリアイコンと起動画面（フォント非依存）
+
+`scripts/generate-ios-assets.py` が Pillow の図形描画だけで 1024px のアイコンと 2732px の起動画面を作ります。**文字を描かないのでフォントを一切使わず**、`date-15` で踏んだ「macOSランナーにLinuxのフォントパスが無い」エラーを構造的に避けています。4倍で描いて縮小するため輪郭も滑らかです。
+
+- AppIcon: iPhone（20/29/40/60）・iPad（20/29/40/76/83.5）・App Store（1024）の計20種を `Contents.json` ごと生成し、`setup-ios-assets.mjs` が Xcode のアセットカタログへ反映（Capacitor の初期アイコンは残さない）
+- 起動画面: `resources/splash.png` を `Splash.imageset` の全 png に上書き（ファイル名が変わっても追従）
+- 図柄は Web版 `icon.svg` と同じ（青→紫のグラデーションに白い一筆と絵具の粒3つ）。絵文字は不使用
 
 ---
 
@@ -176,9 +196,9 @@ npx cap sync ios
 
 1. **Apple Developer Program**（年99ドル）に登録。
 2. App Store Connect で **App Store Connect API キー**を発行（Issuer ID / Key ID / `.p8`）。
-3. App Store Connect に **アプリの器**を作成（Bundle ID `com.shodai4.artsupplymanager`、SKU `art-supply-manager-ios`、プライマリ言語 日本語）。
-4. GitHub リポジトリの Secrets に4つ登録: `APP_STORE_CONNECT_ISSUER_ID` / `APP_STORE_CONNECT_KEY_ID` / `APP_STORE_CONNECT_API_KEY_P8` / `APPLE_TEAM_ID`。
-5. `.github/workflows/ios-build.yml` を配置（テンプレート: `docs/ios-build.yml.template`）。
+3. App Store Connect に **アプリの器**を作成済み（2026年11月16日、ちびが登録）: Bundle ID `com.shodai4.artsupplymanager`、アプリ名 `画材管理`、**Apple ID `6835244770`**。
+4. GitHub リポジトリの Secrets に4つ登録: `APPLE_TEAM_ID` / `APP_STORE_CONNECT_ISSUER_ID` / `APP_STORE_CONNECT_KEY_ID` / `APP_STORE_CONNECT_PRIVATE_KEY`（4つ目は .p8 の中身。`APP_STORE_CONNECT_API_KEY_P8` ではなく `APP_STORE_CONNECT_PRIVATE_KEY` に統一）。
+5. `.github/workflows/ios-build.yml` を配置（テンプレート: `docs/ios-build.yml.template`。内容は同一）。
 6. `workflow_dispatch` で実行 → 署名して TestFlight へアップロード。
 
 手元のMacで行う場合:
@@ -195,13 +215,13 @@ npx cap open ios            # Xcode で Archive
 
 ### 6.1 ワークフローの構成
 
-- `actions/checkout` → `setup-node 20` → `npm install`
-- `npm test`（テストが落ちたら止める）→ `npm run build`
-- `npx cap add ios`（初回）/ `npx cap sync ios`
-- `node scripts/configure-ios.mjs`（Info.plist・最低OS）
-- `python3 scripts/generate-ios-assets.py` → `node scripts/setup-ios-assets.mjs`
+- `actions/checkout` → `setup-node 20` → `setup-python 3.11` → `pip install Pillow` → `npm ci`
+- `npm test`（141件。落ちたら止める）→ `python3 scripts/generate-ios-assets.py` → `npm run build`
+- `npx cap add ios`（初回）/ `npx cap sync ios` → `configure-ios.mjs` → `setup-ios-assets.mjs` → `pod install`
+- Info.plist（表示名・カメラ・写真・輸出コンプライアンス・縦固定）、1024px アイコン、`www/` の中身を `grep`／`test` で検査
 - `xcodebuild ... CODE_SIGNING_ALLOWED=NO clean build`（署名なしのクリーンビルド検証）
-- Secrets が4つ揃っているときだけ、証明書を作って `archive` → `exportArchive` → `altool --upload-app`（TestFlight）
+- Secrets が4つ揃っているときだけ、`.p8` を設置 → 署名なしで `archive`（`MARKETING_VERSION` と `CURRENT_PROJECT_VERSION=実行番号` を注入）→ `ExportOptions.plist`（`method: app-store-connect`・自動署名）で `exportArchive` → `altool --upload-app`（失敗時は `iTMSTransporter` で再試行）
+- 最後に `.p8` をランナーから削除（`if: always()`）
 
 ### 6.2 注意（ワークフローYAMLの権限）
 
@@ -278,11 +298,9 @@ App Store 審査で必要なこと:
 
 ## 9. 残タスク（次のステップ）
 
-1. `@capacitor/browser` を追加して外部リンクのSafari起動を確実にする。
-2. App Store Connect にアプリの器を作り、4つのSecretsを登録する。
-3. ワークフローYAMLを `.github/workflows/` に配置（403ならオーナーが手動配置）。
-4. TestFlight の実機でバーコード読取・カメラ解放・通販リンク・色見本アルバムを確認する。
-5. `cordova-plugin-purchase` を入れて Pro（非消耗型）を繋ぎ、`applyProEntitlement` まで通す（§8.1）。
-6. iCloud Drive へのJSON自動保存を入れる（§8.2）。
-7. 必要なら `@capacitor-mlkit/barcode-scanning` へ切り替えて読取速度を上げる。
-8. 追加辞書が数十件を超えたら、`jan-extra.json` を月1回まとめて追記する運用にする。
+1. GitHub Secrets 4つ（`APPLE_TEAM_ID` / `APP_STORE_CONNECT_ISSUER_ID` / `APP_STORE_CONNECT_KEY_ID` / `APP_STORE_CONNECT_PRIVATE_KEY`）を登録し、ワークフローYAMLを `.github/workflows/` に配置（403ならオーナーが手動配置）。
+2. TestFlight の実機でバーコード読取・写真の撮る/選ぶ・通販リンクのSafari起動・色見本アルバム・追加辞書の同期を確認する。
+3. `cordova-plugin-purchase` を入れて Pro（非消耗型）を繋ぎ、`applyProEntitlement` まで通す（§8.1）。
+4. iCloud Drive へのJSON自動保存を入れる（§8.2）。
+5. 必要なら `@capacitor-mlkit/barcode-scanning` へ切り替えて読取速度を上げる。
+6. 追加辞書が数十件を超えたら、`jan-extra.json` を月1回まとめて追記する運用にする。

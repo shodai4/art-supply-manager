@@ -6,6 +6,8 @@ import { CATEGORIES, calcCheckDigit, normalizeJAN, stripEmoji } from './core.js'
 
 /** 配信ファイルの場所（アプリのルートからの相対パス。GitHub Pages のサブパスでも解決する） */
 export const EXTRA_DICT_URL = 'jan-extra.json';
+/** 本番の配信元（アプリ内の同梱コピーは版が固定されるため、更新はここから取る） */
+export const EXTRA_DICT_REMOTE_URL = 'https://shodai4.com/art-supply-manager/jan-extra.json';
 export const EXTRA_CACHE_KEY = 'art-supply-manager/jan-extra/v1';
 /** このアプリが理解できる jan-extra.json のスキーマ版 */
 export const EXTRA_SCHEMA_VERSION = 1;
@@ -179,6 +181,19 @@ export function clearCache(storage, key = EXTRA_CACHE_KEY) {
 }
 
 /* ---------------- 同期 ---------------- */
+
+/**
+ * 同期先のURLを決める。
+ * - アプリ内（native）: 同梱の jan-extra.json はインストール時のまま更新されないので、本番URLから取る
+ * - Web: 同じ階層の jan-extra.json（サブパス配信でもそのまま解決する）
+ * - override に http/https のURLが渡されたらそれを使う（設定・動作確認用）
+ * @returns {string}
+ */
+export function resolveDictionaryUrl({ native = false, override = '' } = {}) {
+  const custom = String(override == null ? '' : override).trim();
+  if (/^https?:\/\/[^\s]+$/i.test(custom)) return custom;
+  return native ? EXTRA_DICT_REMOTE_URL : EXTRA_DICT_URL;
+}
 
 /**
  * jan-extra.json を取りに行き、キャッシュと合成結果を返す。

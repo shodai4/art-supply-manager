@@ -160,10 +160,19 @@ test('CIワークフローはテンプレートとして置き、Secrets未登�
   assert.match(template, /npm test/);
   assert.match(template, /npm run build/);
   assert.match(template, /configure-ios\.mjs/);
+  assert.match(template, /setup-ios-assets\.mjs/);
   assert.match(template, /CODE_SIGNING_ALLOWED=NO/);
-  assert.match(template, /secrets\.APP_STORE_CONNECT_API_KEY_P8/);
-  assert.match(template, /if: steps\.secrets\.outputs\.ready == 'true'/);
+  assert.match(template, /runs-on: macos-26/);
   assert.match(template, /workflow_dispatch/);
+  // 署名用Secretsは4つ。4つ目は APP_STORE_CONNECT_PRIVATE_KEY に統一（date-15 の API_KEY_P8 ではない）
+  for (const name of ['APPLE_TEAM_ID', 'APP_STORE_CONNECT_ISSUER_ID', 'APP_STORE_CONNECT_KEY_ID', 'APP_STORE_CONNECT_PRIVATE_KEY']) {
+    assert.match(template, new RegExp(`secrets\\.${name}`), `${name} がワークフローにありません`);
+  }
+  assert.equal(/API_KEY_P8/.test(template), false, '古いSecret名が残っています');
+  assert.match(template, /if: steps\.check_keys\.outputs\.has_keys == 'true'/);
+  assert.match(template, /xcrun altool --upload-app/);
+  assert.match(template, /ExportOptions\.plist/);
+  assert.match(template, /com\.shodai4\.artsupplymanager/);
   // docs/ にはテンプレートだけを置く（.github には置けないので README と設計書で案内）
   const plan = fs.readFileSync(path.join(ROOT, 'docs/ios-release-plan.md'), 'utf8');
   assert.match(plan, /docs\/ios-build\.yml\.template/);

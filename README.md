@@ -136,13 +136,14 @@ node scripts/add-jan-extra.mjs --jan 4900669001911 \
 ```bash
 npm install
 npm run build                 # www/ を作る
+python3 scripts/generate-ios-assets.py   # アイコン（全サイズ）と起動画面
 npx cap add ios               # 初回のみ
 node scripts/configure-ios.mjs
-python3 scripts/generate-ios-assets.py && node scripts/setup-ios-assets.mjs
+node scripts/setup-ios-assets.mjs
 npx cap open ios
 ```
 
-手元にMacが無くても、`.github/workflows/ios-build.yml`（`docs/ios-build.yml.template` と同内容）でビルドできます。設計の全体は `docs/ios-release-plan.md` を参照してください。
+外部リンクは `@capacitor/browser` でSafari（SFSafariViewController）開く（`links.js`）。手元にMacが無くても、`.github/workflows/ios-build.yml`（`docs/ios-build.yml.template` と同内容）でビルドできます。必要な GitHub Secrets は `APPLE_TEAM_ID` / `APP_STORE_CONNECT_ISSUER_ID` / `APP_STORE_CONNECT_KEY_ID` / `APP_STORE_CONNECT_PRIVATE_KEY` の4つ。設計の全体は `docs/ios-release-plan.md` を参照。
 
 ## データの持ち方・拡張
 
