@@ -72,7 +72,7 @@ test('第2弾の導線（Pro案内・色見本・画材費・復元）がHTMLと
   const html = read('index.html');
   const app = read('app.js');
   for (const id of [
-    'btnSwatch', 'swatchGrid', 'quotaNote',
+    'view-swatch', 'swatchGrid', 'quotaNote',
     'sheetPro', 'proLead', 'proQuota', 'proSheetBenefits', 'btnProStart',
     'proCard', 'proState', 'proBenefits', 'btnProToggle',
     'costCard', 'costBody', 'costLock', 'costStock', 'costRecorded', 'costNote', 'costTabs', 'costBars', 'btnCsv', 'btnCostPro',
@@ -85,6 +85,8 @@ test('第2弾の導線（Pro案内・色見本・画材費・復元）がHTMLと
   assert.match(app, /canAddItem\(state, state\.settings\)/);
   assert.match(app, /canAddFolder\(state, state\.settings\)/);
   assert.match(app, /requirePro\('swatch'\)/);
+  // 色見本は「在庫」の次にある独立したタブ（ツールバーは狭いので増やさない）
+  assert.match(html, /data-tab="swatch"[^>]*>色見本</);
   assert.match(app, /recordPurchase\(/);
   assert.match(app, /buildItemsCsvText\(/);
   assert.match(app, /mergeStates\(/);

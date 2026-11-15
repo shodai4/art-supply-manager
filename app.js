@@ -342,13 +342,11 @@ function render() {
   renderTools();
   renderCrumb();
   const folderMode = isFolderMode();
-  const swatchMode = isSwatchMode();
   $('folderGrid').hidden = !folderMode;
-  $('itemList').hidden = folderMode || swatchMode;
-  $('swatchGrid').hidden = !swatchMode;
+  $('itemList').hidden = folderMode;
   if (folderMode) renderFolderGrid();
-  else if (swatchMode) renderSwatches();
   else renderTilesInto($('itemList'), currentList(), { group: state.settings.sort === 'maker', emptyKey: 'items' });
+  if (ui.tab === 'swatch') renderSwatches();
   renderShopping();
   renderFolders();
   renderSettings();
@@ -356,7 +354,7 @@ function render() {
   document.querySelectorAll('#tabbar button').forEach((b) => {
     b.setAttribute('aria-selected', String(b.dataset.tab === ui.tab));
   });
-  for (const t of ['stock', 'shopping', 'folders', 'settings']) $(`view-${t}`).hidden = t !== ui.tab;
+  for (const t of ['stock', 'swatch', 'shopping', 'folders', 'settings']) $(`view-${t}`).hidden = t !== ui.tab;
   $('tools').hidden = ui.tab !== 'stock';
   $('crumb').hidden = ui.tab !== 'stock';
   $('searchRow').hidden = !ui.searchOpen || ui.tab !== 'stock';
@@ -367,10 +365,6 @@ function isFolderMode() {
   return ui.tab === 'stock' && ui.mode === 'folders';
 }
 
-function isSwatchMode() {
-  return ui.tab === 'stock' && ui.mode === 'swatches';
-}
-
 function renderHeader() {
   const s = summarize(state.items);
   $('hdrTotal').textContent = `全${s.kinds}種`;
@@ -378,7 +372,6 @@ function renderHeader() {
 
 function renderTools() {
   $('btnFolders').setAttribute('aria-pressed', String(isFolderMode()));
-  $('btnSwatch').setAttribute('aria-pressed', String(isSwatchMode()));
   const searchOpen = ui.searchOpen && ui.tab === 'stock';
   $('btnSearch').setAttribute('aria-pressed', String(searchOpen));
   const filtering = ui.category !== 'all' || ui.status !== 'all' || ui.maker !== 'all';
@@ -386,17 +379,14 @@ function renderTools() {
   const listMode = ui.layout === 'list';
   $('layoutIcon').querySelector('use').setAttribute('href', listMode ? '#i-grid' : '#i-list');
   $('btnLayout').setAttribute('aria-label', listMode ? 'グリッド表示に切り替え' : 'リスト表示に切り替え');
-  $('btnLayout').hidden = isFolderMode() || isSwatchMode();
+  $('btnLayout').hidden = isFolderMode();
 }
 
 function renderCrumb() {
   const folderMode = isFolderMode();
-  const swatchMode = isSwatchMode();
   const crumb = $('crumb');
   crumb.classList.toggle('root', folderMode);
-  $('crumbName').textContent = folderMode
-    ? ''
-    : (swatchMode ? '色見本' : (ui.folderId === 'all' ? 'すべて' : folderOf(ui.folderId).name));
+  $('crumbName').textContent = folderMode ? '' : (ui.folderId === 'all' ? 'すべて' : folderOf(ui.folderId).name);
   $('btnUp').disabled = folderMode;
   // 残り枠は数字だけ（例: 12 / 100点）
   const q = itemQuota(state, state.settings);
@@ -805,19 +795,9 @@ $('btnHome').addEventListener('click', () => {
   render();
 });
 $('btnUp').addEventListener('click', () => {
-  if (isSwatchMode()) { ui.mode = 'items'; render(); return; }
   ui.mode = 'folders';
   ui.folderId = 'all';
   render();
-});
-$('btnSwatch').addEventListener('click', () => {
-  if (!requirePro('swatch')) return;
-  ui.tab = 'stock';
-  ui.mode = isSwatchMode() ? 'items' : 'swatches';
-  ui.folderId = 'all';
-  stopScanner();
-  render();
-  window.scrollTo({ top: 0 });
 });
 $('btnSearch').addEventListener('click', () => {
   ui.searchOpen = !ui.searchOpen;
@@ -847,9 +827,13 @@ $('btnLayout').addEventListener('click', () => {
 $('tabbar').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-tab]');
   if (!b) return;
-  ui.tab = b.dataset.tab;
+  const tab = b.dataset.tab;
+  // 色見本アルバムはPro（無料では案内を出して、いまのタブに留まる）
+  if (tab === 'swatch' && !requirePro('swatch')) return;
+  ui.tab = tab;
   stopScanner();
   render();
+  window.scrollTo({ top: 0 });
 });
 
 $('folderGrid').addEventListener('click', (e) => {

@@ -95,9 +95,6 @@
     <button class="tool" id="btnFolders" aria-pressed="true" aria-label="保管場所フォルダ">
       <svg class="ic" aria-hidden="true"><use href="#i-folder"/></svg><span>フォルダ</span>
     </button>
-    <button class="tool" id="btnSwatch" aria-pressed="false" aria-label="色見本アルバム">
-      <svg class="ic" aria-hidden="true"><use href="#i-swatch"/></svg><span>色見本</span>
-    </button>
     <button class="tool" id="btnScan" aria-label="バーコードを読み取る">
       <svg class="ic" aria-hidden="true"><use href="#i-scan"/></svg><span>読取</span>
     </button>
@@ -134,7 +131,11 @@
   <section id="view-stock">
     <div class="fgrid" id="folderGrid"></div>
     <div id="itemList"></div>
-    <div id="swatchGrid" hidden></div>
+  </section>
+
+  <!-- 色見本アルバム -->
+  <section id="view-swatch" hidden>
+    <div id="swatchGrid"></div>
   </section>
 
   <!-- 買い物リスト -->
@@ -246,6 +247,7 @@
 
 <nav class="tabbar" id="tabbar">
   <button data-tab="stock" aria-selected="true">在庫</button>
+  <button data-tab="swatch" aria-selected="false">色見本</button>
   <button data-tab="shopping" aria-selected="false">補充</button>
   <button data-tab="folders" aria-selected="false">場所</button>
   <button data-tab="settings" aria-selected="false">設定</button>
