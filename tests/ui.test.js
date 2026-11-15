@@ -58,13 +58,46 @@ test('配信ファイル jan-extra.json がルートにある（初期構造）'
 
 test('新しく足したファイルは絵文字を含まない（表示方針）', () => {
   const files = [
-    'index.html', 'app.js', 'styles.css', 'core.js', 'shops.js', 'jan-extra.js', 'scanner.js',
+    'index.html', 'app.js', 'styles.css', 'core.js', 'pro.js', 'shops.js', 'jan-extra.js', 'scanner.js',
     'sw.js', 'vendor/README.md', 'images.js', 'workers/rakuten-image-proxy/src/index.js',
-    'docs/rakuten-proxy-setup.md',
+    'docs/rakuten-proxy-setup.md', 'docs/ios-release-plan.md',
   ];
   for (const file of files) {
     const text = read(file);
     assert.equal(EMOJI.test(text), false, `${file} に絵文字があります`);
+  }
+});
+
+test('第2弾の導線（Pro案内・色見本・画材費・復元）がHTMLとapp.jsにある', () => {
+  const html = read('index.html');
+  const app = read('app.js');
+  for (const id of [
+    'btnSwatch', 'swatchGrid', 'quotaNote',
+    'sheetPro', 'proLead', 'proQuota', 'proSheetBenefits', 'btnProStart',
+    'proCard', 'proState', 'proBenefits', 'btnProToggle',
+    'costCard', 'costBody', 'costLock', 'costStock', 'costRecorded', 'costNote', 'costTabs', 'costBars', 'btnCsv', 'btnCostPro',
+    'sheetRestore', 'restoreNote', 'btnRestoreMerge', 'btnRestoreReplace',
+  ]) {
+    assert.ok(html.includes(`id="${id}"`), `#${id} がありません`);
+  }
+  // 無料上限とPro判定は pro.js を通す（数字を画面側に散らさない）
+  assert.match(app, /from '\.\/pro\.js'/);
+  assert.match(app, /canAddItem\(state, state\.settings\)/);
+  assert.match(app, /canAddFolder\(state, state\.settings\)/);
+  assert.match(app, /requirePro\('swatch'\)/);
+  assert.match(app, /recordPurchase\(/);
+  assert.match(app, /buildItemsCsvText\(/);
+  assert.match(app, /mergeStates\(/);
+  // 色見本は編集シートから撮影できる（写真メモ）
+  assert.match(html, /色見本・写真メモ/);
+  assert.match(html, /id="fPhoto" accept="image\/\*" capture="environment"/);
+  // バックアップは言葉を短く（保存 / 復元）
+  assert.match(html, /id="btnExport">バックアップ保存</);
+  assert.match(html, /id="btnImport">復元</);
+  // 新しい画面のスタイルがある
+  const css = read('styles.css');
+  for (const sel of ['.sgrid', '.swt', '.bar .bf', '.pro-chip', '.quota']) {
+    assert.ok(css.includes(sel), `${sel} のスタイルがありません`);
   }
 });
 

@@ -107,6 +107,22 @@ export function normalizeImageUrl(value) {
   return /^https?:\/\/[^\s]+$/i.test(s) ? s : '';
 }
 
+/** 購入ログの上限件数（古いものから落とす。localStorage を太らせない） */
+export const MAX_PURCHASE_LOG = 200;
+
+/** 保存済み・読み込み済みの購入ログを安全な形に整える */
+export function normalizePurchaseLog(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((e) => e && Number.isFinite(+e.amount))
+    .map((e) => ({
+      at: String(e.at || ''),
+      qty: Math.max(0, Math.trunc(Number(e.qty) || 0)),
+      amount: Math.max(0, Math.round(Number(e.amount) || 0)),
+    }))
+    .slice(-MAX_PURCHASE_LOG);
+}
+
 /** 新規アイテム（不足項目は初期値で補完） */
 export function createItem(partial = {}) {
   const status = STATUSES.some((s) => s.id === partial.status) ? partial.status : 'enough';
@@ -127,6 +143,7 @@ export function createItem(partial = {}) {
     price: Number.isFinite(+partial.price) && partial.price !== '' ? Math.max(0, Math.round(+partial.price)) : null,
     memo: String(partial.memo || '').trim(),
     imageUrl: normalizeImageUrl(partial.imageUrl),
+    purchaseLog: normalizePurchaseLog(partial.purchaseLog),
     createdAt: partial.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -243,7 +260,11 @@ export function blankState() {
     version: APP_VERSION,
     folders: DEFAULT_FOLDERS.map((f) => ({ ...f })),
     items: [],
-    settings: { sort: 'updated', layout: 'grid', askBeforeDelete: true, rakutenAppId: '', rakutenAccessKey: '', imageProxyUrl: '' },
+    settings: {
+      sort: 'updated', layout: 'grid', askBeforeDelete: true,
+      rakutenAppId: '', rakutenAccessKey: '', imageProxyUrl: '',
+      pro: false, proPreview: false,
+    },
     updatedAt: new Date().toISOString(),
   };
 }
@@ -359,6 +380,11 @@ export function importState(text) {
   return { version: APP_VERSION, folders, items, settings: { ...blankState().settings, ...(data.settings || {}) } };
 }
 
+/** カテゴリIDの表示名 */
+export function categoryLabel(id) {
+  return CATEGORIES.find((c) => c.id === id)?.label || 'その他';
+}
+
 /** 集計（カテゴリ別・残量アラート数） */
 export function summarize(items) {
   const byCategory = {};
@@ -374,4 +400,190 @@ export function summarize(items) {
     needRestock: computeShoppingList(items).length,
     byCategory,
   };
+}
+
+/* ---------------- 画材費（単価・購入ログ・CSV） ---------------- */
+/** 単価が入っているか（0円も「入力済み」として扱う） */
+export function hasPrice(item) {
+  const p = item?.price;
+  if (p === null || p === undefined || p === '') return false;
+  return Number.isFinite(+p) && +p >= 0;
+}
+
+/** 参考単価（円・未入力は null） */
+export function unitPrice(item) {
+  return hasPrice(item) ? Math.round(+item.price) : null;
+}
+
+/** 今の在庫価値（単価 × 在庫数） */
+export function stockValueOf(item) {
+  const price = unitPrice(item);
+  if (price === null) return 0;
+  return price * Math.max(0, Number(item?.qty) || 0);
+}
+
+/**
+ * 買い足し（在庫＋）を1件、購入ログに残す。単価が無い・減らす操作では何もしない。
+ * 記録がまだ無い画材は、その時点の在庫ぶんを最初の購入として残してから追記する
+ * （単価を後から入れた既存データでも、買い足し以降の金額が正しく積み上がる）。
+ */
+export function recordPurchase(item, delta, at = new Date().toISOString()) {
+  const d = Math.trunc(Number(delta) || 0);
+  const price = unitPrice(item);
+  if (!item || d <= 0 || price === null) return item;
+  const prev = Array.isArray(item.purchaseLog) ? item.purchaseLog : [];
+  const seeded = prev.length === 0 && Number(item.qty) > 0
+    ? [{ at: String(item.createdAt || at), qty: Number(item.qty), amount: price * Number(item.qty) }]
+    : prev;
+  const log = [...seeded, { at, qty: d, amount: price * d }].slice(-MAX_PURCHASE_LOG);
+  return { ...item, purchaseLog: log };
+}
+
+/** 記録済みの購入金額（ログが無い既存データは、いまの在庫ぶんを購入額とみなす） */
+export function purchaseTotalOf(item) {
+  const log = Array.isArray(item?.purchaseLog) ? item.purchaseLog : [];
+  if (log.length) return log.reduce((sum, e) => sum + Math.max(0, Number(e.amount) || 0), 0);
+  return stockValueOf(item);
+}
+
+const addAmount = (map, key, amount) => {
+  const cur = map.get(key) || { value: 0, count: 0 };
+  cur.value += amount;
+  cur.count += 1;
+  map.set(key, cur);
+};
+
+/**
+ * 画材費の2軸集計。
+ * stockValue    = 今の在庫価値（単価 × 在庫数。使った分は減る）
+ * recordedTotal = 記録済み合計金額（買い足すたびに積み上がる購入額）
+ * 内訳（カテゴリ別・メーカー別）は recordedTotal 側を金額の大きい順に並べる。
+ */
+export function costSummary(items = []) {
+  let stockValue = 0;
+  let recordedTotal = 0;
+  let pricedCount = 0;
+  let qty = 0;
+  const byCategory = new Map();
+  const byMaker = new Map();
+  for (const it of items) {
+    qty += Math.max(0, Number(it.qty) || 0);
+    if (!hasPrice(it)) continue;
+    const recorded = purchaseTotalOf(it);
+    pricedCount += 1;
+    stockValue += stockValueOf(it);
+    recordedTotal += recorded;
+    addAmount(byCategory, it.category || 'other', recorded);
+    addAmount(byMaker, itemMaker(it) || '未設定', recorded);
+  }
+  const toRows = (map, labelOf) => [...map.entries()]
+    .map(([key, v]) => ({ key, label: labelOf(key), value: v.value, count: v.count }))
+    .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label, 'ja'));
+  return {
+    kinds: items.length,
+    qty,
+    pricedCount,
+    unpricedCount: items.length - pricedCount,
+    stockValue,
+    recordedTotal,
+    byCategory: toRows(byCategory, categoryLabel),
+    byMaker: toRows(byMaker, (maker) => maker),
+  };
+}
+
+/** 内訳リストを上位 max 件に絞り、残りは「ほか」にまとめる */
+export function costRows(list = [], max = 6) {
+  const rows = [...list].slice(0, Math.max(0, max));
+  const rest = [...list].slice(Math.max(0, max));
+  return {
+    rows,
+    rest: rest.length
+      ? { value: rest.reduce((sum, r) => sum + (Number(r.value) || 0), 0), count: rest.length }
+      : null,
+  };
+}
+
+/** CSVの1セルをエスケープ（カンマ・引用符・改行を含むときだけ引用符で囲む） */
+export function csvEscape(value) {
+  const s = value === null || value === undefined ? '' : String(value);
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/** 行の配列をCSV本文にする（Excel向けに改行は CRLF） */
+export function toCsv(rows = []) {
+  return rows.map((row) => row.map(csvEscape).join(',')).join('\r\n');
+}
+
+/** CSVの列（この順番で出す） */
+export const CSV_COLUMNS = [
+  '名前', 'メーカー', 'ブランド', 'カテゴリ', '色名', '色番', 'JAN', 'フォルダ', '残量', '在庫数', '単価', '推定価値', '更新日',
+];
+
+/** Excelで文字化けしないよう、UTF-8のBOMを先頭に付ける */
+export const CSV_BOM = '\uFEFF';
+
+/** 画材1件ぶんのCSV行 */
+export function itemCsvRow(item, folders = []) {
+  const folder = folders.find((f) => f.id === item.folderId);
+  const status = STATUSES.find((s) => s.id === item.status);
+  const price = unitPrice(item);
+  return [
+    item.name,
+    item.maker,
+    item.brand,
+    categoryLabel(item.category),
+    item.colorName,
+    item.colorCode,
+    item.jan,
+    folder ? folder.name : '',
+    status ? status.label : '',
+    Math.max(0, Number(item.qty) || 0),
+    price === null ? '' : price,
+    stockValueOf(item),
+    String(item.updatedAt || '').slice(0, 10),
+  ];
+}
+
+/** CSV本文（BOM付きUTF-8・CRLF）。Excelでそのまま開ける */
+export function buildItemsCsvText(items = [], folders = []) {
+  const rows = [CSV_COLUMNS, ...items.map((it) => itemCsvRow(it, folders))];
+  return `${CSV_BOM}${toCsv(rows)}\r\n`;
+}
+
+/**
+ * バックアップの「まとめる（追加）」用。
+ * フォルダは足りないIDだけ足し、画材はIDが同じなら更新日時の新しいほうを残す。
+ * どちらも消さないので、復元の取り違えで手持ちのデータが減らない。
+ */
+export function mergeStates(current, incoming) {
+  const folders = [...(current?.folders || [])];
+  const folderIds = new Set(folders.map((f) => f.id));
+  let foldersAdded = 0;
+  for (const f of incoming?.folders || []) {
+    if (!f?.id || folderIds.has(f.id)) continue;
+    folders.push(f);
+    folderIds.add(f.id);
+    foldersAdded += 1;
+  }
+  const fallbackFolder = folders[0]?.id || DEFAULT_FOLDERS[0].id;
+  const items = [...(current?.items || [])];
+  const index = new Map(items.map((it, i) => [it.id, i]));
+  let added = 0;
+  let updated = 0;
+  for (const raw of incoming?.items || []) {
+    if (!raw?.id) continue;
+    const it = folderIds.has(raw.folderId) ? raw : { ...raw, folderId: fallbackFolder };
+    const at = index.get(it.id);
+    if (at === undefined) {
+      items.push(it);
+      index.set(it.id, items.length - 1);
+      added += 1;
+      continue;
+    }
+    if (String(it.updatedAt || '') > String(items[at].updatedAt || '')) {
+      items[at] = it;
+      updated += 1;
+    }
+  }
+  return { ...current, folders, items, mergeStats: { added, updated, foldersAdded } };
 }

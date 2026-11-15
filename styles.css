@@ -79,6 +79,10 @@ button { cursor: pointer; }
 }
 .crumb[hidden] { display: none; }
 .crumb.root .sep, .crumb.root .path { display: none; }
+.crumb .quota { margin-left: auto; font-size: 11px; font-weight: 700; color: var(--ink-3); white-space: nowrap; }
+.crumb .quota.tight { color: var(--warn); }
+.crumb .quota:empty { display: none; }
+.crumb .quota + .cbtn { margin-left: 4px; }
 
 /* ---------- フォルダグリッド（保管場所） ---------- */
 .fgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px 8px; padding: 12px 12px 6px; }
@@ -144,6 +148,38 @@ button { cursor: pointer; }
 .mhead b { font-size: 10px; font-weight: 700; color: #7b8a99; background: #eaf0f7; border-radius: 999px; padding: 0 6px; }
 .mhead:first-child { padding-top: 4px; }
 .mhead + .tgrid { padding-top: 6px; }
+
+/* ---------- 色見本アルバム（写真か色名がある画材をタイルで） ---------- */
+.sgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 8px; padding: 10px 12px 6px; }
+.swt { display: flex; flex-direction: column; gap: 4px; border: none; background: none; padding: 0; min-width: 0; text-align: left; }
+.swt .swc {
+  position: relative; display: block; width: 100%; aspect-ratio: 1 / 1; border-radius: 12px; overflow: hidden;
+  background: var(--c, #e8eaee); box-shadow: inset 0 0 0 1px rgba(15, 25, 40, .1);
+}
+/* 写真が無いときは色名から推測した色を全面に出す */
+.swt .swfill { position: absolute; inset: 0; background: var(--c, #e8eaee); }
+.swt .swc::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(160deg, rgba(255, 255, 255, .28) 0%, rgba(0, 0, 0, .06) 100%);
+}
+.swt .swimg {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+  z-index: 1; background: #fff;
+}
+.swt .swimg.imgfail { display: none; }
+.swt .swq {
+  position: absolute; right: 4px; bottom: 4px; z-index: 2; min-width: 17px; text-align: center;
+  background: rgba(255, 255, 255, .95); color: #1d2733; font-size: 10.5px; font-weight: 800;
+  border-radius: 999px; padding: 0 4px; line-height: 16px; box-shadow: 0 0 0 1px rgba(15, 25, 40, .1);
+}
+.swt .swn {
+  font-size: 11px; line-height: 1.25; font-weight: 700; color: #2b3b4d;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word;
+}
+.swt .swm { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--ink-2); min-width: 0; }
+.swt .swm .badge { padding: 0 4px; font-size: 9.5px; }
+.swt.item-card--empty .swc { filter: grayscale(1); opacity: .55; }
+.swt.item-card--empty .swn { color: #8c96a1; }
 
 /* ---------- 高密度リスト（切替時） ---------- */
 .item {
@@ -296,9 +332,11 @@ main { padding: 0 0 56px; }
 /* 広い画面では列を増やす */
 @media (min-width: 430px) {
   .fgrid, .tgrid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .sgrid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 @media (min-width: 560px) {
   .fgrid, .tgrid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .sgrid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 }
 
 /* ---------- 在庫切れ（qty 0 / 残量使い切り）はグレーアウト ---------- */
@@ -341,6 +379,23 @@ main { padding: 0 0 56px; }
   display: inline-block; margin-left: 4px; font-size: 9.5px; font-weight: 700;
   color: #2f6fd0; background: var(--accent-soft); border-radius: 999px; padding: 0 5px; line-height: 15px;
 }
+
+/* ---------- プラン・画材費（設定） ---------- */
+.pro-chip {
+  display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 999px;
+  background: var(--accent-soft); color: #1e4f9c; font-size: 11px; font-weight: 700; white-space: nowrap;
+}
+.pro-lead { font-size: 16px; font-weight: 800; margin: 0 0 4px; line-height: 1.35; }
+.stat-grid.cost { margin: 0 0 6px; }
+.cost-tabs { margin: 10px 0 4px; }
+.bars { display: flex; flex-direction: column; gap: 5px; margin-top: 6px; }
+.bar { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--ink-2); }
+.bar .bl { flex: 0 0 82px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; color: #33465a; }
+.bar .bt { flex: 1 1 auto; height: 8px; border-radius: 4px; background: #eef2f7; overflow: hidden; }
+.bar .bf { display: block; height: 100%; border-radius: 4px; background: linear-gradient(90deg, #6d9ee6 0%, #2f6fd0 100%); }
+.bar .bv { flex: 0 0 auto; min-width: 48px; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; color: #2b3b4d; }
+.bar.rest .bl { font-weight: 600; color: var(--ink-3); }
+.bar.rest .bv { color: var(--ink-3); }
 
 /* ---------- 極小の注記（法務・規約） ---------- */
 .micro { font-size: 10.5px; line-height: 1.5; color: var(--ink-3); margin: 0; }

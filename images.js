@@ -6,8 +6,8 @@
 export const IMAGE_DB_NAME = 'art-supply-images';
 export const IMAGE_DB_VERSION = 1;
 export const IMAGE_STORE = 'photos';
-export const MAX_EDGE = 320;      // 長辺の上限(px)
-export const JPEG_QUALITY = 0.75; // 1枚 15〜30KB 前後になる設定
+export const MAX_EDGE = 480;      // 長辺の上限(px)。色見本として色が判別できる大きさ
+export const JPEG_QUALITY = 0.75; // 1枚 30〜60KB 前後になる設定（IndexedDBなのでlocalStorageは圧迫しない）
 
 /** 長辺 maxEdge に収まるよう縦横比を保って縮小した大きさ（拡大はしない） */
 export function fitWithin(width, height, maxEdge = MAX_EDGE) {
@@ -120,7 +120,7 @@ async function loadBitmap(file) {
   }
 }
 
-/** 選んだ画像を長辺320px・JPEG 0.75 に圧縮（ブラウザ専用） */
+/** 選んだ画像を長辺480px・JPEG 0.75 に圧縮（ブラウザ専用） */
 export async function compressImageFile(file, { maxEdge = MAX_EDGE, quality = JPEG_QUALITY } = {}) {
   if (!file) throw new Error('画像ファイルを選んでください');
   if (file.type && !/^image\//.test(file.type)) throw new Error('画像ファイルを選んでください');

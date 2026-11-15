@@ -7,13 +7,14 @@ import {
 } from '../images.js';
 import { createItem, importState, normalizeImageUrl, exportState, blankState, upsertItem } from '../core.js';
 
-test('写真の縮小サイズは長辺320px・縦横比を保つ（拡大しない）', () => {
-  assert.equal(MAX_EDGE, 320);
+test('写真の縮小サイズは長辺480px・縦横比を保つ（拡大しない）', () => {
+  assert.equal(MAX_EDGE, 480);
   assert.equal(JPEG_QUALITY, 0.75);
-  assert.deepEqual(fitWithin(640, 480), { width: 320, height: 240 });
-  assert.deepEqual(fitWithin(480, 640), { width: 240, height: 320 });
-  assert.deepEqual(fitWithin(4032, 3024), { width: 320, height: 240 }); // iPhone写真
-  assert.deepEqual(fitWithin(320, 320), { width: 320, height: 320 });  // ちょうどはそのまま
+  assert.deepEqual(fitWithin(640, 480), { width: 480, height: 360 });
+  assert.deepEqual(fitWithin(480, 640), { width: 360, height: 480 });
+  assert.deepEqual(fitWithin(4032, 3024), { width: 480, height: 360 }); // iPhone写真
+  assert.deepEqual(fitWithin(480, 480), { width: 480, height: 480 }); // ちょうどはそのまま
+  assert.deepEqual(fitWithin(320, 320), { width: 320, height: 320 }); // 旧サイズの写真もそのまま読める
   assert.deepEqual(fitWithin(100, 80), { width: 100, height: 80 });    // 小さい画像は拡大しない
   assert.deepEqual(fitWithin(1000, 500, 200), { width: 200, height: 100 });
   assert.deepEqual(fitWithin(0, 0), { width: 1, height: 1 });         // 異常値でも壊れない

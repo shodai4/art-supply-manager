@@ -226,11 +226,63 @@ GitHub App の権限によっては `.github/workflows/*.yml` のプッシュが
 
 ---
 
-## 8. 残タスク（次のステップ）
+## 8. Pro課金（StoreKit）とiCloudバックアップの接続点
+
+第2弾で、無料上限（100点・フォルダ3つ）と Pro 特典（上限解除・色見本アルバム・画材費とCSV・iCloudバックアップ）の土台を入れた。課金そのものはまだ繋いでおらず、設定の「Proプレビュー」で同じ状態を再現している。以下は iPhone 版で繋ぐときの設計。
+
+### 8.1 課金（非消耗型の買い切り）
+
+| 項目 | 内容 |
+|---|---|
+| 商品ID（案） | `com.shodai4.artsupplymanager.pro` |
+| 種類 | 非消耗型（Non-Consumable）の買い切り。価格は App Store Connect で設定（300〜500円を想定） |
+| プラグイン | テリトリーウォークと同じ `cordova-plugin-purchase`（Capacitor 6 で動作実績あり） |
+| 判定の入口 | `pro.js` の `isPro(settings)` 1か所。画面側は `itemLimit` / `folderLimit` / `canAddItem` / `canAddFolder` / `canUseFeature` を通しているので、購入状態を `settings.pro` に入れるだけで全部に効く |
+| 購入・復元の反映 | `applyProEntitlement(settings, owned)` を呼び、返り値を `state.settings` に入れて `save()` |
+
+```js
+// 例: 購入・復元が成功したとき
+import { applyProEntitlement } from './pro.js';
+state = { ...state, settings: applyProEntitlement(state.settings, true) };
+save(); render();
+```
+
+App Store 審査で必要なこと:
+
+- アプリ内に「購入を復元」を必ず置く（機種変更・再インストール用）。`applyProEntitlement(settings, false)` も同じ入口で扱える
+- 価格・期間・自動更新の有無を購入画面に明記する（非消耗型なので「一度の購入でずっと使えます」）
+- デジタル機能の解除を外部決済へ誘導しない（App 外リンク・「Webで買う」文言を出さない）
+- プレビュー（`settings.proPreview`）は審査提出ビルドでは初期値 false のまま。デバッグ用に残す場合は開発ビルドだけに限定する
+
+### 8.2 iCloud バックアップ／複数端末同期
+
+いまの保存先は `localStorage`（`art-supply-manager/v1` のJSON）と IndexedDB（`art-supply-images` の写真Blob）。サーバーは持たない方針なので、同期は Apple の iCloud 側に預ける。
+
+| 方式 | 保存できる量 | 向き | 実装 |
+|---|---|---|---|
+| iCloud Key-Value Store | 合計 1MB 程度 | 設定・小さなJSONのみ | `NSUbiquitousKeyValueStore` を Capacitor プラグイン経由。画材100点のJSONは数百KBになるため主用途には不足 |
+| iCloud Drive（書類フォルダ） | 容量は iCloud の空き次第 | バックアップファイルの置き場 | `@capacitor/filesystem` ＋ `UIDocumentPicker`（ユーザーが「iCloud Drive」を選ぶ）または `UIFileSharingEnabled`。既存のJSON書き出し・復元をそのまま自動化できる |
+| CloudKit（プライベートDB） | 実質無制限（ユーザーのiCloud容量） | 複数端末の自動同期 | CloudKit 対応の Capacitor プラグイン。レコード単位の差分同期・競合解決が必要 |
+
+おすすめの順番:
+
+1. **まず iCloud Drive へ JSON を自動保存**（毎回の保存時に同じファイル名で上書き、復元はアプリ起動時に新しいほうを読む）。既存の `exportState` / `importState` / `mergeStates` をそのまま使えるので、追加するのはファイル入出力だけ。写真（IndexedDB）はJSONに含まれないため、次段で扱う
+2. **次に CloudKit で複数端末同期**。`mergeStates` の「更新日時の新しいほうを残す」規則をそのまま競合解決に使える（画材IDは端末をまたいで一意）
+3. 写真は CloudKit の `CKAsset` か iCloud Drive 上のファイルへ。1枚30〜60KBなので100点でも数MB程度
+
+注意点:
+
+- iCloud がオフ・容量不足のときは「端末内だけで動く」に戻す（同期は失敗しても在庫管理を止めない）
+- 写真のBlobはJSONに入れない（今の設計を維持。入れると localStorage 5MB を超える）
+- 復元は「置き換える」より「まとめる（`mergeStates`）」を既定にする。取り違えでデータが減らない
+
+## 9. 残タスク（次のステップ）
 
 1. `@capacitor/browser` を追加して外部リンクのSafari起動を確実にする。
 2. App Store Connect にアプリの器を作り、4つのSecretsを登録する。
 3. ワークフローYAMLを `.github/workflows/` に配置（403ならオーナーが手動配置）。
-4. TestFlight の実機でバーコード読取・カメラ解放・通販リンクを確認する。
-5. 必要なら `@capacitor-mlkit/barcode-scanning` へ切り替えて読取速度を上げる。
-6. 追加辞書が数十件を超えたら、`jan-extra.json` を月1回まとめて追記する運用にする。
+4. TestFlight の実機でバーコード読取・カメラ解放・通販リンク・色見本アルバムを確認する。
+5. `cordova-plugin-purchase` を入れて Pro（非消耗型）を繋ぎ、`applyProEntitlement` まで通す（§8.1）。
+6. iCloud Drive へのJSON自動保存を入れる（§8.2）。
+7. 必要なら `@capacitor-mlkit/barcode-scanning` へ切り替えて読取速度を上げる。
+8. 追加辞書が数十件を超えたら、`jan-extra.json` を月1回まとめて追記する運用にする。

@@ -5,8 +5,12 @@ import {
   addFolder, updateFolder, reorderFolders, deleteFolder, upsertItem, deleteItems,
   exportState, importState, summarize, blankState, isEmptyStock,
   isValidJAN, normalizeJAN, detectMaker, lookupJAN, itemMaker, listMakers, groupByMaker,
-  normalizeImageUrl,
+  normalizeImageUrl, recordPurchase, costSummary, costRows, buildItemsCsvText, mergeStates,
 } from './core.js';
+import {
+  FREE_ITEM_LIMIT, FREE_FOLDER_LIMIT, PRO_BENEFITS, isPro, itemQuota, folderQuota,
+  canAddItem, canAddFolder, canUseFeature, describeQuota, isQuotaTight,
+} from './pro.js';
 import { JAN_DICTIONARY } from './jan-database.js';
 import {
   EXTRA_DICT_URL, mergeDictionaries, syncExtraDictionary, describeCounts, describeSyncState,
@@ -39,7 +43,9 @@ let ui = {
   editingId: null,
   moveIds: [],
   folderEditId: null,
+  costKey: 'category',   // 画材費の内訳（カテゴリ / メーカー）
 };
+let pendingRestore = null; // 復元シートで待っている読み込み内容
 let scanner = null; // html5-qrcode instance
 let rafId = 0;
 
@@ -336,9 +342,12 @@ function render() {
   renderTools();
   renderCrumb();
   const folderMode = isFolderMode();
+  const swatchMode = isSwatchMode();
   $('folderGrid').hidden = !folderMode;
-  $('itemList').hidden = folderMode;
+  $('itemList').hidden = folderMode || swatchMode;
+  $('swatchGrid').hidden = !swatchMode;
   if (folderMode) renderFolderGrid();
+  else if (swatchMode) renderSwatches();
   else renderTilesInto($('itemList'), currentList(), { group: state.settings.sort === 'maker', emptyKey: 'items' });
   renderShopping();
   renderFolders();
@@ -358,6 +367,10 @@ function isFolderMode() {
   return ui.tab === 'stock' && ui.mode === 'folders';
 }
 
+function isSwatchMode() {
+  return ui.tab === 'stock' && ui.mode === 'swatches';
+}
+
 function renderHeader() {
   const s = summarize(state.items);
   $('hdrTotal').textContent = `全${s.kinds}種`;
@@ -365,6 +378,7 @@ function renderHeader() {
 
 function renderTools() {
   $('btnFolders').setAttribute('aria-pressed', String(isFolderMode()));
+  $('btnSwatch').setAttribute('aria-pressed', String(isSwatchMode()));
   const searchOpen = ui.searchOpen && ui.tab === 'stock';
   $('btnSearch').setAttribute('aria-pressed', String(searchOpen));
   const filtering = ui.category !== 'all' || ui.status !== 'all' || ui.maker !== 'all';
@@ -372,15 +386,22 @@ function renderTools() {
   const listMode = ui.layout === 'list';
   $('layoutIcon').querySelector('use').setAttribute('href', listMode ? '#i-grid' : '#i-list');
   $('btnLayout').setAttribute('aria-label', listMode ? 'グリッド表示に切り替え' : 'リスト表示に切り替え');
-  $('btnLayout').hidden = isFolderMode();
+  $('btnLayout').hidden = isFolderMode() || isSwatchMode();
 }
 
 function renderCrumb() {
   const folderMode = isFolderMode();
+  const swatchMode = isSwatchMode();
   const crumb = $('crumb');
   crumb.classList.toggle('root', folderMode);
-  $('crumbName').textContent = folderMode ? '' : (ui.folderId === 'all' ? 'すべて' : folderOf(ui.folderId).name);
+  $('crumbName').textContent = folderMode
+    ? ''
+    : (swatchMode ? '色見本' : (ui.folderId === 'all' ? 'すべて' : folderOf(ui.folderId).name));
   $('btnUp').disabled = folderMode;
+  // 残り枠は数字だけ（例: 12 / 100点）
+  const q = itemQuota(state, state.settings);
+  $('quotaNote').textContent = describeQuota(q);
+  $('quotaNote').classList.toggle('tight', isQuotaTight(q));
 }
 
 /** 保管場所フォルダのグリッド（＋すべて） */
@@ -401,6 +422,39 @@ function renderFolderGrid() {
   }).join('');
 }
 
+/** 色見本アルバムに並べる画材（色名か写真があるもの） */
+function swatchItems() {
+  return sortItems(state.items.filter((it) => it.colorName || photoUrls.has(it.id) || normalizeImageUrl(it.imageUrl)), 'maker');
+}
+
+/** 色見本1枚（写真があれば写真、無ければ色名から推測した色） */
+function swatchTile(it) {
+  const src = photoUrls.get(it.id) || normalizeImageUrl(it.imageUrl);
+  const color = guessColor(it);
+  const st = statusMeta(it.status);
+  const isEmpty = isEmptyStock(it);
+  const name = it.colorName || displayName(it);
+  const sub = itemMaker(it) || folderOf(it.folderId).name;
+  return `
+  <button class="swt${isEmpty ? ' item-card--empty' : ''}" data-edit="${esc(it.id)}" data-empty="${isEmpty ? '1' : '0'}" aria-label="${esc(`${name} ${Number(it.qty) || 0}点`)}">
+    <span class="swc" style="--c:${esc(color)}">
+      ${src ? `<img class="swimg" src="${esc(src)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : '<span class="swfill"></span>'}
+      <span class="swq">${Number(it.qty) || 0}</span>
+    </span>
+    <span class="swn">${esc(name)}</span>
+    <span class="swm">${esc(sub)}<span class="badge ${st.tone}">${esc(st.short || st.label)}</span></span>
+  </button>`;
+}
+
+function renderSwatches() {
+  const list = swatchItems();
+  if (!list.length) {
+    $('swatchGrid').innerHTML = '<div class="empty"><b>色見本はまだありません</b>画材を編集して、色名か写真を入れると並びます</div>';
+    return;
+  }
+  $('swatchGrid').innerHTML = `<div class="sgrid">${list.map(swatchTile).join('')}</div>`;
+}
+
 /** アイテムの実物画像（手元写真 → 画像URL の順。無ければ空文字でアイコン表示） */
 function shelfImage(it) {
   const src = photoUrls.get(it.id) || normalizeImageUrl(it.imageUrl);
@@ -412,7 +466,7 @@ function shelfImage(it) {
 document.addEventListener('error', (e) => {
   const img = e.target;
   if (!img || img.tagName !== 'IMG') return;
-  if (img.classList.contains('shelfimg') || img.classList.contains('previewimg')) img.classList.add('imgfail');
+  if (img.classList.contains('shelfimg') || img.classList.contains('previewimg') || img.classList.contains('swimg')) img.classList.add('imgfail');
 }, true);
 
 /** 画材タイル1枚（在庫切れはグレー表示。操作は通常どおり） */
@@ -538,8 +592,122 @@ function renderSettings() {
     $('rakutenState').textContent = 'JANからの画像取得は未設定です（下の設定から）';
   }
   $('backupNote').textContent = `機種変更・データ消失対策。書き出したファイルは Google ドライブ等に保存してください。手元写真は端末内に保存され、JSONには含まれません（${photoCount}枚）。`;
+  renderPlan();
+  renderCost();
   renderDictionaryState();
 }
+
+/* ---------------- プラン（無料上限・Proプレビュー） ---------------- */
+function yen(n) {
+  return Math.max(0, Math.round(Number(n) || 0)).toLocaleString('ja-JP');
+}
+
+function renderPlan() {
+  const pro = isPro(state.settings);
+  const q = itemQuota(state, state.settings);
+  const fq = folderQuota(state, state.settings);
+  // フォルダは既定4つ（無料上限3）で始まるので、個数だけ出す（4 / 3つ と書かない）
+  $('proState').textContent = `${pro ? 'Pro（プレビュー）' : '無料'} ・ 画材 ${describeQuota(q)} ・ フォルダ ${fq.used}つ`;
+  $('proBenefits').innerHTML = PRO_BENEFITS.map((b) => `<span class="pro-chip">${esc(b.label)}</span>`).join('');
+  $('btnProToggle').textContent = pro ? 'Proプレビューを終了' : 'Proプレビューを試す';
+}
+
+/** Proの案内シート（上限・Pro機能のどちらからでも同じ画面） */
+function openProSheet(what = 'item') {
+  const lead = {
+    item: `無料は${FREE_ITEM_LIMIT}点まで`,
+    folder: `無料はフォルダ${FREE_FOLDER_LIMIT}つまで`,
+    swatch: '色見本アルバムはPro',
+    cost: '画材費とCSVはPro',
+  }[what] || 'Proで全部使えます';
+  $('proLead').textContent = lead;
+  $('proQuota').textContent = what === 'folder'
+    ? `フォルダ ${folderQuota(state, state.settings).used}つ`
+    : `画材 ${describeQuota(itemQuota(state, state.settings))}`;
+  $('proSheetBenefits').innerHTML = PRO_BENEFITS.map((b) => `<span class="pro-chip">${esc(b.label)}</span>`).join('');
+  $('btnProStart').hidden = isPro(state.settings);
+  openSheet('sheetPro');
+}
+
+/** Pro機能かどうかを確かめ、使えなければ案内を出す */
+function requirePro(feature) {
+  if (canUseFeature(state.settings, feature)) return true;
+  openProSheet(feature);
+  return false;
+}
+
+function setProPreview(on) {
+  state = { ...state, settings: { ...state.settings, proPreview: Boolean(on) } };
+  save();
+  closeSheet('sheetPro');
+  render();
+  toast(on ? 'Proプレビューを有効にしました' : 'Proプレビューを終了しました');
+}
+
+$('btnProToggle').addEventListener('click', () => setProPreview(!isPro(state.settings)));
+$('btnProStart').addEventListener('click', () => setProPreview(true));
+$('btnCostPro').addEventListener('click', () => openProSheet('cost'));
+
+/* ---------------- 画材費（2軸集計 ＋ CSV） ---------------- */
+function renderCost() {
+  const pro = isPro(state.settings);
+  $('costBody').hidden = !pro;
+  $('costLock').hidden = pro;
+  if (!pro) return;
+  const cost = costSummary(state.items);
+  $('costStock').textContent = yen(cost.stockValue);
+  $('costRecorded').textContent = yen(cost.recordedTotal);
+  $('costNote').textContent = `単価入力 ${cost.pricedCount} / ${cost.kinds}点 ・ 未入力 ${cost.unpricedCount}点`;
+  renderCostBars(cost);
+}
+
+function renderCostBars(cost) {
+  const key = ui.costKey === 'maker' ? 'maker' : 'category';
+  $('costTabs').querySelectorAll('[data-costkey]').forEach((b) => {
+    b.setAttribute('aria-pressed', String(b.dataset.costkey === key));
+  });
+  const list = key === 'maker' ? cost.byMaker : cost.byCategory;
+  const { rows, rest } = costRows(list, 6);
+  if (!rows.length) {
+    $('costBars').innerHTML = '<p class="micro" style="margin-top:8px">単価を入れると内訳が出ます</p>';
+    return;
+  }
+  const max = Math.max(1, ...rows.map((r) => Number(r.value) || 0));
+  const bars = rows.map((r) => `
+    <div class="bar">
+      <span class="bl">${esc(r.label)}</span>
+      <span class="bt"><span class="bf" style="width:${Math.max(2, Math.round(((Number(r.value) || 0) / max) * 100))}%"></span></span>
+      <span class="bv">${yen(r.value)}</span>
+    </div>`).join('');
+  const restRow = rest
+    ? `<div class="bar rest"><span class="bl">ほか ${rest.count}件</span><span class="bt"></span><span class="bv">${yen(rest.value)}</span></div>`
+    : '';
+  $('costBars').innerHTML = bars + restRow;
+}
+
+$('costTabs').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-costkey]');
+  if (!b) return;
+  ui.costKey = b.dataset.costkey === 'maker' ? 'maker' : 'category';
+  renderCost();
+});
+
+/** 画材一覧をCSV（BOM付きUTF-8・Excelでそのまま開ける）で保存 */
+function downloadCsv() {
+  if (!requirePro('cost')) return;
+  const text = buildItemsCsvText(sortItems(state.items, 'maker'), state.folders);
+  const d = new Date();
+  const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  const blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `art-supply-${stamp}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+  toast(`${state.items.length}件をCSVで保存しました`);
+}
+
+$('btnCsv').addEventListener('click', downloadCsv);
 
 /* ---------------- 画像取得の設定（中継サーバーURL・楽天アプリID） ---------------- */
 $('btnSaveImageSettings').addEventListener('click', () => {
@@ -637,9 +805,19 @@ $('btnHome').addEventListener('click', () => {
   render();
 });
 $('btnUp').addEventListener('click', () => {
+  if (isSwatchMode()) { ui.mode = 'items'; render(); return; }
   ui.mode = 'folders';
   ui.folderId = 'all';
   render();
+});
+$('btnSwatch').addEventListener('click', () => {
+  if (!requirePro('swatch')) return;
+  ui.tab = 'stock';
+  ui.mode = isSwatchMode() ? 'items' : 'swatches';
+  ui.folderId = 'all';
+  stopScanner();
+  render();
+  window.scrollTo({ top: 0 });
 });
 $('btnSearch').addEventListener('click', () => {
   ui.searchOpen = !ui.searchOpen;
@@ -690,7 +868,9 @@ document.addEventListener('click', (e) => {
   if (step) {
     const it = state.items.find((i) => i.id === step.dataset.id);
     if (!it) return;
-    const next = adjustStock(it, Number(step.dataset.step));
+    const delta = Number(step.dataset.step) || 0;
+    // 買い足し（＋）は、単価があれば購入ログにも残す（画材費の「記録済み」に積まれる）
+    const next = adjustStock(delta > 0 ? recordPurchase(it, delta) : it, delta);
     state = upsertItem(state, next);
     save(); render();
     if (next.qty === 0) toast('使い切りました。補充リストに入れています');
@@ -710,6 +890,8 @@ document.addEventListener('click', (e) => {
 
 function openItemSheet(id, preset = {}) {
   const it = id ? state.items.find((i) => i.id === id) : null;
+  // 新規登録だけ無料上限を見る（既存の画材は点数が上限を超えていても編集できる）
+  if (!it && !canAddItem(state, state.settings).ok) { openProSheet('item'); return; }
   ui.editingId = it ? it.id : null;
   $('sheetItemTitle').firstChild.textContent = it ? '画材を編集' : '画材を追加';
   const data = it || createItem({ folderId: ui.folderId === 'all' ? state.folders[0].id : ui.folderId, ...preset });
@@ -881,7 +1063,9 @@ $('itemForm').addEventListener('submit', async (e) => {
   if (ui.editingId) {
     const prev = state.items.find((i) => i.id === ui.editingId);
     targetId = prev.id;
-    state = upsertItem(state, createItem({ ...partial, id: prev.id, createdAt: prev.createdAt }));
+    state = upsertItem(state, createItem({
+      ...partial, id: prev.id, createdAt: prev.createdAt, purchaseLog: prev.purchaseLog,
+    }));
     toast('保存しました');
   } else {
     const created = createItem(partial);
@@ -958,6 +1142,7 @@ $('folderList').addEventListener('click', (e) => {
   }
 });
 $('btnAddFolder').addEventListener('click', () => {
+  if (!canAddFolder(state, state.settings).ok) { openProSheet('folder'); return; }
   const name = prompt('新しいフォルダ名（例：スタジオ、実家、教室）');
   if (!name) return;
   try {
@@ -1135,7 +1320,7 @@ function applyJAN(jan) {
   const existing = state.items.find((i) => i.jan === jan);
   if (existing) {
     toast(`登録済み: ${existing.name}（在庫を＋しました）`);
-    state = upsertItem(state, adjustStock(existing, 1));
+    state = upsertItem(state, adjustStock(recordPurchase(existing, 1), 1));
     save(); render();
     return;
   }
@@ -1182,20 +1367,38 @@ $('btnExport').addEventListener('click', () => {
 $('btnImport').addEventListener('click', () => $('fileImport').click());
 $('fileImport').addEventListener('change', async (e) => {
   const file = e.target.files?.[0];
+  e.target.value = '';
   if (!file) return;
-  if (!confirm('現在のデータを、読み込むファイルの内容で置き換えます。よろしいですか？')) { e.target.value = ''; return; }
   try {
     const text = await file.text();
-    state = importState(text);
-    save();
-    await prunePhotos();
-    render();
-    toast(`読み込みました（${state.items.length}件）`);
+    pendingRestore = importState(text);
+    $('restoreNote').textContent = `${pendingRestore.items.length}件・フォルダ${pendingRestore.folders.length}つ。まとめる＝いまの画材は消しません。`;
+    openSheet('sheetRestore');
   } catch (err) {
     toast(`読み込めませんでした: ${err.message}`);
-  } finally {
-    e.target.value = '';
   }
+});
+$('btnRestoreMerge').addEventListener('click', async () => {
+  if (!pendingRestore) return;
+  state = mergeStates(state, pendingRestore);
+  const stats = state.mergeStats || { added: 0, updated: 0 };
+  pendingRestore = null;
+  save();
+  await prunePhotos();
+  closeSheet('sheetRestore');
+  render();
+  toast(`まとめました（追加 ${stats.added}・更新 ${stats.updated}件）`);
+});
+$('btnRestoreReplace').addEventListener('click', async () => {
+  if (!pendingRestore) return;
+  if (!confirm('いまのデータを、読み込むファイルの内容で置き換えます。よろしいですか？')) return;
+  state = pendingRestore;
+  pendingRestore = null;
+  save();
+  await prunePhotos();
+  closeSheet('sheetRestore');
+  render();
+  toast(`置き換えました（${state.items.length}件）`);
 });
 $('btnWipe').addEventListener('click', async () => {
   if (!confirm('この端末の画材データをすべて削除します。元に戻せません。')) return;
