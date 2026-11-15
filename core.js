@@ -5,14 +5,14 @@ export const STORAGE_KEY = 'art-supply-manager/v1';
 export const APP_VERSION = 1;
 
 export const CATEGORIES = [
-  { id: 'oil', label: '油絵具', icon: '🖌️' },
-  { id: 'acrylic', label: 'アクリル', icon: '🎨' },
-  { id: 'watercolor', label: '水彩', icon: '💧' },
-  { id: 'medium', label: 'メディウム/溶剤', icon: '🧪' },
-  { id: 'brush', label: '筆/ナイフ', icon: '🖊️' },
-  { id: 'canvas', label: 'キャンバス/パネル', icon: '🖼️' },
-  { id: 'paper', label: 'スケッチブック/紙', icon: '📒' },
-  { id: 'other', label: 'その他', icon: '📦' },
+  { id: 'oil', label: '油絵具' },
+  { id: 'acrylic', label: 'アクリル' },
+  { id: 'watercolor', label: '水彩' },
+  { id: 'medium', label: 'メディウム/溶剤' },
+  { id: 'brush', label: '筆/ナイフ' },
+  { id: 'canvas', label: 'キャンバス/パネル' },
+  { id: 'paper', label: 'スケッチブック/紙' },
+  { id: 'other', label: 'その他' },
 ];
 
 export const STATUSES = [
@@ -34,11 +34,24 @@ export const SORT_MODES = [
 export const MAKER_NONE = '__none__';
 
 export const DEFAULT_FOLDERS = [
-  { id: 'home', name: '家', icon: '🏠', color: '#2f80ed' },
-  { id: 'atelier', name: 'アトリエ', icon: '🎨', color: '#e07b39' },
-  { id: 'carry', name: '持ち出し用', icon: '🎒', color: '#2e9e6b' },
-  { id: 'stock', name: 'ストック・予備', icon: '📦', color: '#7b61c9' },
+  { id: 'home', name: '家', color: '#2f80ed' },
+  { id: 'atelier', name: 'アトリエ', color: '#e07b39' },
+  { id: 'carry', name: '持ち出し用', color: '#2e9e6b' },
+  { id: 'stock', name: 'ストック・予備', color: '#7b61c9' },
 ];
+
+/**
+ * 文字列から絵文字（絵文字記号・異体字セレクタ・ZWJ結合・肌色・地域指示子）を取り除く。
+ * UI から絵文字を撤去したので、旧バージョンが保存した絵文字入りの
+ * フォルダ名・アイコンも読み込み時に文字だけへ整える（データは消さない）。
+ */
+const EMOJI_RE = /[\p{Extended_Pictographic}\p{Emoji_Modifier}\p{Regional_Indicator}\uFE0E\uFE0F\u200D\u20E3\u{E0020}-\u{E007F}]/gu;
+export function stripEmoji(value) {
+  return String(value ?? '')
+    .replace(EMOJI_RE, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 /** JAN のチェックディジット（モジュラス10/ウェイト3）を先頭12桁から計算 */
 export function calcCheckDigit(first12) {
@@ -229,7 +242,7 @@ export function addFolder(state, folder = {}) {
   const f = {
     id: slugId(name, state.folders),
     name,
-    icon: folder.icon || '📁',
+    icon: folder.icon || '',
     color: folder.color || '#5b6b7c',
   };
   return { ...state, folders: [...state.folders, f] };
@@ -310,7 +323,13 @@ export function importState(text) {
   }
   const folders = data.folders
     .filter((f) => f && f.id && f.name)
-    .map((f) => ({ id: String(f.id), name: String(f.name), icon: f.icon || '📁', color: f.color || '#5b6b7c' }));
+    .map((f) => ({
+      // 旧バージョンの絵文字アイコン・絵文字入りフォルダ名を文字だけに整える（後方互換のため icon は保持）
+      id: String(f.id),
+      name: stripEmoji(f.name) || 'フォルダ',
+      icon: stripEmoji(f.icon),
+      color: f.color || '#5b6b7c',
+    }));
   if (folders.length === 0) throw new Error('フォルダが1つも含まれていません');
   const ids = new Set(folders.map((f) => f.id));
   const items = data.items.map((raw) => {

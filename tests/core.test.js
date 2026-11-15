@@ -6,7 +6,7 @@ import {
   addFolder, renameFolder, updateFolder, reorderFolders, deleteFolder,
   upsertItem, deleteItems, exportState, importState, summarize, blankState,
   countByFolder, DEFAULT_FOLDERS, CATEGORIES, SORT_MODES, MAKER_NONE,
-  itemMaker, listMakers, groupByMaker,
+  itemMaker, listMakers, groupByMaker, stripEmoji,
 } from '../core.js';
 
 test('JANチェックディジット計算', () => {
@@ -204,4 +204,28 @@ test('メーカーフィルタ（指定メーカー／未設定の抽出）', ()
   assert.equal(filterItems(items, { maker: 'ホルベイン', status: 'enough' }).length, 0);
   // 空白だけのメーカーは「未設定」扱い
   assert.equal(filterItems([createItem({ name: 'Z', maker: '  ' })], { maker: MAKER_NONE }).length, 1);
+});
+
+test('絵文字を含む旧データは読み込み時に文字だけへ整える（UI絵文字撤去の移行）', () => {
+  assert.equal(stripEmoji('🏠 家'), '家');
+  assert.equal(stripEmoji('📦 ストック・予備'), 'ストック・予備');
+  assert.equal(stripEmoji('🏛️ スタジオ'), 'スタジオ');
+  assert.equal(stripEmoji('🎒持ち出し用'), '持ち出し用');
+  assert.equal(stripEmoji('アトリエ'), 'アトリエ');
+  assert.equal(stripEmoji(''), '');
+
+  const legacy = JSON.stringify({
+    folders: [
+      { id: 'home', name: '🏠 家', icon: '🏠', color: '#2f80ed' },
+      { id: 'atelier', name: 'アトリエ', icon: '🎨' },
+      { id: 'carry', name: '🎒 持ち出し用', icon: '🎒' },
+    ],
+    items: [{ name: 'シルバー', folderId: 'home' }],
+  });
+  const st = importState(legacy);
+  assert.deepEqual(st.folders.map((f) => f.name), ['家', 'アトリエ', '持ち出し用']);
+  assert.deepEqual(st.folders.map((f) => f.icon), ['', '', '']);
+  // 既定フォルダの定義自体にも絵文字を持たない
+  assert.equal(DEFAULT_FOLDERS.every((f) => !('icon' in f) || !f.icon), true);
+  assert.equal(CATEGORIES.every((c) => !('icon' in c) || !c.icon), true);
 });

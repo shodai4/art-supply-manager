@@ -5,7 +5,7 @@
   "type": "module",
   "description": "画材管理アプリ（保管場所フォルダ分け・在庫管理・バーコード/JAN読み取り）",
   "scripts": {
-    "test": "node --test tests/",
+    "test": "node --test tests/*.test.js",
     "serve": "python3 -m http.server 8080"
   }
 }

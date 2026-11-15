@@ -13,7 +13,12 @@
 </head>
 <body>
 <header class="app-header">
-  <div class="logo" aria-hidden="true">🎨</div>
+  <div class="logo" aria-hidden="true">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M15 4l5 5-9.5 9.5L4 20l1.5-6.5z"/>
+      <path d="M13 6l5 5"/>
+    </svg>
+  </div>
   <div>
     <h1>画材管理</h1>
     <p class="sub" id="hdrSub">在庫と保管場所</p>
@@ -26,7 +31,7 @@
 
 <div class="searchbar">
   <input id="q" type="search" placeholder="商品名・色名・メーカー・JANで検索" autocomplete="off" inputmode="search">
-  <button class="btn-scan" id="btnScan" aria-label="バーコードをスキャン">📷 読取</button>
+  <button class="btn-scan" id="btnScan" aria-label="バーコードをスキャン">読取</button>
 </div>
 
 <nav class="chips" id="folderChips" aria-label="保管場所フォルダ"></nav>
@@ -47,14 +52,14 @@
   <!-- 買い物リスト -->
   <section id="view-shopping" hidden>
     <div class="card" style="background:var(--warn-soft);border-color:#f2d7b0">
-      <p style="margin:0;font-size:13px;color:var(--warn)"><b>🛒 補充リスト</b><br>「残りわずか」「使い切り」を自動で集めます。買ったら在庫を＋してください。</p>
+      <p style="margin:0;font-size:13px;color:var(--warn)"><b>補充リスト</b><br>「残りわずか」「使い切り」を自動で集めます。買ったら在庫を＋してください。</p>
     </div>
     <div id="shoppingList"></div>
   </section>
 
   <!-- フォルダ -->
   <section id="view-folders" hidden>
-    <p class="hint" style="margin:0 0 8px">タップで名前・アイコン・色を編集。↑↓で並び替え、削除時は中身を移動します。</p>
+    <p class="hint" style="margin:0 0 8px">タップで名前・色を編集。↑↓で並び替え、削除時は中身を移動します。</p>
     <div class="card" id="folderList"></div>
     <button class="btn primary" id="btnAddFolder" style="width:100%">＋ フォルダを追加</button>
   </section>
@@ -92,10 +97,10 @@
 <button class="fab" id="btnAdd" aria-label="画材を追加">＋</button>
 
 <nav class="tabbar" id="tabbar">
-  <button data-tab="stock" aria-selected="true"><span class="ico">📦</span>在庫</button>
-  <button data-tab="shopping" aria-selected="false"><span class="ico">🛒</span>買い物</button>
-  <button data-tab="folders" aria-selected="false"><span class="ico">🗂️</span>フォルダ</button>
-  <button data-tab="settings" aria-selected="false"><span class="ico">⚙️</span>設定</button>
+  <button data-tab="stock" aria-selected="true">在庫</button>
+  <button data-tab="shopping" aria-selected="false">買い物</button>
+  <button data-tab="folders" aria-selected="false">フォルダ</button>
+  <button data-tab="settings" aria-selected="false">設定</button>
 </nav>
 
 <!-- 追加/編集シート -->
@@ -161,10 +166,7 @@
 <div class="sheet" id="sheetFolder" role="dialog" aria-modal="true" aria-labelledby="folderTitle">
   <h2 id="folderTitle">フォルダ編集<button class="close" data-close="sheetFolder" aria-label="閉じる">✕</button></h2>
   <div class="field"><label for="fFolderName">名前</label><input id="fFolderName"></div>
-  <div class="field-row">
-    <div class="field"><label for="fFolderIcon">アイコン</label><input id="fFolderIcon" maxlength="4" placeholder="🎨"></div>
-    <div class="field"><label for="fFolderColor">色</label><input id="fFolderColor" type="color"></div>
-  </div>
+  <div class="field" style="max-width:160px"><label for="fFolderColor">色</label><input id="fFolderColor" type="color"></div>
   <div class="actions">
     <button class="btn" data-close="sheetFolder">キャンセル</button>
     <button class="btn primary" id="btnSaveFolder">保存</button>

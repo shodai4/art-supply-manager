@@ -21,7 +21,10 @@ function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return blankState();
-    return importState(raw);
+    const next = importState(raw);
+    // 旧バージョンの絵文字入りデータを読み込み時に文字だけへ整え、そのまま保存し直す
+    try { localStorage.setItem(STORAGE_KEY, exportState(next)); } catch { /* 容量不足等は無視 */ }
+    return next;
   } catch (e) {
     console.warn('読み込み失敗', e);
     return blankState();
@@ -46,7 +49,7 @@ function toast(msg) {
   toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
 }
 function folderOf(id) {
-  return state.folders.find((f) => f.id === id) || { id, name: '未分類', icon: '📁', color: '#5b6b7c' };
+  return state.folders.find((f) => f.id === id) || { id, name: '未分類', color: '#5b6b7c' };
 }
 function statusMeta(id) {
   return STATUSES.find((s) => s.id === id) || STATUSES[1];
@@ -78,16 +81,16 @@ function renderHeader() {
   const s = summarize(state.items);
   $('hdrKinds').textContent = s.kinds;
   $('hdrQty').textContent = s.qty;
-  $('hdrSub').textContent = ui.folderId === 'all' ? 'すべての保管場所' : `${folderOf(ui.folderId).icon} ${folderOf(ui.folderId).name}`;
+  $('hdrSub').textContent = ui.folderId === 'all' ? 'すべての保管場所' : `${folderOf(ui.folderId).name}の保管場所`;
 }
 
 function renderChips() {
   const counts = countByFolder(state.items);
-  const chips = [{ id: 'all', icon: '🗂️', name: 'すべて', count: counts.all_total }]
+  const chips = [{ id: 'all', name: 'すべて', count: counts.all_total }]
     .concat(state.folders.map((f) => ({ ...f, count: counts[f.id] || 0 })));
   $('folderChips').innerHTML = chips.map((c) => `
     <button class="chip" data-folder="${esc(c.id)}" aria-pressed="${String(ui.folderId === c.id)}">
-      <span aria-hidden="true">${esc(c.icon)}</span>${esc(c.name)}<span class="n">${c.count}</span>
+      ${esc(c.name)}<span class="n">${c.count}</span>
     </button>`).join('');
 }
 
@@ -95,7 +98,7 @@ function renderFilters() {
   const catSel = $('fCategory');
   if (!catSel.dataset.ready) {
     catSel.innerHTML = '<option value="all">カテゴリ：すべて</option>' +
-      CATEGORIES.map((c) => `<option value="${c.id}">${esc(c.icon)} ${esc(c.label)}</option>`).join('');
+      CATEGORIES.map((c) => `<option value="${c.id}">${esc(c.label)}</option>`).join('');
     $('fStatus').innerHTML = '<option value="all">残量：すべて</option>' +
       STATUSES.map((s) => `<option value="${s.id}">${esc(s.label)}</option>`).join('');
     $('fSort').innerHTML = SORT_MODES.map((m) => `<option value="${m.id}">${esc(m.label)}</option>`).join('');
@@ -137,7 +140,7 @@ function itemCard(it, opts = {}) {
     <div class="it-main">
       <h3 class="it-name" data-edit="${esc(it.id)}" title="タップで編集">${esc(it.name)}</h3>
       <div class="it-sub">
-        <button class="folder-tag" data-move="${esc(it.id)}">${esc(f.icon)} ${esc(f.name)} ▾</button>
+        <button class="folder-tag" data-move="${esc(it.id)}">${esc(f.name)} ▾</button>
         <span class="badge ${st.tone}" title="${esc(st.label)}">${esc(st.short || st.label)}</span>
         ${meta ? `<span class="it-meta">${meta}</span>` : ''}
       </div>
@@ -146,7 +149,7 @@ function itemCard(it, opts = {}) {
       <button class="step" data-step="-1" data-id="${esc(it.id)}" aria-label="1減らす">−</button>
       <span class="qty">${Number(it.qty) || 0}<small>点</small></span>
       <button class="step" data-step="1" data-id="${esc(it.id)}" aria-label="1増やす">＋</button>
-      <button class="icon-btn" data-edit="${esc(it.id)}" aria-label="編集">✎</button>
+      <button class="icon-btn" data-edit="${esc(it.id)}" aria-label="編集"><svg class="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4l5 5-9.5 9.5L4 20l1.5-6.5z"/><path d="M13 6l5 5"/></svg></button>
     </div>
   </article>`;
 }
@@ -159,7 +162,7 @@ function renderList(items) {
   if (!items.length) {
     $('itemList').innerHTML = state.items.length
       ? `<div class="empty"><b>条件に合う画材がありません</b>絞り込みや検索語を変えてみてください。</div>`
-      : '<div class="empty"><b>まだ画材がありません</b>右下の＋から登録、または📷読取でJANから追加できます。<br>（はじめての登録は「🎒 持ち出し用」などフォルダを選んで）</div>';
+      : '<div class="empty"><b>まだ画材がありません</b>右下の＋から登録、または読取でJANから追加できます。<br>（はじめての登録は「持ち出し用」などフォルダを選んで）</div>';
     return;
   }
   if (state.settings.sort === 'maker') {
@@ -182,11 +185,11 @@ function renderFolders() {
   const counts = countByFolder(state.items);
   $('folderList').innerHTML = state.folders.map((f, i) => `
     <div class="folder-row" data-fid="${esc(f.id)}">
-      <span class="folder-dot" style="background:${esc(f.color)}22;color:${esc(f.color)}">${esc(f.icon)}</span>
+      <span class="folder-dot" style="background:${esc(f.color)}"></span>
       <span class="name">${esc(f.name)}<span class="cnt"> ・${counts[f.id] || 0}件</span></span>
       <button data-up="${esc(f.id)}" ${i === 0 ? 'disabled' : ''} aria-label="上へ">↑</button>
       <button data-down="${esc(f.id)}" ${i === state.folders.length - 1 ? 'disabled' : ''} aria-label="下へ">↓</button>
-      <button data-fedit="${esc(f.id)}" aria-label="編集">✎</button>
+      <button data-fedit="${esc(f.id)}" aria-label="編集"><svg class="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4l5 5-9.5 9.5L4 20l1.5-6.5z"/><path d="M13 6l5 5"/></svg></button>
     </div>`).join('');
 }
 
@@ -234,7 +237,7 @@ document.addEventListener('click', (e) => {
     const next = adjustStock(it, Number(step.dataset.step));
     state = upsertItem(state, next);
     save(); render();
-    if (next.qty === 0) toast('使い切りました。買い物リストに入れています🛒');
+    if (next.qty === 0) toast('使い切りました。買い物リストに入れています');
     return;
   }
   const edit = e.target.closest('[data-edit]');
@@ -250,7 +253,7 @@ function openItemSheet(id, preset = {}) {
   const data = it || createItem({ folderId: ui.folderId === 'all' ? state.folders[0].id : ui.folderId, ...preset });
   $('fName').value = data.name || '';
   $('fMaker').value = data.maker || '';
-  $('fCategoryInput').innerHTML = CATEGORIES.map((c) => `<option value="${c.id}">${c.icon} ${c.label}</option>`).join('');
+  $('fCategoryInput').innerHTML = CATEGORIES.map((c) => `<option value="${c.id}">${c.label}</option>`).join('');
   $('fCategoryInput').value = data.category;
   $('fColorName').value = data.colorName || '';
   $('fColorCode').value = data.colorCode || '';
@@ -258,7 +261,7 @@ function openItemSheet(id, preset = {}) {
   $('fQty').value = data.qty ?? 1;
   $('fStatusInput').innerHTML = STATUSES.map((s) => `<option value="${s.id}">${s.label}</option>`).join('');
   $('fStatusInput').value = data.status;
-  $('fFolderInput').innerHTML = state.folders.map((f) => `<option value="${f.id}">${esc(f.icon)} ${esc(f.name)}</option>`).join('');
+  $('fFolderInput').innerHTML = state.folders.map((f) => `<option value="${f.id}">${esc(f.name)}</option>`).join('');
   $('fFolderInput').value = data.folderId;
   $('fJan').value = data.jan || '';
   $('fShop').value = data.shop || '';
@@ -367,7 +370,6 @@ $('folderList').addEventListener('click', (e) => {
     ui.folderEditId = ed.dataset.fedit;
     const f = folderOf(ui.folderEditId);
     $('fFolderName').value = f.name;
-    $('fFolderIcon').value = f.icon;
     $('fFolderColor').value = /^#[0-9a-f]{6}$/i.test(f.color) ? f.color : '#2f6fd0';
     openSheet('sheetFolder');
   }
@@ -376,7 +378,7 @@ $('btnAddFolder').addEventListener('click', () => {
   const name = prompt('新しいフォルダ名（例：スタジオ、実家、教室）');
   if (!name) return;
   try {
-    state = addFolder(state, { name, icon: '📁' });
+    state = addFolder(state, { name });
     save(); render();
     toast('フォルダを追加しました');
   } catch (err) { toast(err.message); }
@@ -385,7 +387,7 @@ $('btnSaveFolder').addEventListener('click', () => {
   if (!ui.folderEditId) return;
   try {
     state = updateFolder(state, ui.folderEditId, {
-      name: $('fFolderName').value, icon: $('fFolderIcon').value || '📁', color: $('fFolderColor').value,
+      name: $('fFolderName').value, color: $('fFolderColor').value,
     });
     save(); closeSheet('sheetFolder'); render();
     toast('フォルダを更新しました');
@@ -405,7 +407,7 @@ $('btnDeleteFolder').addEventListener('click', () => {
 /* ---------------- 移動 ---------------- */
 function openMoveSheet(ids) {
   ui.moveIds = ids;
-  $('moveOptions').innerHTML = state.folders.map((f) => `<button class="pill" data-tomove="${esc(f.id)}">${esc(f.icon)} ${esc(f.name)}</button>`).join('');
+  $('moveOptions').innerHTML = state.folders.map((f) => `<button class="pill" data-tomove="${esc(f.id)}">${esc(f.name)}</button>`).join('');
   openSheet('sheetMove');
 }
 $('moveOptions').addEventListener('click', (e) => {
