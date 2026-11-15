@@ -145,7 +145,7 @@ export function createItem(partial = {}) {
     imageUrl: normalizeImageUrl(partial.imageUrl),
     purchaseLog: normalizePurchaseLog(partial.purchaseLog),
     createdAt: partial.createdAt || new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    updatedAt: partial.updatedAt || new Date().toISOString(),
   };
 }
 
@@ -522,6 +522,14 @@ export const CSV_COLUMNS = [
 /** Excelで文字化けしないよう、UTF-8のBOMを先頭に付ける */
 export const CSV_BOM = '\uFEFF';
 
+/** ISO日時を端末のタイムゾーンで YYYY-MM-DD に（読めない値は空） */
+export function localDate(iso) {
+  if (iso === null || iso === undefined || iso === '') return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 /** 画材1件ぶんのCSV行 */
 export function itemCsvRow(item, folders = []) {
   const folder = folders.find((f) => f.id === item.folderId);
@@ -540,7 +548,7 @@ export function itemCsvRow(item, folders = []) {
     Math.max(0, Number(item.qty) || 0),
     price === null ? '' : price,
     stockValueOf(item),
-    String(item.updatedAt || '').slice(0, 10),
+    localDate(item.updatedAt),
   ];
 }
 

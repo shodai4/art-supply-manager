@@ -1049,6 +1049,7 @@ $('itemForm').addEventListener('submit', async (e) => {
     targetId = prev.id;
     state = upsertItem(state, createItem({
       ...partial, id: prev.id, createdAt: prev.createdAt, purchaseLog: prev.purchaseLog,
+      updatedAt: new Date().toISOString(), // 編集した画材は「新しい順」の先頭に来る
     }));
     toast('保存しました');
   } else {

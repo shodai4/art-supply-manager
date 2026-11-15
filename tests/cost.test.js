@@ -4,7 +4,7 @@ import {
   createItem, adjustStock, recordPurchase, purchaseTotalOf, stockValueOf, unitPrice, hasPrice,
   costSummary, costRows, csvEscape, toCsv, buildItemsCsvText, itemCsvRow,
   CSV_COLUMNS, CSV_BOM, mergeStates, blankState, exportState, importState, upsertItem,
-  MAX_PURCHASE_LOG, DEFAULT_FOLDERS,
+  MAX_PURCHASE_LOG, DEFAULT_FOLDERS, localDate,
 } from '../core.js';
 
 const priced = (n = 1) => createItem({ name: 'シルバー', maker: 'ホルベイン', category: 'oil', colorName: 'シルバー', qty: n, price: 1200 });
@@ -134,7 +134,7 @@ test('CSV本文はBOM付きUTF-8・CRLFで、列は13個そろっている', () 
   const item = createItem({
     name: 'ホルベイン 油絵具 シルバー, 6号', maker: 'ホルベイン', brand: 'HOLBEIN', category: 'oil',
     colorName: 'シルバー', colorCode: 'H191', jan: '4900669001911', folderId: 'atelier',
-    qty: 2, price: 1200, status: 'low', updatedAt: '2026-11-15T20:12:00.000Z',
+    qty: 2, price: 1200, status: 'low', updatedAt: new Date(2026, 10, 15, 20, 12).toISOString(),
   });
   const text = buildItemsCsvText([item], DEFAULT_FOLDERS);
   assert.equal(text.startsWith(CSV_BOM), true);
@@ -153,6 +153,15 @@ test('CSV本文はBOM付きUTF-8・CRLFで、列は13個そろっている', () 
   ]);
   // 名前のカンマは引用符で囲まれる（列がずれない）
   assert.equal(lines[1].includes('"ホルベイン 油絵具 シルバー, 6号"'), true);
+});
+
+test('CSVの更新日は端末のタイムゾーンで出す（UTCの日付にしない）', () => {
+  // ローカル時刻 2026-11-15 23:30（UTCでは翌日になりうる時間）
+  assert.equal(localDate(new Date(2026, 10, 15, 23, 30).toISOString()), '2026-11-15');
+  assert.equal(localDate(new Date(2026, 0, 1, 0, 5).toISOString()), '2026-01-01');
+  assert.equal(localDate(''), '');
+  assert.equal(localDate('not-a-date'), '');
+  assert.equal(localDate(null), '');
 });
 
 test('CSVは単価なし・フォルダ不明でも空欄で出る', () => {
@@ -200,6 +209,26 @@ test('バックアップの「まとめる」は、どちらのデータも消�
   const safe = mergeStates(current, {});
   assert.equal(safe.items.length, 1);
   assert.equal(safe.folders.length, 4);
+});
+
+test('バックアップの往復で更新日時も保たれ、同じ内容なら「まとめる」で何も変わらない', () => {
+  const item = createItem({
+    name: 'シルバー', qty: 2, price: 1200, colorName: 'シルバー',
+    updatedAt: '2026-11-10T01:02:03.000Z', createdAt: '2026-11-01T00:00:00.000Z',
+  });
+  const state = upsertItem(blankState(), item);
+  const back = importState(exportState(state));
+  assert.equal(back.items[0].updatedAt, '2026-11-10T01:02:03.000Z');
+  assert.equal(back.items[0].createdAt, '2026-11-01T00:00:00.000Z');
+  const merged = mergeStates(state, back);
+  assert.equal(merged.items.length, 1);
+  assert.deepEqual(merged.mergeStats, { added: 0, updated: 0, foldersAdded: 0 });
+  assert.equal(merged.items[0].name, 'シルバー');
+
+  // 編集（保存し直し）は、呼び出し側が新しい日時を渡して上書きする
+  const edited = createItem({ ...item, name: 'シルバー(改)', updatedAt: new Date().toISOString() });
+  assert.notEqual(edited.updatedAt, item.updatedAt);
+  assert.equal(edited.createdAt, item.createdAt);
 });
 
 test('バックアップJSONの往復で購入ログと単価が保たれる', () => {

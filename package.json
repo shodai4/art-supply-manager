@@ -1,6 +1,6 @@
 {
   "name": "art-supply-manager",
-  "version": "1.3.8",
+  "version": "1.3.9",
   "private": true,
   "type": "module",
   "description": "画材管理アプリ（保管場所フォルダ分け・在庫管理・バーコード/JAN読み取り）",
