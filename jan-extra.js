@@ -244,7 +244,10 @@ export function describeSyncState(result, { cachedCount = 0 } = {}) {
     const p = (v) => String(v).padStart(2, '0');
     return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
   };
-  if (result.status === 'updated') return `最終同期 ${stamp(result.syncedAt)}（追加 ${result.items.length}件を取得しました）`;
+  if (result.status === 'updated') {
+    const n = result.items.length;
+    return `最終同期 ${stamp(result.syncedAt)}${n ? `（追加 ${n}件）` : '（追加分なし）'}`;
+  }
   if (result.status === 'cached') {
     return `オフライン表示中（${stamp(result.cachedAt) || '前回'}取得の追加 ${cachedCount || result.items.length}件で動作）`;
   }
