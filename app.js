@@ -3,11 +3,21 @@ import {
   STORAGE_KEY, CATEGORIES, STATUSES, DEFAULT_FOLDERS, SORT_MODES, MAKER_NONE,
   createItem, adjustStock, computeShoppingList, filterItems, moveItems, sortItems, countByFolder,
   addFolder, updateFolder, reorderFolders, deleteFolder, upsertItem, deleteItems,
-  exportState, importState, summarize, blankState,
+  exportState, importState, summarize, blankState, isEmptyStock,
   isValidJAN, normalizeJAN, detectMaker, lookupJAN, itemMaker, listMakers, groupByMaker,
   normalizeImageUrl,
 } from './core.js';
-import { JAN_DICTIONARY, JAN_PREFIXES, VERIFIED_AT } from './jan-database.js';
+import { JAN_DICTIONARY } from './jan-database.js';
+import {
+  EXTRA_DICT_URL, mergeDictionaries, syncExtraDictionary, describeCounts, describeSyncState,
+  buildIssueUrl, buildProposalClipboardText,
+} from './jan-extra.js';
+import {
+  SHOP_AFFILIATE_CONFIG, AFFILIATE_NOTE, shopSearchLinks, buildSearchQuery, describeSearchQuery,
+} from './shops.js';
+import {
+  chooseScanStrategy, isNativeShell, nativeScannerPlugin, loadVendorScanner, VENDOR_SCANNER_PATH,
+} from './scanner.js';
 import {
   compressImageFile, listPhotos, putPhoto, deletePhoto, clearPhotos, fetchRakutenImage,
 } from './images.js';
@@ -31,6 +41,155 @@ let ui = {
 };
 let scanner = null; // html5-qrcode instance
 let rafId = 0;
+
+/* ---------------- JAN辞書（内蔵＋追加配信） ---------------- */
+let extraEntries = [];          // 配信辞書の項目（キャッシュ由来も含む）
+let mergedDict = JAN_DICTIONARY; // 画面・照合で使う合成済み辞書
+let extraJanSet = new Set();     // 追加配信で増えたJAN
+let mergedJanSet = new Set(JAN_DICTIONARY.map((d) => d.jan));
+let dictSync = null;             // 直近の同期結果
+let dictSyncing = false;
+let selectedShopItem = null;
+let proposeItem = null;
+
+function safeStorage() {
+  try {
+    const s = window.localStorage;
+    s.getItem('__probe__');
+    return s;
+  } catch {
+    return null;
+  }
+}
+
+/** 同期結果を辞書と画面に反映する */
+function applyDictionarySync(result) {
+  dictSync = result || null;
+  extraEntries = Array.isArray(result?.items) ? result.items : [];
+  const merged = mergeDictionaries(JAN_DICTIONARY, extraEntries);
+  mergedDict = merged.items;
+  extraJanSet = new Set(merged.extraJans);
+  mergedJanSet = new Set(mergedDict.map((d) => d.jan));
+  renderDictionaryState();
+}
+
+/** 設定・辞書シートの件数表示を更新 */
+function renderDictionaryState() {
+  const merged = mergeDictionaries(JAN_DICTIONARY, extraEntries);
+  const info = $('dictInfo');
+  if (info) info.textContent = `${describeCounts(merged)}・油絵具 ${mergedDict.filter((d) => d.category === 'oil').length}件`;
+  const state = $('dictSyncState');
+  if (state) state.textContent = describeSyncState(dictSync, { cachedCount: extraEntries.length });
+  const btn = $('btnDictSync');
+  if (btn) {
+    btn.disabled = dictSyncing;
+    btn.textContent = dictSyncing ? '更新中' : '辞書を更新';
+  }
+  if ($('sheetDict')?.classList.contains('open')) renderDictList($('dictQ').value);
+}
+
+/** jan-extra.json を取りに行って合成する（起動時・「辞書を更新」） */
+async function syncDictionary({ announce = false } = {}) {
+  if (dictSyncing) return;
+  dictSyncing = true;
+  renderDictionaryState();
+  try {
+    const result = await syncExtraDictionary({
+      base: JAN_DICTIONARY, storage: safeStorage(), url: EXTRA_DICT_URL,
+    });
+    applyDictionarySync(result);
+    if (announce) {
+      if (result.status === 'updated') {
+        toast(result.items.length ? `辞書を更新（追加 ${result.items.length}件）` : '辞書は最新です');
+      } else if (result.status === 'cached') {
+        toast(`オフライン（保存済み 追加${result.items.length}件で動作）`);
+      } else {
+        toast('辞書を取得できません。内蔵辞書で動作します');
+      }
+    }
+  } finally {
+    dictSyncing = false;
+    renderDictionaryState();
+  }
+}
+
+/** 外部URLを開く（Capacitorでは Safari、ブラウザでは新規タブ） */
+function openExternal(url) {
+  if (!url) return false;
+  const browser = window.Capacitor?.Plugins?.Browser;
+  if (browser && typeof browser.open === 'function') {
+    browser.open({ url });
+    return true;
+  }
+  const opened = window.open(url, '_blank', 'noopener,noreferrer');
+  if (!opened) {
+    copyText(url);
+    toast('リンクを開けません。URLをコピーしました');
+    return false;
+  }
+  return true;
+}
+
+/** クリップボードへコピー（両方の手段を順に試す） */
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch { /* 下の execCommand 経路へ */ }
+  try {
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.style.cssText = 'position:fixed;top:-1000px';
+    document.body.appendChild(area);
+    area.select();
+    const ok = document.execCommand('copy');
+    area.remove();
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+/** 通販検索リンク（短いボタン1行） */
+function renderShopLinks(node, item) {
+  if (!node) return [];
+  const links = shopSearchLinks(item, SHOP_AFFILIATE_CONFIG);
+  node.innerHTML = links.map((l) =>
+    `<a class="shop-link" data-shop="${esc(l.id)}" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${esc(l.label)}</a>`).join('');
+  return links;
+}
+
+/** 編集シートの入力値から、通販・提案で使う画材1件を作る */
+function formItem() {
+  return {
+    jan: $('fJan').value,
+    name: $('fName').value,
+    maker: $('fMaker').value,
+    category: $('fCategoryInput').value,
+    colorName: $('fColorName').value,
+    colorCode: $('fColorCode').value,
+    size: $('fSize').value,
+  };
+}
+
+/** 編集シートの通販ボタンを入力に合わせて作り直す */
+function refreshFormShopLinks() {
+  const item = formItem();
+  renderShopLinks($('shopLinks'), item);
+  const q = buildSearchQuery(item);
+  $('shopQuery').textContent = q ? '' : 'JANか商品名を入れると検索できます';
+  updateProposeBox();
+}
+
+/** 辞書に無いJANのときだけ「辞書に提案」を出す */
+function updateProposeBox() {
+  const box = $('proposeBox');
+  if (!box) return;
+  const jan = normalizeJAN($('fJan').value);
+  const known = mergedJanSet.has(jan);
+  box.hidden = !(/^\d{13}$/.test(jan) && isValidJAN(jan) && !known);
+}
 
 /* ---------------- 写真（IndexedDBのBlobを表示用URLに） ---------------- */
 const photoUrls = new Map(); // itemId -> objectURL
@@ -255,10 +414,11 @@ document.addEventListener('error', (e) => {
   if (img.classList.contains('shelfimg') || img.classList.contains('previewimg')) img.classList.add('imgfail');
 }, true);
 
-/** 画材タイル1枚 */
+/** 画材タイル1枚（在庫切れはグレー表示。操作は通常どおり） */
 function itemTile(it) {
   const st = statusMeta(it.status);
-  const out = st.id === 'empty' || Number(it.qty) === 0;
+  const isEmpty = isEmptyStock(it);
+  const out = isEmpty;
   const low = !out && st.id === 'low';
   const glyph = GLYPH[it.category];
   const base = glyph ? glyph.color : guessColor(it);
@@ -267,7 +427,7 @@ function itemTile(it) {
   const dot = ui.folderId === 'all' ? `<span class="fdot" style="background:${esc(f.color)}"></span>` : '';
   const label = `${displayName(it)} ${Number(it.qty) || 0}点${out ? ' 要補充' : low ? ' 少なめ' : ''}`;
   return `
-  <button class="tile${low ? ' low' : ''}${out ? ' out' : ''}" data-edit="${esc(it.id)}" aria-label="${esc(label)}" style="--c:${esc(base)};--c2:${esc(shade(base))};--cs:${rgba(base, 0.1)}">
+  <button class="tile${low ? ' low' : ''}${out ? ' out' : ''}${isEmpty ? ' item-card--empty' : ''}" data-empty="${isEmpty ? '1' : '0'}" data-edit="${esc(it.id)}" aria-label="${esc(label)}" style="--c:${esc(base)};--c2:${esc(shade(base))};--cs:${rgba(base, 0.1)}">
     <span class="sw">
       ${dot}<span class="qbadge">${Number(it.qty) || 0}</span>
       <svg class="inh" aria-hidden="true"><use href="#${icon}"/></svg>
@@ -278,20 +438,24 @@ function itemTile(it) {
 }
 
 /** 1件＝2行の高密度リスト行（ステッパー付き） */
-function itemRow(it) {
+function itemRow(it, opts = {}) {
   const st = statusMeta(it.status);
+  const isEmpty = isEmptyStock(it);
   const f = folderOf(it.folderId);
   const meta = [itemMaker(it), it.colorName, it.size, it.colorCode].filter(Boolean).map(esc).join(' ・ ');
   const glyph = GLYPH[it.category];
   const thumbColor = glyph ? glyph.color : guessColor(it);
   const thumbIcon = glyph ? glyph.icon : 'i-tube';
+  const first = opts.shopChip
+    ? `<button class="folder-tag shop-chip" data-shop-for="${esc(it.id)}">通販</button>`
+    : `<button class="folder-tag" data-move="${esc(it.id)}">${esc(f.name)} ▾</button>`;
   return `
-  <article class="item" data-id="${esc(it.id)}">
+  <article class="item${isEmpty ? ' item-card--empty' : ''}" data-empty="${isEmpty ? '1' : '0'}" data-id="${esc(it.id)}">
     <span class="thumb"><svg class="ic" aria-hidden="true" style="color:${esc(thumbColor)}"><use href="#${thumbIcon}"/></svg>${shelfImage(it)}</span>
     <div class="it-main">
       <h3 class="it-name" data-edit="${esc(it.id)}" title="タップで編集">${esc(displayName(it))}</h3>
       <div class="it-sub">
-        <button class="folder-tag" data-move="${esc(it.id)}">${esc(f.name)} ▾</button>
+        ${first}
         <span class="badge ${st.tone}" title="${esc(st.label)}">${esc(st.short || st.label)}</span>
         ${meta ? `<span class="it-meta">${meta}</span>` : ''}
       </div>
@@ -320,15 +484,17 @@ function renderTilesInto(el, items, opts = {}) {
     const head = opts.group
       ? `<div class="mhead"><span>${esc(g.maker || '未設定')}</span><b>${g.items.length}</b></div>`
       : '';
-    const body = ui.layout === 'list'
-      ? g.items.map(itemRow).join('')
+    const body = (opts.forceList || ui.layout === 'list')
+      ? g.items.map((it) => itemRow(it, opts)).join('')
       : `<div class="tgrid">${g.items.map(itemTile).join('')}</div>`;
     return head + body;
   }).join('');
 }
 
 function renderShopping() {
-  renderTilesInto($('shoppingList'), computeShoppingList(state.items), { group: false, emptyKey: 'shopping' });
+  renderTilesInto($('shoppingList'), computeShoppingList(state.items), {
+    group: false, emptyKey: 'shopping', shopChip: true, forceList: true,
+  });
 }
 
 function currentList() {
@@ -360,7 +526,7 @@ function renderSettings() {
     ? `登録済み（末尾 ${appId.slice(-4)}）。JANで商品画像を取得できます`
     : '未登録。JANからの画像取得は使えません（手元写真と画像URLはこのまま使えます）';
   $('backupNote').textContent = `機種変更・データ消失対策。書き出したファイルは Google ドライブ等に保存してください。手元写真は端末内に保存され、JSONには含まれません（${photoCount}枚）。`;
-  $('dictInfo').textContent = `収録 ${JAN_DICTIONARY.length}件（${JAN_DICTIONARY.filter((d) => d.category === 'oil').length}件が油絵具）/ メーカー判別 ${JAN_PREFIXES.length}件（実在確認済みのみ・${VERIFIED_AT}時点）`;
+  renderDictionaryState();
 }
 
 /* ---------------- 楽天アプリID（設定） ---------------- */
@@ -510,6 +676,12 @@ document.addEventListener('click', (e) => {
   if (edit) { openItemSheet(edit.dataset.edit); return; }
   const mv = e.target.closest('[data-move]');
   if (mv) { openMoveSheet([mv.dataset.move]); return; }
+  const shopBtn = e.target.closest('[data-shop-for]');
+  if (shopBtn) {
+    const item = state.items.find((i) => i.id === shopBtn.dataset.shopFor);
+    if (item) openShopSheet(item);
+    return;
+  }
 });
 
 function openItemSheet(id, preset = {}) {
@@ -536,11 +708,12 @@ function openItemSheet(id, preset = {}) {
   $('fImageUrl').value = (it && it.imageUrl) || '';
   if (pendingPhoto && pendingPhoto.url) URL.revokeObjectURL(pendingPhoto.url);
   pendingPhoto = null;
-  $('photoHint').textContent = '長辺320px・JPEGに自動圧縮して端末内に保存します（外部へは送りません）';
+  $('photoHint').textContent = '端末内に保存（外部送信なし）';
   renderPhotoPreview();
-  $('makerList').innerHTML = [...new Set([...JAN_DICTIONARY.map((d) => d.maker), 'ターナー', 'リキテックス', 'ウィンザー＆ニュートン', 'マツダ', '名村大成堂', 'クサカベ', 'ホルベイン'])].map((m) => `<option value="${esc(m)}">`).join('');
+  $('makerList').innerHTML = [...new Set([...mergedDict.map((d) => d.maker), 'ターナー', 'リキテックス', 'ウィンザー＆ニュートン', 'マツダ', '名村大成堂', 'クサカベ', 'ホルベイン'])].map((m) => `<option value="${esc(m)}">`).join('');
   $('btnDeleteItem').hidden = !it;
   updateJanHint();
+  refreshFormShopLinks();
   openSheet('sheetItem');
   setTimeout(() => $('fName').focus({ preventScroll: true }), 120);
 }
@@ -582,7 +755,7 @@ $('fPhoto').addEventListener('change', async (e) => {
     const out = await compressImageFile(file);
     if (pendingPhoto && pendingPhoto.url) URL.revokeObjectURL(pendingPhoto.url);
     pendingPhoto = { kind: 'set', ...out, url: URL.createObjectURL(out.blob) };
-    $('photoHint').textContent = `長辺${Math.max(out.width, out.height)}px・約${Math.round(out.bytes / 1024)}KBに圧縮しました（保存で確定）`;
+    $('photoHint').textContent = `約${Math.round(out.bytes / 1024)}KB`;
     renderPhotoPreview();
   } catch (err) {
     $('photoHint').textContent = '写真を読み込めませんでした。別の画像で試してください';
@@ -592,7 +765,7 @@ $('fPhoto').addEventListener('change', async (e) => {
 $('btnPhotoClear').addEventListener('click', () => {
   if (pendingPhoto && pendingPhoto.url) URL.revokeObjectURL(pendingPhoto.url);
   pendingPhoto = { kind: 'delete' };
-  $('photoHint').textContent = '保存すると手元写真を削除します（この端末内の写真だけ）';
+  $('photoHint').textContent = '保存で写真を削除';
   renderPhotoPreview();
 });
 $('fImageUrl').addEventListener('input', renderPhotoPreview);
@@ -624,14 +797,16 @@ async function applyPendingPhoto(id) {
 function updateJanHint() {
   const v = normalizeJAN($('fJan').value);
   const hint = $('janHint');
-  if (!v) { hint.textContent = '未入力でも保存できます（後から読取で補完できます）'; hint.style.color = ''; return; }
-  if (!/^\d{13}$/.test(v)) { hint.textContent = `${v.length}桁（13桁で入力してください）`; hint.style.color = 'var(--warn)'; return; }
-  const hit = lookupJAN(v);
+  updateProposeBox();
+  if (!v) { hint.textContent = 'JANは後からでも入れられます'; hint.style.color = ''; return; }
+  if (!/^\d{13}$/.test(v)) { hint.textContent = `${v.length}桁（13桁で入力）`; hint.style.color = 'var(--warn)'; return; }
+  const hit = lookupJAN(v, mergedDict);
   const maker = detectMaker(v);
   hint.style.color = 'var(--good)';
-  hint.textContent = `✓ JAN妥当${maker ? ` ・ メーカー判別: ${maker.maker}` : ''}${hit ? ` ・ 辞書一致: ${hit.name}` : ' ・ 辞書に未収録（新規登録できます）'}`;
+  hint.textContent = `${maker ? `${maker.maker} ` : ''}${hit ? hit.colorName || hit.name : '辞書に未収録'}`;
 }
-$('fJan').addEventListener('input', updateJanHint);
+$('fJan').addEventListener('input', () => { updateJanHint(); refreshFormShopLinks(); });
+for (const id of ['fName', 'fMaker', 'fColorName']) $(id).addEventListener('input', refreshFormShopLinks);
 
 $('itemForm').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -803,13 +978,35 @@ async function startScanner() {
   const video = $('scanVideo');
   video.hidden = true;
   $('scanReticle').hidden = true;
-  showScanMsg('カメラを起動しています…');
-  if (!window.isSecureContext && location.hostname !== 'localhost') {
-    showScanMsg('カメラは https または localhost でのみ使えます。下の手入力・テスト用ボタンをご利用ください。');
+  const secure = window.isSecureContext || location.hostname === 'localhost';
+  const native = nativeScannerPlugin(window);
+  const strategy = chooseScanStrategy({
+    hasNativePlugin: Boolean(native),
+    hasBarcodeDetector: 'BarcodeDetector' in window,
+    secureContext: secure,
+  });
+  showScanMsg('カメラ起動中');
+  if (strategy === 'manual') {
+    showScanMsg('カメラは https で使えます。下の手入力をどうぞ');
     return;
   }
-  const hasDetector = 'BarcodeDetector' in window;
-  if (hasDetector) {
+
+  // 1) Capacitor のネイティブスキャナ（iOSアプリで最優先）
+  if (strategy === 'native') {
+    try {
+      const { barcodes } = await native.startScan({ formats: ['EAN_13', 'EAN_8', 'UPC_A', 'CODE_128'] });
+      const value = barcodes?.[0]?.rawValue;
+      if (value) onScan(value);
+      else showScanMsg('読み取れませんでした');
+    } catch (e) {
+      console.warn('ネイティブスキャナ失敗', e);
+      showScanMsg('カメラを起動できません。手入力をどうぞ');
+    }
+    return;
+  }
+
+  // 2) Web の BarcodeDetector（Chrome/Android）
+  if (strategy === 'barcode-detector') {
     try {
       const supported = (await window.BarcodeDetector.getSupportedFormats?.()) || [];
       const formats = ['ean_13', 'ean_8', 'upc_a', 'code_128'].filter((f) => !supported.length || supported.includes(f));
@@ -835,11 +1032,12 @@ async function startScanner() {
       console.warn('BarcodeDetector失敗', e);
     }
   }
-  // フォールバック: html5-qrcode（CDN・オフライン時は手入力へ）
-  showScanMsg('内蔵検出器が使えないため、軽量スキャナを読み込んでいます…');
+
+  // 3) 同梱の html5-qrcode（iOS WKWebView を含む。CDNは使わない）
+  showScanMsg('スキャナ準備中');
   try {
-    const mod = await import('https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js');
-    const Html5Qrcode = mod.Html5Qrcode || window.Html5Qrcode;
+    const Html5Qrcode = await loadVendorScanner(document, VENDOR_SCANNER_PATH);
+    if (!Html5Qrcode) throw new Error('スキャナを読み込めません');
     $('scanMsg').hidden = true;
     const holder = document.createElement('div');
     holder.id = 'qrReader';
@@ -851,7 +1049,7 @@ async function startScanner() {
       (text) => onScan(text), () => {});
   } catch (e) {
     console.warn('html5-qrcode失敗', e);
-    showScanMsg('カメラを起動できませんでした。下の手入力、またはテスト用ボタンをお使いください。');
+    showScanMsg('カメラを起動できません。手入力をどうぞ');
   }
 }
 
@@ -889,7 +1087,7 @@ $('btnManualLookup').addEventListener('click', () => {
 
 /** JAN からフォームを開く（辞書一致なら自動補完、未収録なら新規登録へ） */
 function applyJAN(jan) {
-  const hit = lookupJAN(jan);
+  const hit = lookupJAN(jan, mergedDict);
   const maker = detectMaker(jan);
   const existing = state.items.find((i) => i.jan === jan);
   if (existing) {
@@ -974,22 +1172,60 @@ $('btnDict').addEventListener('click', () => {
   openSheet('sheetDict');
   renderDictList('');
 });
+$('btnDictSync').addEventListener('click', () => syncDictionary({ announce: true }));
+
+/* ---------------- 通販で探す（アフィリエイト土台） ---------------- */
+function openShopSheet(item) {
+  selectedShopItem = item || null;
+  $('shopItemName').textContent = item ? displayName(item) : '通販';
+  const links = renderShopLinks($('shopSheetLinks'), item || {});
+  $('shopNote').textContent = links.length ? '' : 'JANか商品名を入れると検索できます';
+  openSheet('sheetShop');
+}
+/* ---------------- 辞書に提案 ---------------- */
+function openProposeSheet(item) {
+  proposeItem = item || null;
+  const f = item || {};
+  $('proposeSum').innerHTML = `
+    <div><b>${esc(normalizeJAN(f.jan))}</b></div>
+    <div>${esc([f.maker, f.colorName || f.name, f.size].filter(Boolean).join(' ') || '商品名未入力')}</div>`;
+  openSheet('sheetPropose');
+}
+$('btnPropose').addEventListener('click', () => openProposeSheet(formItem()));
+$('btnProposeGithub').addEventListener('click', () => {
+  openExternal(buildIssueUrl(proposeItem || {}));
+  closeSheet('sheetPropose');
+});
+$('btnProposeCopy').addEventListener('click', async () => {
+  const ok = await copyText(buildProposalClipboardText(proposeItem || {}));
+  toast(ok ? '文面をコピーしました' : 'コピーできませんでした');
+});
+
+/* アプリ内（iOS）では外部リンクをSafariで開く */
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('a.shop-link');
+  if (!a || !isNativeShell(window)) return;
+  e.preventDefault();
+  openExternal(a.href);
+});
 
 const DICT_RENDER_LIMIT = 300;
 function renderDictList(query) {
   const q = String(query || '').trim().toLowerCase();
-  $('dictNote').textContent = `実在確認済み ${JAN_DICTIONARY.length}件（${VERIFIED_AT}時点・チェックディジット検証済み）。出典は各商品ページ。`;
+  const merged = mergeDictionaries(JAN_DICTIONARY, extraEntries);
+  $('dictNote').textContent = describeCounts(merged);
   const hit = q
-    ? JAN_DICTIONARY.filter((d) => [d.name, d.colorName, d.maker, d.size, d.code, d.jan].join(' ').toLowerCase().includes(q))
-    : JAN_DICTIONARY;
+    ? mergedDict.filter((d) => [d.name, d.colorName, d.maker, d.size, d.code, d.jan].join(' ').toLowerCase().includes(q))
+    : mergedDict;
   const shown = hit.slice(0, DICT_RENDER_LIMIT);
   $('dictList').innerHTML = shown.map((d) => `
     <div style="padding:8px 0;border-bottom:1px solid #eef2f7">
-      <b>${esc(d.colorName || d.name)}</b> <span style="color:#5b6b7c">${esc(d.maker)} ${esc(d.size)}</span><br>
+      <b>${esc(d.colorName || d.name)}</b> <span style="color:#5b6b7c">${esc(d.maker)} ${esc(d.size)}</span>
+      ${extraJanSet.has(d.jan) ? '<span class="dict-badge">追加</span>' : ''}<br>
       <span style="font-family:ui-monospace,monospace">${esc(d.jan)}</span>
-      <a href="${esc(d.source)}" target="_blank" rel="noopener" style="font-size:11px">出典</a>
+      <a href="${esc(d.source)}" target="_blank" rel="noopener noreferrer" style="font-size:11px">出典</a>
     </div>`).join('') + (hit.length > shown.length
-      ? `<p class="hint" style="margin:10px 0 0">ほか ${hit.length - shown.length}件。上の検索欄で絞り込めます。</p>`
+      ? `<p class="hint" style="margin:10px 0 0">ほか ${hit.length - shown.length}件</p>`
       : '');
 }
 $('dictQ').addEventListener('input', (e) => renderDictList(e.target.value));
@@ -1003,3 +1239,5 @@ if ('serviceWorker' in navigator) {
 
 render();
 preloadPhotos();
+renderDictionaryState();
+syncDictionary();

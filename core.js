@@ -141,6 +141,15 @@ export function adjustStock(item, delta) {
   return { ...item, qty, status, updatedAt: new Date().toISOString() };
 }
 
+/**
+ * 在庫切れか（一覧でグレーアウトする判定）。
+ * 数量0、または残量ステータスが「使い切り」のどちらでも在庫切れとして扱う。
+ * 表示だけの判定で、操作（増減・編集・通販リンク）は止めない。
+ */
+export function isEmptyStock(item) {
+  return Number(item?.qty) === 0 || item?.status === 'empty';
+}
+
 /** 買い物リスト（残りわずか・使い切り・在庫0） */
 export function computeShoppingList(items) {
   return items

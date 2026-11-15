@@ -30,7 +30,7 @@ button { cursor: pointer; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
 /* ---------- 上部バー（タイトル＋点数 / 短いツール / 階層ナビ） ---------- */
-.app-header { position: sticky; top: 0; z-index: 20; background: #fff; border-bottom: 1px solid var(--line); }
+.app-header { position: sticky; top: 0; z-index: 20; background: #fff; border-bottom: 1px solid var(--line); padding-top: env(safe-area-inset-top); }
 .hrow { display: flex; align-items: baseline; gap: 8px; padding: 9px 14px 1px; }
 .hrow h1 { margin: 0; font-size: 17px; font-weight: 800; letter-spacing: .02em; line-height: 1.3; }
 .hrow .total { margin-left: auto; font-size: 12.5px; font-weight: 700; color: var(--ink-2); white-space: nowrap; }
@@ -300,3 +300,52 @@ main { padding: 0 0 56px; }
 @media (min-width: 560px) {
   .fgrid, .tgrid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 }
+
+/* ---------- 在庫切れ（qty 0 / 残量使い切り）はグレーアウト ---------- */
+/* 表示だけを落とし、pointer-events は変えない（＋−・タップ編集・通販はすべて通常どおり） */
+.tile.item-card--empty .sw { background: #f0f2f5; box-shadow: inset 0 0 0 1px rgba(15, 25, 40, .07); }
+.tile.item-card--empty .sw::before { background: #e6e9ed; box-shadow: none; }
+.tile.item-card--empty .sw::after { opacity: .4; }
+.tile.item-card--empty .inh { filter: grayscale(1); opacity: .45; }
+.tile.item-card--empty .shelfimg { filter: grayscale(1); opacity: .55; }
+.tile.item-card--empty .qbadge { color: #7f8a96; }
+.tile.item-card--empty .tname { color: #8c96a1; }
+
+.item.item-card--empty { background: #f4f6f9; border-color: #e6eaef; box-shadow: none; }
+.item.item-card--empty .it-name { color: #8b95a0; }
+.item.item-card--empty .it-meta, .item.item-card--empty .folder-tag { color: #9aa4af; }
+.item.item-card--empty .thumb { background: #eef1f5; }
+.item.item-card--empty .thumb .ic { color: #b6bfc8 !important; }
+.item.item-card--empty .thumb img.shelfimg { filter: grayscale(1); opacity: .55; }
+.item.item-card--empty .qty { color: #8b95a0; }
+.item.item-card--empty .step, .item.item-card--empty .icon-btn { color: #74808d; }
+.item.item-card--empty .badge.bad { background: #e8ebef; color: #7c8691; }
+
+/* ---------- 通販リンク（短いボタン） ---------- */
+.shop-links { display: flex; gap: 6px; flex-wrap: wrap; }
+.shop-link {
+  flex: 1 1 0; min-width: 0; text-align: center; text-decoration: none;
+  border: 1px solid var(--line); background: #fff; border-radius: 10px;
+  padding: 9px 4px; font-size: 13px; font-weight: 700; color: #2f4b6b; white-space: nowrap;
+}
+.shop-link:active { background: var(--accent-soft); }
+.shop-links.big .shop-link { padding: 13px 4px; font-size: 14px; }
+.shop-links:empty { display: none; }
+.shop-chip { cursor: pointer; }
+
+/* ---------- 辞書に提案 ---------- */
+.propose-box { margin: 0 0 10px; }
+.propose-sum { font-size: 13px; line-height: 1.7; color: #33465a; }
+.propose-sum b { font-family: ui-monospace, monospace; font-size: 15px; color: #1d2733; }
+.dict-badge {
+  display: inline-block; margin-left: 4px; font-size: 9.5px; font-weight: 700;
+  color: #2f6fd0; background: var(--accent-soft); border-radius: 999px; padding: 0 5px; line-height: 15px;
+}
+
+/* ---------- 極小の注記（法務・規約） ---------- */
+.micro { font-size: 10.5px; line-height: 1.5; color: var(--ink-3); margin: 0; }
+.foot-note, .foot-links { text-align: center; margin: 14px 0 0; }
+.foot-links a { color: var(--ink-2); text-decoration: none; border-bottom: 1px solid var(--line); }
+
+/* 編集シート内の通販行は横幅を使い切る */
+#shopLinks { width: 100%; }

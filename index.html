@@ -128,13 +128,13 @@
 
   <!-- 買い物リスト -->
   <section id="view-shopping" hidden>
-    <p class="lede">残りわずか・使い切りを自動で集めています</p>
+    <p class="lede">補充が必要なもの</p>
     <div id="shoppingList"></div>
   </section>
 
   <!-- フォルダ -->
   <section id="view-folders" hidden>
-    <p class="lede">タップで編集。↑↓で並び替え。</p>
+    <p class="lede">タップで編集</p>
     <div class="card" id="folderList"></div>
     <button class="btn primary btn-block" id="btnAddFolder">＋ フォルダを追加</button>
   </section>
@@ -168,16 +168,22 @@
       <p class="hint" id="rakutenState" style="margin:10px 0 0"></p>
     </div>
     <div class="card">
-      <h2 class="card-t">内蔵JAN辞書</h2>
+      <h2 class="card-t">JAN辞書</h2>
       <p class="hint" id="dictInfo">—</p>
-      <button class="btn" id="btnDict" style="width:100%">収録一覧を見る</button>
+      <p class="micro" id="dictSyncState">—</p>
+      <div class="actions">
+        <button class="btn" id="btnDictSync">辞書を更新</button>
+        <button class="btn" id="btnDict">一覧</button>
+      </div>
     </div>
     <div class="card">
       <h2 class="card-t">危険な操作</h2>
       <button class="btn danger" id="btnWipe" style="width:100%">全データを削除</button>
       <p class="hint">データは端末のブラウザ内だけに保存され、サーバーへは送信されません。</p>
     </div>
-    <p class="hint" style="text-align:center;margin:18px 0 0">Created with for お絵描き楽しも委員会（しょうだい）</p>
+    <p class="micro foot-note">通販リンクはアフィリエイトの場合があります</p>
+    <p class="micro foot-links"><a href="privacy.html" target="_blank" rel="noopener noreferrer">プライバシー</a> ・ <a href="support.html" target="_blank" rel="noopener noreferrer">サポート</a></p>
+    <p class="hint" style="text-align:center;margin:10px 0 0">お絵描き楽しも委員会（しょうだい）</p>
   </section>
 </main>
 
@@ -254,13 +260,21 @@
           <button type="button" class="btn mini danger" id="btnPhotoClear" hidden>写真を削除</button>
         </div>
       </div>
-      <p class="hint" id="photoHint" style="margin:6px 0 0">長辺320px・JPEGに自動圧縮して端末内に保存します（外部へは送りません）</p>
+      <p class="hint" id="photoHint" style="margin:6px 0 0">端末内に保存（外部送信なし）</p>
     </div>
     <input type="file" id="fPhoto" accept="image/*" class="sr">
     <div class="field">
-      <label for="fImageUrl">画像URL（任意）</label>
+      <label for="fImageUrl">画像URL</label>
       <input id="fImageUrl" type="url" inputmode="url" placeholder="https://..." autocomplete="off" autocapitalize="off" spellcheck="false">
-      <p class="hint" id="imageUrlHint" style="margin:4px 0 0">JANから取得するか、商品ページの画像URLを貼り付けます</p>
+      <p class="hint" id="imageUrlHint" style="margin:4px 0 0">JANから取得するか、画像URLを貼り付け</p>
+    </div>
+    <div class="field">
+      <label>通販</label>
+      <div class="shop-links" id="shopLinks"></div>
+      <p class="micro" id="shopQuery" style="margin:4px 0 0"></p>
+    </div>
+    <div class="propose-box" id="proposeBox" hidden>
+      <button type="button" class="btn mini wide" id="btnPropose">辞書に提案</button>
     </div>
     <div class="actions">
       <button type="button" class="btn" data-close="sheetItem">キャンセル</button>
@@ -279,14 +293,14 @@
     <p id="scanMsg" style="margin:0;padding:12px">カメラを起動しています…</p>
   </div>
   <div class="field" style="margin-top:12px">
-    <label for="manualJan">JANコードを手入力（カメラが使えない時）</label>
+    <label for="manualJan">JANを手入力</label>
     <input id="manualJan" inputmode="numeric" placeholder="4900669001911" autocomplete="off">
   </div>
   <div class="actions">
-    <button class="btn primary" id="btnManualLookup">照合する</button>
-    <button class="btn" id="btnRescan">カメラ再起動</button>
+    <button class="btn primary" id="btnManualLookup">照合</button>
+    <button class="btn" id="btnRescan">再起動</button>
   </div>
-  <p class="section-title" style="margin-top:16px">テスト用（実在JAN・カメラ無しでも動作確認）</p>
+  <p class="section-title" style="margin-top:16px">テスト用JAN</p>
   <div class="pill-row" id="testPills"></div>
 </div>
 
@@ -310,10 +324,28 @@
 
 <!-- 辞書一覧シート -->
 <div class="sheet" id="sheetDict" role="dialog" aria-modal="true" aria-labelledby="dictTitle">
-  <h2 id="dictTitle">内蔵JAN辞書<button class="close" data-close="sheetDict" aria-label="閉じる"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></h2>
+  <h2 id="dictTitle">JAN辞書<button class="close" data-close="sheetDict" aria-label="閉じる"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></h2>
   <p class="hint" id="dictNote"></p>
-  <input id="dictQ" type="search" placeholder="色名・メーカー・JANで絞り込み" autocomplete="off" inputmode="search" style="width:100%;margin:0 0 8px">
+  <input id="dictQ" type="search" placeholder="色名・メーカー・JAN" autocomplete="off" inputmode="search" style="width:100%;margin:0 0 8px">
   <div id="dictList" style="font-size:12px"></div>
+</div>
+
+<!-- 通販シート -->
+<div class="sheet" id="sheetShop" role="dialog" aria-modal="true" aria-labelledby="shopTitle">
+  <h2 id="shopTitle"><span id="shopItemName">通販</span><button class="close" data-close="sheetShop" aria-label="閉じる"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></h2>
+  <div class="shop-links big" id="shopSheetLinks"></div>
+  <p class="micro" id="shopNote" style="margin:10px 0 0"></p>
+</div>
+
+<!-- 辞書に提案シート -->
+<div class="sheet" id="sheetPropose" role="dialog" aria-modal="true" aria-labelledby="proposeTitle">
+  <h2 id="proposeTitle">辞書に提案<button class="close" data-close="sheetPropose" aria-label="閉じる"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></h2>
+  <div class="propose-sum" id="proposeSum"></div>
+  <div class="actions">
+    <button class="btn primary" id="btnProposeGithub">GitHub</button>
+    <button class="btn" id="btnProposeCopy">コピー</button>
+  </div>
+  <p class="micro" style="margin:10px 0 0">メールはコピーを貼り付けて送信</p>
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
