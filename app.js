@@ -6,7 +6,7 @@ import {
   exportState, importState, summarize, blankState,
   isValidJAN, normalizeJAN, detectMaker, lookupJAN, itemMaker, listMakers, groupByMaker,
 } from './core.js';
-import { JAN_DICTIONARY, JAN_PREFIXES } from './jan-database.js';
+import { JAN_DICTIONARY, JAN_PREFIXES, VERIFIED_AT } from './jan-database.js';
 
 const $ = (id) => document.getElementById(id);
 const clone = (v) => JSON.parse(JSON.stringify(v));
@@ -198,7 +198,7 @@ function renderSettings() {
   $('stKinds').textContent = s.kinds;
   $('stQty').textContent = s.qty;
   $('stRestock').textContent = s.needRestock;
-  $('dictInfo').textContent = `収録 ${JAN_DICTIONARY.length}件 / メーカー判別 ${JAN_PREFIXES.length}件（実在確認済みのみ・2026-11-15時点）`;
+  $('dictInfo').textContent = `収録 ${JAN_DICTIONARY.length}件（${JAN_DICTIONARY.filter((d) => d.category === 'oil').length}件が油絵具）/ メーカー判別 ${JAN_PREFIXES.length}件（実在確認済みのみ・${VERIFIED_AT}時点）`;
 }
 
 /* ---------------- タブ・絞り込み ---------------- */
@@ -591,15 +591,29 @@ $('btnWipe').addEventListener('click', () => {
   toast('全データを削除しました');
 });
 $('btnDict').addEventListener('click', () => {
-  $('dictNote').textContent = `実在確認済み ${JAN_DICTIONARY.length}件（2026-11-15時点・チェックディジット検証済み）。出典は各商品ページ。`;
-  $('dictList').innerHTML = JAN_DICTIONARY.map((d) => `
+  $('dictQ').value = '';
+  openSheet('sheetDict');
+  renderDictList('');
+});
+
+const DICT_RENDER_LIMIT = 300;
+function renderDictList(query) {
+  const q = String(query || '').trim().toLowerCase();
+  $('dictNote').textContent = `実在確認済み ${JAN_DICTIONARY.length}件（${VERIFIED_AT}時点・チェックディジット検証済み）。出典は各商品ページ。`;
+  const hit = q
+    ? JAN_DICTIONARY.filter((d) => [d.name, d.colorName, d.maker, d.size, d.code, d.jan].join(' ').toLowerCase().includes(q))
+    : JAN_DICTIONARY;
+  const shown = hit.slice(0, DICT_RENDER_LIMIT);
+  $('dictList').innerHTML = shown.map((d) => `
     <div style="padding:8px 0;border-bottom:1px solid #eef2f7">
       <b>${esc(d.colorName || d.name)}</b> <span style="color:#5b6b7c">${esc(d.maker)} ${esc(d.size)}</span><br>
       <span style="font-family:ui-monospace,monospace">${esc(d.jan)}</span>
       <a href="${esc(d.source)}" target="_blank" rel="noopener" style="font-size:11px">出典</a>
-    </div>`).join('');
-  openSheet('sheetDict');
-});
+    </div>`).join('') + (hit.length > shown.length
+      ? `<p class="hint" style="margin:10px 0 0">ほか ${hit.length - shown.length}件。上の検索欄で絞り込めます。</p>`
+      : '');
+}
+$('dictQ').addEventListener('input', (e) => renderDictList(e.target.value));
 
 /* ---------------- PWA ---------------- */
 if ('serviceWorker' in navigator) {
