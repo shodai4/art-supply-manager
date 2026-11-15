@@ -770,6 +770,24 @@ $('btnPhotoClear').addEventListener('click', () => {
 });
 $('fImageUrl').addEventListener('input', renderPhotoPreview);
 
+/** 読み込み後、存在しない画材の写真を端末内から片付ける */
+async function prunePhotos() {
+  try {
+    const rows = await listPhotos();
+    const ids = new Set(state.items.map((i) => i.id));
+    let kept = 0;
+    for (const row of rows) {
+      if (!row || !row.id) continue;
+      if (ids.has(row.id)) { kept += 1; continue; }
+      await deletePhoto(row.id);
+      dropPhotoUrl(row.id);
+    }
+    photoCount = kept;
+  } catch (e) {
+    console.warn('写真の片付けに失敗', e);
+  }
+}
+
 /** 保存時に手元写真をIndexedDBへ反映する（新規は採番されたIDで保存） */
 async function applyPendingPhoto(id) {
   const p = pendingPhoto;
@@ -1147,7 +1165,9 @@ $('fileImport').addEventListener('change', async (e) => {
   try {
     const text = await file.text();
     state = importState(text);
-    save(); render();
+    save();
+    await prunePhotos();
+    render();
     toast(`読み込みました（${state.items.length}件）`);
   } catch (err) {
     toast(`読み込めませんでした: ${err.message}`);
