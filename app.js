@@ -1144,18 +1144,11 @@ function applyJAN(jan) {
   }
 }
 
-// テスト用ボタンは色名の重複を避けて先頭6件を出す（油絵具を優先して、読取の動作が伝わる例にする）
-const _seenTest = new Set();
-const _samplePool = [
-  ...JAN_DICTIONARY.filter((d) => d.category === 'oil' && d.colorName),
-  ...JAN_DICTIONARY,
-];
-const TEST_SAMPLES = _samplePool.filter((d) => {
-  const k = d.colorName || d.name;
-  if (_seenTest.has(k)) return false;
-  _seenTest.add(k);
-  return true;
-}).slice(0, 6);
+// テスト用ボタンは、馴染みのあるメーカーの色名付き品を1社1件ずつ出す（読取→自動入力の確認用）
+const SAMPLE_MAKERS = ['ホルベイン', 'クサカベ', 'コピック', 'ターナー', 'サクラクレパス', 'リキテックス'];
+const TEST_SAMPLES = SAMPLE_MAKERS.map((m) =>
+  JAN_DICTIONARY.find((d) => d.maker === m && d.category === 'oil' && d.colorName)
+  || JAN_DICTIONARY.find((d) => d.maker === m && d.colorName)).filter(Boolean);
 $('testPills').innerHTML = TEST_SAMPLES.map((d) =>
   `<button class="pill" data-testjan="${esc(d.jan)}">${esc(d.colorName || d.name)}<br><span style="font-size:10px;color:#5b6b7c">${esc(d.jan)}</span></button>`).join('');
 $('testPills').addEventListener('click', (e) => {
