@@ -245,8 +245,15 @@ function renderFolderGrid() {
 function shelfImage(it) {
   const src = photoUrls.get(it.id) || normalizeImageUrl(it.imageUrl);
   if (!src) return '';
-  return `<img class="shelfimg" src="${esc(src)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.classList.add('imgfail')">`;
+  return `<img class="shelfimg" src="${esc(src)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">`;
 }
+
+// 画像の読み込みに失敗したら自動でチューブSVG／アイコン表示へ戻す（インライン属性は使わない）
+document.addEventListener('error', (e) => {
+  const img = e.target;
+  if (!img || img.tagName !== 'IMG') return;
+  if (img.classList.contains('shelfimg') || img.classList.contains('previewimg')) img.classList.add('imgfail');
+}, true);
 
 /** 画材タイル1枚 */
 function itemTile(it) {
@@ -558,7 +565,7 @@ function previewSource() {
 function renderPhotoPreview() {
   const src = previewSource();
   $('photoPrev').innerHTML = src
-    ? `<img src="${esc(src)}" alt="写真プレビュー" decoding="async" referrerpolicy="no-referrer" onerror="this.classList.add('imgfail')">`
+    ? `<img class="previewimg" src="${esc(src)}" alt="写真プレビュー" decoding="async" referrerpolicy="no-referrer">`
     : '<span class="ph-txt">写真なし<br>アイコン表示</span>';
   const exists = (pendingPhoto && pendingPhoto.kind === 'set')
     || (!(pendingPhoto && pendingPhoto.kind === 'delete') && Boolean(ui.editingId && photoUrls.has(ui.editingId)));
