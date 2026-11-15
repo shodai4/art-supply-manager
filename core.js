@@ -223,7 +223,7 @@ export function blankState() {
     version: APP_VERSION,
     folders: DEFAULT_FOLDERS.map((f) => ({ ...f })),
     items: [],
-    settings: { sort: 'updated', askBeforeDelete: true },
+    settings: { sort: 'updated', layout: 'grid', askBeforeDelete: true },
     updatedAt: new Date().toISOString(),
   };
 }
