@@ -285,6 +285,32 @@ export function canUseImageProxy(settings = {}) {
   return Boolean(resolveImageProxyUrl(settings));
 }
 
+/** 取得元の表示名（中継サーバーは楽天・Yahoo!のどちらから返すかを source に入れてくる） */
+export function sourceLabel(source) {
+  const s = String(source ?? '').trim().toLowerCase();
+  if (s === 'rakuten') return '楽天';
+  if (s === 'yahoo') return 'Yahoo!';
+  return '';
+}
+
+/**
+ * 中継サーバーの応答を、楽天由来でもYahoo!由来でも同じ形に整える。
+ * 中継サーバーは { jan, imageUrl, itemName, itemPrice, itemUrl, shopName, source } を返す。
+ * 画像URLが無ければ null（source が無い古い中継サーバーの応答でも動く）。
+ */
+export function parseProxyProduct(payload) {
+  const imageUrl = pickProxyImageUrl(payload);
+  if (!imageUrl) return null;
+  return {
+    imageUrl,
+    itemName: String(payload?.itemName ?? '').trim(),
+    itemPrice: Number(payload?.itemPrice) || 0,
+    itemUrl: String(payload?.itemUrl ?? '').trim(),
+    shopName: String(payload?.shopName ?? '').trim(),
+    source: String(payload?.source ?? '').trim(),
+  };
+}
+
 function proxyError(message, code, status) {
   const err = new Error(message);
   err.code = code;
@@ -304,8 +330,11 @@ export function describeProxyError(payload, status) {
   return message || `画像を取得できませんでした（HTTP ${status || '不明'}）`;
 }
 
-/** 中継サーバー経由でJANから商品画像URLを取得（見つからなければ例外） */
-export async function fetchRakutenImageViaProxy(jan, proxyBase, { fetchImpl } = {}) {
+/**
+ * 中継サーバー経由でJANから商品情報（画像URL・商品名・価格・商品URL・ショップ名・取得元）を取得。
+ * 見つからなければ例外（呼び出し側の分岐用に code と status を付ける）。
+ */
+export async function fetchProductViaProxy(jan, proxyBase, { fetchImpl } = {}) {
   const url = imageProxyUrl(proxyBase, jan);
   if (!url) throw proxyError('中継サーバーが未設定です', 'proxy_unset', 0);
   const doFetch = fetchImpl || (typeof fetch === 'function' ? fetch.bind(globalThis) : null);
@@ -321,9 +350,15 @@ export async function fetchRakutenImageViaProxy(jan, proxyBase, { fetchImpl } = 
   if (!res.ok || (payload && payload.error)) {
     throw proxyError(describeProxyError(payload, res.status), String(payload?.error || 'proxy_error'), res.status);
   }
-  const imageUrl = pickProxyImageUrl(payload);
-  if (!imageUrl) throw proxyError('商品画像が見つかりませんでした', 'image_not_found', 404);
-  return imageUrl;
+  const product = parseProxyProduct(payload);
+  if (!product) throw proxyError('商品画像が見つかりませんでした', 'image_not_found', 404);
+  return product;
+}
+
+/** 中継サーバー経由でJANから商品画像URLを取得（見つからなければ例外） */
+export async function fetchRakutenImageViaProxy(jan, proxyBase, options = {}) {
+  const product = await fetchProductViaProxy(jan, proxyBase, options);
+  return product.imageUrl;
 }
 
 /** 中継サーバーが落ちているときだけ、自分のアプリIDでの直接取得に切り替えてよいか */
@@ -334,22 +369,33 @@ export function shouldFallbackToAppId(err) {
 }
 
 /**
- * JANから商品画像URLを取得する入口。
+ * JANから商品情報（画像URL・商品名など）を取得する入口。
  * 設定ゼロ（中継サーバーあり）なら誰でもそのまま取得でき、
  * 中継サーバーが無い/落ちているときは自分の楽天アプリIDで直接叩く。
+ * 中継サーバーは楽天・Yahoo!のどちらから取れても同じ形で返すので、呼び出し側は取得元を気にしなくてよい。
  */
-export async function fetchProductImage(jan, { appId = '', accessKey = '', proxyUrl = '', fetchImpl } = {}) {
+export async function fetchProductImageInfo(jan, { appId = '', accessKey = '', proxyUrl = '', fetchImpl } = {}) {
   const code = String(jan ?? '').replace(/[\s\-]/g, '');
   if (!/^\d{13}$/.test(code)) throw new Error('JANコードを13桁で入力してください');
   const proxy = normalizeProxyUrl(proxyUrl) || normalizeProxyUrl(DEFAULT_IMAGE_PROXY_URL);
   const id = String(appId ?? '').trim();
   if (proxy) {
     try {
-      return await fetchRakutenImageViaProxy(code, proxy, { fetchImpl });
+      return await fetchProductViaProxy(code, proxy, { fetchImpl });
     } catch (err) {
       if (!id || !shouldFallbackToAppId(err)) throw err;
     }
   }
   if (!id) throw new Error('画像取得の設定がありません（設定で中継サーバーURLか楽天アプリIDを登録）');
-  return fetchRakutenImage(code, id, { accessKey, fetchImpl });
+  const imageUrl = await fetchRakutenImage(code, id, { accessKey, fetchImpl });
+  return { imageUrl, itemName: '', itemPrice: 0, itemUrl: '', shopName: '', source: 'rakuten' };
+}
+
+/**
+ * JANから商品画像URLだけを取得する（これまでの入口。戻り値はURL文字列のまま）。
+ * 商品名なども要るときは fetchProductImageInfo を使う。
+ */
+export async function fetchProductImage(jan, options = {}) {
+  const info = await fetchProductImageInfo(jan, options);
+  return info.imageUrl;
 }

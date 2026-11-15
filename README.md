@@ -17,7 +17,7 @@
 - **辞書に提案**: 辞書に無いJANを入れたときだけ「辞書に提案」が出る。GitHubアカウントがあればIssue作成画面（JAN・メーカー・商品名・出典をプリフィル）、無ければ文面をコピーしてメールで送れる
 - スマホのカメラでJANバーコード読取 → 内蔵辞書から商品情報を自動補完（**同梱のhtml5-qrcode** を使うため、iOSのWKWebViewでも動き、オフラインでも読める。CDNからコードを読まない）
 - **商品画像（実物写真）**: 編集シートで手元の写真を選ぶと、長辺320px・JPEG品質0.75に自動圧縮して端末内（IndexedDB `art-supply-images`）へ保存。グリッドの棚には写真を白背景・`object-fit: contain` で見切れなく表示し、リスト左のサムネイルにも出る。写真が無い画材は従来の絵具チューブSVGのまま
-- **楽天APIでJANから画像取得（中継サーバー方式）**: `workers/rakuten-image-proxy/` の Cloudflare Workers を1つ公開し、`images.js` の `DEFAULT_IMAGE_PROXY_URL` にURLを入れておくと、**利用者は何も登録せずに**JANから商品画像URL（`_ex=300x300`）を取得できる（楽天の認証情報は Worker の秘密に置き、フロントには出さない）。中継サーバーが未設定・停止時のみ、設定の「楽天アプリID＋アクセスキー」で楽天APIを直接叩く上級者向けの逃げ道を使う。設置手順は `docs/rakuten-proxy-setup.md`。画像URLを手で貼ることも可能。表示優先順は ①手元写真（IndexedDB）→ ②画像URL → ③チューブSVG／カテゴリ別アイコン（読み込み失敗時は自動でアイコンへ）
+- **商品画像（JANから取得／中継サーバー方式）**: `workers/rakuten-image-proxy/` の Cloudflare Workers を1つ公開し、`images.js` の `DEFAULT_IMAGE_PROXY_URL` にURLを入れておくと、**利用者は何も登録せずに**JANから商品画像URL（300x300）を取得できる（認証情報は Worker の秘密に置き、フロントには出さない）。中継サーバーは**楽天市場 商品検索API と Yahoo!ショッピング 商品検索API（v3）の併用**で、Secret が入っているほうを先に試し、メンテナンス・認証エラー・回数制限・画像なしのときはもう片方で補完する（楽天のキーが未設定なら Yahoo! が先。楽天の管理画面がメンテで止まっていても Yahoo! だけで動く）。中継サーバーが未設定・停止時のみ、設定の「楽天アプリID＋アクセスキー」で楽天APIを直接叩く上級者向けの逃げ道を使う。設置手順（Yahoo!のClient ID発行を含む）は `docs/rakuten-proxy-setup.md`。画像URLを手で貼ることも可能。表示優先順は ①手元写真（IndexedDB）→ ②画像URL → ③チューブSVG／カテゴリ別アイコン（読み込み失敗時は自動でアイコンへ）
 - JSONバックアップ / 復元（機種変更・データ消失対策）。手元写真は端末内のみで、JSONには含まれません
 
 ## 使い方（ローカル）
@@ -50,9 +50,9 @@ python3 -m http.server 8080      # または任意の静的サーバー
 | `scripts/configure-ios.mjs` | Info.plist（表示名・カメラ・写真・輸出コンプライアンス）と最低OS（15.0）の自動設定 |
 | `scripts/add-jan-extra.mjs` | 追加辞書に1件追記（13桁・チェックディジット・重複チェック） |
 | `docs/ios-release-plan.md` | iPhoneアプリ化の設計書（DBゼロ共有・ビルド手順・App Store Connect 項目・読取方式の比較） |
-| `docs/rakuten-proxy-setup.md` | 楽天画像プロキシの設置手順（楽天アプリ登録・Workersデプロイ・Secret設定・動作確認） |
-| `workers/rakuten-image-proxy/` | JANから商品画像を返す中継サーバー（Cloudflare Workers。`wrangler.toml` と `src/index.js`） |
-| `images.js` | 手元写真の圧縮（canvas）・IndexedDB保存と、楽天APIからの商品画像取得 |
+| `docs/rakuten-proxy-setup.md` | 商品画像プロキシの設置手順（Yahoo!のClient ID発行・楽天アプリ登録・Workersデプロイ・Secret設定・動作確認・エラー一覧） |
+| `workers/rakuten-image-proxy/` | JANから商品画像を返す中継サーバー（Cloudflare Workers。楽天API＋Yahoo!ショッピングAPI併用。`wrangler.toml` と `src/index.js`） |
+| `images.js` | 手元写真の圧縮（canvas）・IndexedDB保存と、中継サーバー（楽天・Yahoo!）経由の商品画像取得 |
 | `jan-database.js` | 実在確認済みJAN辞書＋メーカープレフィックス表 |
 | `sw.js` / `manifest.webmanifest` | PWA（オフラインキャッシュ・ホーム画面追加） |
 | `icon.svg` / `icon-192.png` / `icon-512.png` | アプリアイコン（manifest の192/512px用PNGを含む） |
@@ -63,8 +63,8 @@ python3 -m http.server 8080      # または任意の静的サーバー
 | `tests/ui.test.js` | 在庫切れのグレー表示・HTMLの導線・絵文字なし・www/のファイル一覧・読取方式の選択 |
 | `tests/ios.test.js` | Info.plist / Podfile / プロジェクトの最低OS設定と capacitor.config.json のテスト |
 | `tests/images.test.js` | 写真の縮小計算・画像URLの検証・楽天APIの応答/エラー処理のテスト |
-| `tests/image-proxy.test.js` | 中継サーバー連携（URL組み立て・応答の読み取り・分岐・直接取得へのフォールバック）のテスト |
-| `tests/worker.test.js` | 中継サーバーのJAN検証・キャッシュキー・CORS・エラー読み替えのテスト |
+| `tests/image-proxy.test.js` | 中継サーバー連携（URL組み立て・応答の読み取り・楽天/Yahoo!両方の応答の受け取り・分岐・直接取得へのフォールバック）のテスト |
+| `tests/worker.test.js` | 中継サーバーのJAN検証・キャッシュキー・CORS・エラー読み替え・楽天とYahoo!の併用/フォールバックのテスト |
 | `preview-375.html` | 375px幅での表示確認用（iframe）。`preview-375.html?src=<URL>` で任意URLを375×812で表示 |
 | `preview-393.html` | 393px幅での表示確認用（iframe）。`preview-393.html?src=<URL>` で任意URLを393×852で表示 |
 
@@ -77,6 +77,7 @@ node --test tests/
 
 - JANチェックディジット（モジュラス10/ウェイト3）、13桁判定、全角・ハイフン正規化
 - 楽天画像の中継サーバー（13桁検証・キャッシュキー・CORS・秘密を応答に出さないこと・7日キャッシュ）
+- 楽天API＋Yahoo!ショッピングAPI（v3）の併用（Secretの有無で順番が変わる・片方が落ちたらもう片方で補完・両方失敗時の返し方）
 - 辞書データ（13桁・チェックディジット・重複なし・出典URL・プレフィックス判別との整合）
 - 在庫増減（0未満にしない／0で「使い切り」→補充で「残りわずか」）
 - 買い物リスト抽出、キーワード/カテゴリ/残量/メーカー/フォルダ/部分JAN検索
@@ -90,6 +91,7 @@ node --test tests/
 - **手元写真**: 編集シートの「写真を追加／変更」で選んだ画像を、`<canvas>` で長辺320px・JPEG品質0.75（1枚15〜30KB前後）に圧縮し、IndexedDB（DB名 `art-supply-images` / ストア `photos` / キーは画材ID）へBlobで保存します。localStorage（5MB）を圧迫しません。写真は端末内だけに保存され、外部へ送信されません
 - **表示優先順**: ①手元写真（IndexedDB）→ ②`imageUrl`（楽天API取得または手入力）→ ③従来の絵具チューブSVG／カテゴリ別アイコン。画像の読み込みに失敗した場合は自動でアイコン表示に戻ります
 - **楽天APIの設定**: 設定タブの「楽天アプリID」に、[楽天ウェブサービス](https://webservice.rakuten.co.jp/) で無料発行したアプリIDを保存してください。アプリの「許可ドメイン」に `shodai4.com`（と `shodai4.github.io`）を入れると、ブラウザから直接APIを叩けます。JANを入れて「このJANで画像を取得（楽天）」を押すと商品画像URLがセットされます（未設定・画像なし・回数制限は短いトーストで案内）
+- **中継サーバー（楽天＋Yahoo!）**: 中継サーバーのURLを設定しておくと、利用者は登録なしで画像を取得できます。楽天の管理画面がメンテナンスで止まっていても Yahoo! で取得でき、画像を取得したときは「商品名（楽天／Yahoo!）」のように当たった商品と取得元が表示されます。Yahoo!のAPIを使うため、設定タブの最下部にクレジット（Webサービス by Yahoo! JAPAN）を規定のHTMLで置いています（`docs/rakuten-proxy-setup.md`）
 - **バックアップ**: JSONには `imageUrl` は入りますが、手元写真は含まれません（設定画面にもその旨を表示）。バックアップを読み込んだとき、そこに無い画材の手元写真（孤児レコード）は端末内から自動で削除します
 
 ## JAN辞書について（重要）

@@ -7,7 +7,7 @@
 <meta name="description" content="画材の在庫をフォルダ（家・アトリエ・持ち出し・ストック）で管理。JANバーコード読み取り対応の画材管理アプリ。">
 <title>画材管理 ｜ Art Supply Manager</title>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="styles.css?v=1.3.5">
+<link rel="stylesheet" href="styles.css?v=1.3.6">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
 </head>
@@ -160,7 +160,7 @@
       <p class="hint" id="rakutenState">—</p>
       <details class="advanced">
         <summary>設定する</summary>
-        <p class="hint">中継サーバーのURLを入れると、楽天アプリIDの登録なしでJANから商品画像を取得できます。</p>
+        <p class="hint">中継サーバーのURLを入れると、アプリIDの登録なしでJANから商品画像を取得できます（楽天・Yahoo!の両方に対応）。</p>
         <div class="field">
           <label for="fProxyUrl">中継サーバーURL</label>
           <input id="fProxyUrl" placeholder="https://rakuten-image-proxy.xxx.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="url">
@@ -195,6 +195,9 @@
     <p class="micro foot-note">Amazonのアソシエイトとして、適格販売により収入を得ています。ほかの通販リンクもアフィリエイトの場合があります</p>
     <p class="micro foot-links"><a href="privacy.html" target="_blank" rel="noopener noreferrer">プライバシー</a> ・ <a href="support.html" target="_blank" rel="noopener noreferrer">サポート</a></p>
     <p class="hint" style="text-align:center;margin:10px 0 0">お絵描き楽しも委員会（しょうだい）</p>
+    <!-- Begin Yahoo! JAPAN Web Services Attribution Snippet -->
+    <span style="margin:15px 15px 15px 15px"><a href="https://developer.yahoo.co.jp/sitemap/">Webサービス by Yahoo! JAPAN</a></span>
+    <!-- End Yahoo! JAPAN Web Services Attribution Snippet -->
   </section>
 </main>
 
@@ -360,6 +363,6 @@
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<script type="module" src="app.js?v=1.3.5"></script>
+<script type="module" src="app.js?v=1.3.6"></script>
 </body>
 </html>

@@ -19,8 +19,8 @@ import {
   chooseScanStrategy, isNativeShell, nativeScannerPlugin, loadVendorScanner, VENDOR_SCANNER_PATH,
 } from './scanner.js';
 import {
-  compressImageFile, listPhotos, putPhoto, deletePhoto, clearPhotos, fetchProductImage,
-  resolveImageProxyUrl, normalizeProxyUrl, canUseImageProxy,
+  compressImageFile, listPhotos, putPhoto, deletePhoto, clearPhotos, fetchProductImageInfo,
+  resolveImageProxyUrl, normalizeProxyUrl, canUseImageProxy, sourceLabel,
 } from './images.js';
 
 const $ = (id) => document.getElementById(id);
@@ -554,7 +554,7 @@ $('btnSaveImageSettings').addEventListener('click', () => {
   toast('画像取得の設定を保存しました');
 });
 
-/** JANコードから楽天の商品画像を取得して「画像URL」に入れる */
+/** JANコードから商品画像を取得して「画像URL」に入れる（中継サーバー経由。楽天・Yahoo!どちらでも） */
 $('btnFetchImage').addEventListener('click', async () => {
   const jan = normalizeJAN($('fJan').value);
   if (!/^\d{13}$/.test(jan)) { toast('JANを13桁で入力してください'); return; }
@@ -562,12 +562,18 @@ $('btnFetchImage').addEventListener('click', async () => {
   btn.disabled = true;
   btn.textContent = '取得しています…';
   try {
-    const url = await fetchProductImage(jan, {
+    const info = await fetchProductImageInfo(jan, {
       appId: String(state.settings.rakutenAppId || '').trim(),
       accessKey: String(state.settings.rakutenAccessKey || '').trim(),
       proxyUrl: resolveImageProxyUrl(state.settings),
     });
-    $('fImageUrl').value = url;
+    $('fImageUrl').value = info.imageUrl;
+    // どの商品に当たったか（別の商品の画像が付かないよう、商品名と取得元を出す）
+    const name = info.itemName.length > 32 ? `${info.itemName.slice(0, 32)}…` : info.itemName;
+    const from = sourceLabel(info.source);
+    $('imageUrlHint').textContent = name
+      ? `${name}${from ? `（${from}）` : ''}の画像をセットしました`
+      : '商品画像をセットしました（保存で確定）';
     renderPhotoPreview();
     toast('商品画像をセットしました（保存で確定）');
   } catch (err) {
@@ -724,6 +730,7 @@ function openItemSheet(id, preset = {}) {
   $('fPrice').value = data.price ?? '';
   $('fMemo').value = data.memo || '';
   $('fImageUrl').value = (it && it.imageUrl) || '';
+  $('imageUrlHint').textContent = '画像URLを貼り付け';
   if (pendingPhoto && pendingPhoto.url) URL.revokeObjectURL(pendingPhoto.url);
   pendingPhoto = null;
   $('photoHint').textContent = '端末内に保存（外部送信なし）';

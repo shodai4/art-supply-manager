@@ -1,24 +1,39 @@
-// 楽天市場の商品画像を JAN から返す中継サーバー（Cloudflare Workers）
+// 画材の商品画像を JAN から返す中継サーバー（Cloudflare Workers）
 //
-// 目的: アプリの利用者に楽天の認証情報（アプリID・アクセスキー）を配らずに、
-//       JANから商品画像を取得できるようにする。
+// 目的: アプリの利用者に楽天・Yahoo! の認証情報を配らずに、JANから商品画像を取得できるようにする。
+// - 取得先は「楽天市場 商品検索API」と「Yahoo!ショッピング 商品検索API（v3）」の2系統。
+//   Secret が入っているほうを先に試し、失敗（メンテナンス・認証・回数制限・画像なし）したら
+//   もう片方で補完する。楽天のキーが未設定なら Yahoo! が先に動く。
+//   楽天の管理画面がメンテナンスで止まっている間も、Yahoo! 側で画像を返せる。
 // - 認証情報は Worker Secrets に置き、応答には絶対に含めない。
-//   アクセスキーは楽天へのリクエストでもヘッダーで送り、URLやログに残さない。
+//   楽天のアクセスキーはヘッダーで送り、URLやログに残さない
+//   （楽天のアプリIDとYahoo!のClient IDは、各APIの仕様でクエリに載せる必要がある）。
 // - 同じJANは Cloudflare のエッジキャッシュ（caches.default）に7日間ためて、
-//   無料枠（1日10万リクエスト）と楽天APIの回数制限（アプリIDごとに1秒1回）を守る。
+//   無料枠（1日10万リクエスト）と各APIの回数制限（楽天=1秒1回、Yahoo!=1分30回）を守る。
 // - 取得できるのは画像URLと最小限のメタデータだけ。
 //
 // 楽天APIは2026年の移行でエンドポイントが openapi.rakuten.co.jp に変わり、
 // applicationId と accessKey の両方が必要になった（旧 20220601 は2026年8月に廃止）。
+// Yahoo! は Yahoo!デベロッパーネットワークで発行する Client ID（アプリケーションID）だけで使える。
 //
 // エンドポイント: GET /?jan=4900669001911
-// 応答: { jan, imageUrl, itemName, itemPrice, itemUrl, shopName }
+// 応答: { jan, imageUrl, itemName, itemPrice, itemUrl, shopName, source }
+//       source は 'rakuten' か 'yahoo'（どちらのAPIから取れたか）
 
 /** 楽天市場 商品検索API（現行版 2026-07-01） */
 export const RAKUTEN_SEARCH_ENDPOINT = 'https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20260701';
 
 /** 旧エンドポイント（2026年8月に廃止。昔のアプリIDで動かす場合の切り替え用） */
 export const LEGACY_RAKUTEN_SEARCH_ENDPOINT = 'https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601';
+
+/** Yahoo!ショッピング 商品検索API（v3） */
+export const YAHOO_ITEM_SEARCH_ENDPOINT = 'https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch';
+
+/** Yahoo!に要求する画像サイズ（px）。exImage.url がこの大きさで返る */
+export const YAHOO_IMAGE_SIZE = 300;
+
+/** Yahoo!に要求する返却数（1件で足りるので通信量を抑える） */
+export const YAHOO_RESULTS = 1;
 
 /** 既定で許可するブラウザのオリジン（Web版・GitHub Pages・iOSアプリ・ローカル確認） */
 export const DEFAULT_ALLOWED_ORIGINS = [
@@ -96,6 +111,29 @@ export function cacheKey(jan) {
   return `${CACHE_KEY_PREFIX}${jan}`;
 }
 
+/* ---------------- 使うAPIを決める（楽天・Yahoo!） ---------------- */
+
+/** 楽天のアプリID（RAKUTEN_APPLICATION_ID。短い別名 RAKUTEN_APP_ID も受ける） */
+export function rakutenAppId(env = {}) {
+  return String(env?.RAKUTEN_APPLICATION_ID ?? env?.RAKUTEN_APP_ID ?? '').trim();
+}
+
+/** Yahoo!の Client ID（YAHOO_CLIENT_ID。旧名の YAHOO_APP_ID も受ける） */
+export function yahooClientId(env = {}) {
+  return String(env?.YAHOO_CLIENT_ID ?? env?.YAHOO_APP_ID ?? '').trim();
+}
+
+/**
+ * 取得を試す順番。Secret が入っているAPIだけを並べる。
+ * 楽天のキーが入っていれば楽天が先（Yahoo!は補完）、楽天が無ければ Yahoo! が先。
+ * どちらも無ければ空配列（＝設定未完了）。
+ */
+export function providerOrder(env = {}) {
+  const hasYahoo = Boolean(yahooClientId(env));
+  if (rakutenAppId(env)) return hasYahoo ? ['rakuten', 'yahoo'] : ['rakuten'];
+  return hasYahoo ? ['yahoo'] : [];
+}
+
 /** 使用する楽天APIのエンドポイント（RAKUTEN_API_ENDPOINT で差し替え可） */
 export function rakutenEndpoint(env = {}) {
   const custom = String(env?.RAKUTEN_API_ENDPOINT ?? '').trim();
@@ -110,7 +148,7 @@ export function rakutenEndpoint(env = {}) {
  */
 export function rakutenApiUrl(env, jan, { hits = 1 } = {}) {
   const params = new URLSearchParams({
-    applicationId: String(env?.RAKUTEN_APPLICATION_ID ?? '').trim(),
+    applicationId: rakutenAppId(env),
     keyword: String(jan),
     hits: String(hits),
     format: 'json',
@@ -132,6 +170,27 @@ export function rakutenRequestHeaders(env = {}) {
   return headers;
 }
 
+/**
+ * Yahoo!の商品検索API（v3）のURL。JANは jan_code、画像は image_size=300。
+ * Client ID は Yahoo! の仕様で appid（クエリ）必須。応答やログには出さない。
+ */
+export function yahooApiUrl(env, jan, { results = YAHOO_RESULTS, imageSize = YAHOO_IMAGE_SIZE } = {}) {
+  const params = new URLSearchParams({
+    appid: yahooClientId(env),
+    jan_code: String(jan),
+    image_size: String(imageSize),
+    results: String(results),
+  });
+  const affiliateId = String(env?.YAHOO_AFFILIATE_ID ?? '').trim();
+  if (affiliateId) {
+    params.set('affiliate_type', String(env?.YAHOO_AFFILIATE_TYPE ?? '').trim() || 'vc');
+    params.set('affiliate_id', affiliateId);
+  }
+  return `${YAHOO_ITEM_SEARCH_ENDPOINT}?${params.toString()}`;
+}
+
+/* ---------------- 応答の読み取り ---------------- */
+
 /** 画像URLを https にそろえ、_ex を 300x300 に上げる（http配信の商品も安全に出す） */
 export function normalizeImageUrl(url) {
   const s = String(url ?? '').trim();
@@ -140,7 +199,7 @@ export function normalizeImageUrl(url) {
   return https.replace(/([?&])_ex=\d+x\d+/g, `$1_ex=${IMAGE_EX_SIZE}`);
 }
 
-/** API応答から最初の商品の画像URLとメタデータを取る（formatVersion=2 / 旧形式の両対応） */
+/** 楽天APIの応答から最初の商品の画像URLとメタデータを取る（formatVersion=2 / 旧形式の両対応） */
 export function pickItem(payload) {
   const list = Array.isArray(payload?.Items) ? payload.Items : Array.isArray(payload?.items) ? payload.items : [];
   for (const raw of list) {
@@ -160,6 +219,33 @@ export function pickItem(payload) {
       itemPrice: Number(it.itemPrice) || 0,
       itemUrl: String(it.itemUrl ?? ''),
       shopName: String(it.shopName ?? ''),
+    };
+  }
+  return null;
+}
+
+/**
+ * Yahoo!の商品検索API（v3）の応答から最初の商品を取る。
+ * 画像は exImage（image_size=300で指定した大きさ）→ image.medium（146px）→ image.small（76px）の順。
+ * 画像の無い商品しか無ければ null。
+ */
+export function pickYahooItem(payload) {
+  const hits = Array.isArray(payload?.hits) ? payload.hits : [];
+  for (const hit of hits) {
+    if (!hit || typeof hit !== 'object') continue;
+    const candidates = [hit.exImage?.url, hit.image?.medium, hit.image?.small];
+    let imageUrl = '';
+    for (const candidate of candidates) {
+      imageUrl = normalizeImageUrl(candidate);
+      if (imageUrl) break;
+    }
+    if (!imageUrl) continue;
+    return {
+      imageUrl,
+      itemName: String(hit.name ?? ''),
+      itemPrice: Number(hit.price) || 0,
+      itemUrl: String(hit.url ?? ''),
+      shopName: String(hit.seller?.name ?? hit.seller?.sellerId ?? ''),
     };
   }
   return null;
@@ -193,6 +279,136 @@ export function mapRakutenError(payload, status) {
   return { status: 502, error: 'upstream_error', message: '商品情報を取得できませんでした' };
 }
 
+/** Yahoo!APIのエラー文（{ Error: { Code, Message } } 形式） */
+export function yahooErrorMessage(payload) {
+  const message = payload?.Error?.Message;
+  if (typeof message === 'string') return message;
+  const plain = payload?.error;
+  if (typeof plain === 'string') return plain;
+  return '';
+}
+
+/**
+ * Yahoo!APIのエラーを中継サーバー側のエラーコードに読み替える（秘密は含めない）。
+ * 401（appidなし）・403（Client IDが不正/削除済み/制限）は設定の問題として扱う。
+ */
+export function mapYahooError(payload, status) {
+  const message = yahooErrorMessage(payload);
+  const code = Number(status) || 0;
+  if (code === 401 || code === 403
+    || /forbidden|unauthori[sz]ed|invalid app|application id|not allowed/i.test(message)) {
+    return { status: 500, error: 'not_configured', message: '中継サーバーのYahoo!API設定を確認してください' };
+  }
+  if (code === 429 || /too ?many|rate limit/i.test(message)) {
+    return { status: 429, error: 'rate_limited', message: '回数制限に達しました。少し待って再試行してください' };
+  }
+  if (code >= 400 && code < 500) {
+    return { status: 502, error: 'upstream_rejected', message: '商品情報を取得できませんでした' };
+  }
+  return { status: 502, error: 'upstream_error', message: '商品情報を取得できませんでした' };
+}
+
+/* ---------------- 取得先ごとの呼び出し ---------------- */
+
+/** 中継サーバー側の失敗の種類（次に試すかの判断と、最後にどれを返すかに使う） */
+const KIND_BY_ERROR = {
+  not_configured: 'not_configured',
+  rate_limited: 'rate_limited',
+  image_not_found: 'no_item',
+};
+
+function failure(source, mapped) {
+  return {
+    ok: false,
+    source,
+    kind: KIND_BY_ERROR[mapped.error] || 'upstream',
+    status: mapped.status,
+    error: mapped.error,
+    message: mapped.message,
+  };
+}
+
+/** 商品が無かったときの結果 */
+function noItem(source) {
+  return failure(source, { status: 404, error: 'image_not_found', message: '商品画像が見つかりませんでした' });
+}
+
+/** 通信できなかったときの結果 */
+function unreachable(source) {
+  return failure(source, { status: 502, error: 'upstream_unreachable', message: '商品情報を取得できませんでした' });
+}
+
+/** 楽天で1件探す。返り値は { ok, source, item? } か { ok:false, kind, status, error, message } */
+export async function fetchFromRakuten(jan, env, doFetch) {
+  const source = 'rakuten';
+  let res;
+  try {
+    res = await doFetch(rakutenApiUrl(env, jan), { headers: rakutenRequestHeaders(env) });
+  } catch {
+    return unreachable(source);
+  }
+  let payload = null;
+  try { payload = await res.json(); } catch { payload = null; }
+  if (!res.ok || (payload && (payload.error || payload.errors))) {
+    return failure(source, mapRakutenError(payload, res.status));
+  }
+  const item = pickItem(payload);
+  if (!item) return noItem(source);
+  return { ok: true, source, item };
+}
+
+/** Yahoo!で1件探す。返り値の形は fetchFromRakuten と同じ */
+export async function fetchFromYahoo(jan, env, doFetch) {
+  const source = 'yahoo';
+  let res;
+  try {
+    // Client ID は Yahoo! の仕様でクエリ必須。ブラウザの Referer は送らず、サーバー間で叩く
+    res = await doFetch(yahooApiUrl(env, jan), { headers: { Accept: 'application/json' } });
+  } catch {
+    return unreachable(source);
+  }
+  let payload = null;
+  try { payload = await res.json(); } catch { payload = null; }
+  if (!res.ok || (payload && payload.Error)) {
+    return failure(source, mapYahooError(payload, res.status));
+  }
+  const item = pickYahooItem(payload);
+  if (!item) return noItem(source);
+  return { ok: true, source, item };
+}
+
+/**
+ * すべて失敗したときに、どれをクライアントへ返すか決める。
+ * 1) 全員「商品なし」→ 404（どこにも無い）
+ * 2) 回数制限があれば 429（待てば取れる）
+ * 3) 設定不備・上流の異常があればそのエラー（「無い」とは言い切れない）
+ * 4) それ以外は 404
+ */
+export function chooseFailure(failures = []) {
+  const list = (Array.isArray(failures) ? failures : []).filter(Boolean);
+  if (!list.length) {
+    return { status: 502, error: 'upstream_error', message: '商品情報を取得できませんでした' };
+  }
+  const kinds = new Set(list.map((f) => f.kind));
+  if (kinds.size === 1 && kinds.has('no_item')) {
+    return { status: 404, error: 'image_not_found', message: '商品画像が見つかりませんでした' };
+  }
+  if (list.length > 1 && kinds.has('not_configured') && [...kinds].every((k) => k === 'not_configured' || k === 'no_item')) {
+    // 複数の取得先のうち設定不備があると「無い」とは言い切れないので、設定を見直してもらう
+    return {
+      status: 500,
+      error: 'not_configured',
+      message: '中継サーバーのAPI設定（楽天・Yahoo!）を確認してください',
+    };
+  }
+  for (const kind of ['rate_limited', 'not_configured', 'upstream']) {
+    const hit = list.find((f) => f.kind === kind);
+    if (hit) return { status: hit.status, error: hit.error, message: hit.message };
+  }
+  const first = list[0];
+  return { status: first.status, error: first.error, message: first.message };
+}
+
 function jsonResponse(body, status, origin, env, extraHeaders = {}) {
   return new Response(JSON.stringify(body), {
     status,
@@ -212,8 +428,10 @@ function errorResponse(status, error, message, origin, env, extraHeaders = {}) {
 /**
  * リクエスト処理の本体。テストから叩けるよう fetch・cache・waitUntil を差し替え可能にしている。
  * @param {Request} request
- * @param {object} env  RAKUTEN_APPLICATION_ID / RAKUTEN_ACCESS_KEY / RAKUTEN_AFFILIATE_ID /
- *                      RAKUTEN_REFERER / RAKUTEN_API_ENDPOINT / ALLOWED_ORIGINS
+ * @param {object} env  RAKUTEN_APPLICATION_ID（別名 RAKUTEN_APP_ID）/ RAKUTEN_ACCESS_KEY /
+ *                      RAKUTEN_AFFILIATE_ID / RAKUTEN_REFERER / RAKUTEN_API_ENDPOINT /
+ *                      YAHOO_CLIENT_ID（別名 YAHOO_APP_ID）/ YAHOO_AFFILIATE_ID /
+ *                      YAHOO_AFFILIATE_TYPE / ALLOWED_ORIGINS
  * @param {{fetchImpl?: Function, cache?: object, waitUntil?: Function}} options
  */
 export async function handleRequest(request, env = {}, options = {}) {
@@ -246,8 +464,14 @@ export async function handleRequest(request, env = {}, options = {}) {
   if (calcCheckDigit(jan.slice(0, 12)) !== Number(jan[12])) {
     return errorResponse(400, 'invalid_jan', 'JANコードのチェックディジットが合いません', origin, env);
   }
-  if (!String(env?.RAKUTEN_APPLICATION_ID ?? '').trim()) {
-    return errorResponse(500, 'not_configured', '中継サーバーの設定が未完了です', origin, env);
+
+  const order = providerOrder(env);
+  if (!order.length) {
+    return errorResponse(
+      500, 'not_configured',
+      '中継サーバーの設定が未完了です（楽天APIかYahoo!APIのキーを登録してください）',
+      origin, env,
+    );
   }
 
   const key = cacheKey(jan);
@@ -263,39 +487,36 @@ export async function handleRequest(request, env = {}, options = {}) {
           return jsonResponse(data, 200, origin, env, {
             'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}`,
             'X-Proxy-Cache': 'HIT',
+            'X-Proxy-Source': String(data.source || ''),
           });
         }
       }
     } catch { /* キャッシュ不調でも取得は続ける */ }
   }
 
-  // 2) 楽天APIを叩く（アプリIDはクエリ、アクセスキーはヘッダー）
+  // 2) Secret の入っているAPIを順に試し、取れたらそこで確定（失敗したら次のAPIで補完）
   const doFetch = fetchImpl || (typeof fetch === 'function' ? fetch.bind(globalThis) : null);
   if (!doFetch) return errorResponse(500, 'fetch_unavailable', '中継サーバーが通信できません', origin, env);
 
-  let res;
-  try {
-    res = await doFetch(rakutenApiUrl(env, jan), { headers: rakutenRequestHeaders(env) });
-  } catch {
-    return errorResponse(502, 'upstream_unreachable', '商品情報を取得できませんでした', origin, env);
+  const failures = [];
+  let found = null;
+  for (const source of order) {
+    const result = source === 'rakuten'
+      ? await fetchFromRakuten(jan, env, doFetch)
+      : await fetchFromYahoo(jan, env, doFetch);
+    if (result.ok) {
+      found = result;
+      break;
+    }
+    failures.push(result);
   }
 
-  let payload = null;
-  try { payload = await res.json(); } catch { payload = null; }
-
-  if (!res.ok || (payload && (payload.error || payload.errors))) {
-    const mapped = mapRakutenError(payload, res.status);
+  if (!found) {
+    const mapped = chooseFailure(failures);
     return errorResponse(mapped.status, mapped.error, mapped.message, origin, env);
   }
 
-  const item = pickItem(payload);
-  if (!item) {
-    return errorResponse(404, 'image_not_found', '商品画像が見つかりませんでした', origin, env, {
-      'Cache-Control': 'public, max-age=600',
-    });
-  }
-
-  const data = { jan, ...item };
+  const data = { jan, ...found.item, source: found.source };
 
   // 3) キャッシュへ保存（応答を待たせない）
   if (cache && typeof cache.put === 'function') {
@@ -313,6 +534,7 @@ export async function handleRequest(request, env = {}, options = {}) {
   return jsonResponse(data, 200, origin, env, {
     'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}`,
     'X-Proxy-Cache': 'MISS',
+    'X-Proxy-Source': found.source,
   });
 }
 

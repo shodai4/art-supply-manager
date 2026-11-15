@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "JANコードから楽天市場の商品画像を返す中継サーバー（Cloudflare Workers）",
+  "description": "JANコードから商品画像（楽天市場・Yahoo!ショッピング）を返す中継サーバー（Cloudflare Workers）",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",

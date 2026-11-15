@@ -114,10 +114,23 @@ test('画像取得の設定は「中継サーバーURL＋上級者の認証情�
   assert.equal(html.includes('btnSaveRakuten'), false, '旧ボタンが残っている');
 
   // 画像を取得ボタンは中継サーバー経由の入口を使う（自分のアプリIDは逃げ道）
-  assert.match(app, /fetchProductImage\(/);
+  assert.match(app, /fetchProductImageInfo\(/);
   assert.match(app, /accessKey: String\(state\.settings\.rakutenAccessKey/);
   assert.equal(/fetchRakutenImage\(/.test(app), false);
 
   // 全員に効くURLは1か所の定数（デプロイ後にここへ入れる）
   assert.match(images, /export const DEFAULT_IMAGE_PROXY_URL = '';/);
+
+  // 中継サーバーは楽天・Yahoo!の両方に対応していることを設定画面で伝える
+  assert.match(html, /楽天・Yahoo!の両方に対応/);
+});
+
+test('Yahoo!のAPIを使うため、規定のHTMLでクレジットを最下部に置く', () => {
+  const html = read('index.html');
+  // 規定のソース（上下のコメントとspanのstyle）をそのまま使う。classなどを足して見た目を変えない
+  assert.ok(html.includes('<!-- Begin Yahoo! JAPAN Web Services Attribution Snippet -->'));
+  assert.ok(html.includes('<span style="margin:15px 15px 15px 15px"><a href="https://developer.yahoo.co.jp/sitemap/">Webサービス by Yahoo! JAPAN</a></span>'));
+  assert.ok(html.includes('<!-- End Yahoo! JAPAN Web Services Attribution Snippet -->'));
+  const snippetAt = html.indexOf('Begin Yahoo! JAPAN Web Services Attribution Snippet');
+  assert.ok(snippetAt > html.indexOf('foot-note'), 'クレジットは注記より下（アプリの下部）に置く');
 });

@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {
   DEFAULT_IMAGE_PROXY_URL, normalizeProxyUrl, resolveImageProxyUrl, imageProxyUrl,
   pickProxyImageUrl, canUseImageProxy, describeProxyError, shouldFallbackToAppId,
-  fetchRakutenImageViaProxy, fetchProductImage,
+  fetchRakutenImageViaProxy, fetchProductImage, parseProxyProduct, sourceLabel,
+  fetchProductViaProxy, fetchProductImageInfo,
 } from '../images.js';
 
 const JAN = '4900669001911';
@@ -168,4 +169,83 @@ test('中継サーバー未設定でも自分の認証情報があれば直接�
   const call = fetchImpl.calls[0];
   assert.equal(new URL(call.url).searchParams.get('accessKey'), 'key-1');
   assert.equal(new URL(call.url).searchParams.get('applicationId'), 'appid-1');
+});
+
+/* ================= 中継サーバーが楽天・Yahoo!のどちらから返しても同じ形で扱える ================= */
+
+/** Yahoo!由来の中継サーバーの応答（画像URLに _ex は付かない） */
+const yahooBody = {
+  jan: JAN,
+  imageUrl: 'https://item-shopping.c.yimg.jp/i/l/art_abc',
+  itemName: 'ホルベイン 透明水彩セット',
+  itemPrice: 2345,
+  itemUrl: 'https://store.shopping.yahoo.co.jp/art/abc.html',
+  shopName: '画材の店',
+  source: 'yahoo',
+};
+
+test('中継サーバーの応答は、楽天由来でもYahoo!由来でも同じ形に整える', () => {
+  const yahoo = parseProxyProduct(yahooBody);
+  assert.deepEqual(yahoo, {
+    imageUrl: 'https://item-shopping.c.yimg.jp/i/l/art_abc',
+    itemName: 'ホルベイン 透明水彩セット',
+    itemPrice: 2345,
+    itemUrl: 'https://store.shopping.yahoo.co.jp/art/abc.html',
+    shopName: '画材の店',
+    source: 'yahoo',
+  });
+
+  // 楽天由来（_ex は 300x300 にそろえる・http は https に）
+  const rakuten = parseProxyProduct({ ...okBody, source: 'rakuten', imageUrl: 'http://thumbnail.image.rakuten.co.jp/a.jpg?_ex=128x128' });
+  assert.equal(rakuten.imageUrl, 'https://thumbnail.image.rakuten.co.jp/a.jpg?_ex=300x300');
+  assert.equal(rakuten.source, 'rakuten');
+
+  // source の無い古い中継サーバーの応答でも動く
+  const legacy = parseProxyProduct({ imageUrl: 'https://x/a.jpg' });
+  assert.equal(legacy.imageUrl, 'https://x/a.jpg');
+  assert.equal(legacy.source, '');
+  assert.equal(legacy.itemName, '');
+
+  // 画像URLが無ければ null
+  assert.equal(parseProxyProduct({}), null);
+  assert.equal(parseProxyProduct(null), null);
+
+  assert.equal(sourceLabel('rakuten'), '楽天');
+  assert.equal(sourceLabel('yahoo'), 'Yahoo!');
+  assert.equal(sourceLabel(''), '');
+  assert.equal(sourceLabel(undefined), '');
+});
+
+test('中継サーバー経由で商品名・価格・ショップ名まで受け取れる', async () => {
+  const fetchImpl = stubFetch(() => ({ ok: true, status: 200, json: async () => yahooBody }));
+  const product = await fetchProductViaProxy(JAN, PROXY, { fetchImpl });
+  assert.equal(product.imageUrl, yahooBody.imageUrl);
+  assert.equal(product.itemName, 'ホルベイン 透明水彩セット');
+  assert.equal(product.source, 'yahoo');
+
+  // これまでの入口（URLだけ返す）もそのまま使える
+  const url = await fetchRakutenImageViaProxy(JAN, PROXY, { fetchImpl });
+  assert.equal(url, yahooBody.imageUrl);
+
+  // 応答に画像URLが無いときは例外（今までどおり）
+  const empty = stubFetch(() => ({ ok: true, status: 200, json: async () => ({ jan: JAN }) }));
+  await assert.rejects(() => fetchProductViaProxy(JAN, PROXY, { fetchImpl: empty }), /見つかりません/);
+});
+
+test('画像取得の入口は、取得元つきの商品情報を返す（URLだけの入口も維持）', async () => {
+  const proxyFetch = stubFetch(() => ({ ok: true, status: 200, json: async () => yahooBody }));
+  const info = await fetchProductImageInfo(JAN, { proxyUrl: PROXY, fetchImpl: proxyFetch });
+  assert.equal(info.source, 'yahoo');
+  assert.equal(info.itemName, 'ホルベイン 透明水彩セット');
+  assert.equal(await fetchProductImage(JAN, { proxyUrl: PROXY, fetchImpl: proxyFetch }), yahooBody.imageUrl);
+
+  // 中継サーバーが落ちて自分の楽天アプリIDで取ったときは source を rakuten にする
+  const fallbackFetch = stubFetch((url) => {
+    if (url.startsWith(PROXY)) return { ok: false, status: 500, json: async () => ({ error: 'not_configured' }) };
+    return { ok: true, status: 200, json: async () => ({ Items: [{ mediumImageUrls: [{ imageUrl: 'https://thumbnail.image.rakuten.co.jp/d.jpg' }] }] }) };
+  });
+  const direct = await fetchProductImageInfo(JAN, { proxyUrl: PROXY, appId: 'appid-1', accessKey: 'key-1', fetchImpl: fallbackFetch });
+  assert.equal(direct.imageUrl, 'https://thumbnail.image.rakuten.co.jp/d.jpg');
+  assert.equal(direct.source, 'rakuten');
+  assert.equal(direct.itemName, '');
 });

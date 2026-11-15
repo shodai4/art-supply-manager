@@ -1,6 +1,9 @@
-# 楽天画像プロキシ（Cloudflare Workers）
+# 商品画像プロキシ（Cloudflare Workers）
+# 楽天市場 商品検索API と Yahoo!ショッピング 商品検索API（v3）を併用する
 # デプロイ: cd workers/rakuten-image-proxy && npx wrangler deploy
-# Secret:  npx wrangler secret put RAKUTEN_APPLICATION_ID
+# Secret:  npx wrangler secret put YAHOO_CLIENT_ID
+#          npx wrangler secret put RAKUTEN_APPLICATION_ID
+#          npx wrangler secret put RAKUTEN_ACCESS_KEY
 
 name = "rakuten-image-proxy"
 main = "src/index.js"
@@ -15,5 +18,8 @@ ALLOWED_ORIGINS = ""
 enabled = true
 
 # 秘密はここに書かない（ダッシュボードの Variables and Secrets、または wrangler secret put）
-#   RAKUTEN_APPLICATION_ID  必須
+#   YAHOO_CLIENT_ID         Yahoo!のClient ID（楽天のキーが無ければ必須。別名 YAHOO_APP_ID）
+#   RAKUTEN_APPLICATION_ID  任意（別名 RAKUTEN_APP_ID）
+#   RAKUTEN_ACCESS_KEY      任意（現行APIで必要）
+#   YAHOO_AFFILIATE_ID      任意（バリューコマース。入れると itemUrl がアフィリエイトリンクになる）
 #   RAKUTEN_AFFILIATE_ID    任意（入れると itemUrl がアフィリエイトリンクになる）
