@@ -149,8 +149,12 @@ export async function compressImageFile(file, { maxEdge = MAX_EDGE, quality = JP
 // 自分の認証情報で直接叩く上級者向けの経路。通常は中継サーバー（下の fetchProductImage）を使う。
 export const RAKUTEN_SEARCH_ENDPOINT = 'https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20260701';
 
-/** 商品検索APIのURL（ブラウザから直接叩く。applicationId は設定画面で保存したもの） */
-export function rakutenSearchUrl(appId, jan, { hits = 1 } = {}) {
+/**
+ * 商品検索APIのURL（ブラウザから直接叩く。applicationId・accessKey は設定画面で保存したもの）。
+ * ブラウザからは独自ヘッダーを付けると事前チェック（CORSのプリフライト）が走って弾かれやすいため、
+ * この経路だけは accessKey もクエリに入れる（自分の端末・自分のキーの範囲。中継サーバーでは使わない）。
+ */
+export function rakutenSearchUrl(appId, jan, { hits = 1, accessKey = '' } = {}) {
   const params = new URLSearchParams({
     applicationId: String(appId || '').trim(),
     keyword: String(jan || '').trim(),
@@ -158,6 +162,8 @@ export function rakutenSearchUrl(appId, jan, { hits = 1 } = {}) {
     format: 'json',
     formatVersion: '2',
   });
+  const key = String(accessKey || '').trim();
+  if (key) params.set('accessKey', key);
   return `${RAKUTEN_SEARCH_ENDPOINT}?${params.toString()}`;
 }
 
@@ -224,8 +230,7 @@ export async function fetchRakutenImage(jan, appId, { accessKey = '', fetchImpl,
   if (!doFetch) throw new Error('この端末では画像を取得できません');
   let res;
   try {
-    // アクセスキーはURLに載せずヘッダーで送る
-    res = await doFetch(rakutenSearchUrl(id, code, { hits }), { headers: { Accept: 'application/json', accessKey: key } });
+    res = await doFetch(rakutenSearchUrl(id, code, { hits, accessKey: key }), { headers: { Accept: 'application/json' } });
   } catch (e) {
     throw new Error('通信できませんでした（オフライン・許可ドメインを確認）');
   }

@@ -166,6 +166,6 @@ test('中継サーバー未設定でも自分の認証情報があれば直接�
   const url = await fetchProductImage(JAN, { appId: 'appid-1', accessKey: 'key-1', fetchImpl });
   assert.equal(url, 'https://thumbnail.image.rakuten.co.jp/e.jpg?_ex=300x300');
   const call = fetchImpl.calls[0];
-  assert.equal(call.headers.accessKey, 'key-1');
-  assert.equal(call.url.includes('key-1'), false);
+  assert.equal(new URL(call.url).searchParams.get('accessKey'), 'key-1');
+  assert.equal(new URL(call.url).searchParams.get('applicationId'), 'appid-1');
 });

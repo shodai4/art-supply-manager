@@ -99,9 +99,8 @@ test('JANから画像を取得（成功・未設定・APIエラー・画像な�
   assert.equal(url, 'https://thumbnail.image.rakuten.co.jp/p.jpg?_ex=300x300');
   assert.equal(calls.length, 1);
   assert.ok(calls[0].url.includes('keyword=4900669001911'));
-  // アクセスキーはヘッダーで送り、URLには載せない
-  assert.equal(calls[0].headers.accessKey, 'key-1');
-  assert.equal(calls[0].url.includes('key-1'), false);
+  // ブラウザ直叩きの経路はCORSのプリフライトを避けるため accessKey をクエリに入れる
+  assert.equal(new URL(calls[0].url).searchParams.get('accessKey'), 'key-1');
 
   await assert.rejects(() => fetchRakutenImage('4900669001911', '', { accessKey: 'key-1', fetchImpl: okFetch }), /楽天アプリID/);
   await assert.rejects(() => fetchRakutenImage('4900669001911', 'appid-1', { fetchImpl: okFetch }), /アクセスキー/);
