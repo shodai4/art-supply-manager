@@ -16,10 +16,10 @@ export const CATEGORIES = [
 ];
 
 export const STATUSES = [
-  { id: 'new', label: '新品', tone: 'good' },
-  { id: 'enough', label: '十分', tone: 'good' },
-  { id: 'low', label: '残りわずか', tone: 'warn' },
-  { id: 'empty', label: '使い切り/要補充', tone: 'bad' },
+  { id: 'new', label: '新品', short: '新品', tone: 'good' },
+  { id: 'enough', label: '十分', short: '十分', tone: 'good' },
+  { id: 'low', label: '残りわずか', short: '少なめ', tone: 'warn' },
+  { id: 'empty', label: '使い切り/要補充', short: '要補充', tone: 'bad' },
 ];
 
 /** 並び替え（一覧のソート）選択肢 */

@@ -82,12 +82,12 @@ main { padding: 0 12px 6px; }
 .it-name { display: block; font-size: 14px; font-weight: 700; margin: 0; line-height: 1.35; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .it-sub { display: flex; align-items: center; gap: 5px; margin-top: 1px; min-width: 0; }
 .it-meta { flex: 1 1 auto; font-size: 11px; color: var(--ink-2); line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.it-side { flex: 0 0 auto; display: flex; align-items: center; gap: 4px; }
-.it-side .step { width: 28px; height: 28px; padding: 0; border-radius: 8px; border: 1px solid var(--line); background: #fff; font-size: 16px; line-height: 1; font-weight: 700; color: var(--ink); }
+.it-side { flex: 0 0 auto; display: flex; align-items: center; gap: 3px; }
+.it-side .step { width: 26px; height: 26px; padding: 0; border-radius: 8px; border: 1px solid var(--line); background: #fff; font-size: 15px; line-height: 1; font-weight: 700; color: var(--ink); }
 .it-side .step:active { background: var(--accent-soft); }
-.it-side .qty { min-width: 20px; text-align: center; font-weight: 700; font-size: 13.5px; }
+.it-side .qty { min-width: 18px; text-align: center; font-weight: 700; font-size: 13.5px; }
 .it-side .qty small { font-size: 9px; color: var(--ink-2); margin-left: 1px; }
-.it-side .icon-btn { width: 28px; height: 28px; border-radius: 8px; font-size: 13px; }
+.it-side .icon-btn { width: 26px; height: 26px; border-radius: 8px; font-size: 12.5px; border: 1px solid var(--line); background: #fff; }
 
 /* メーカー順の見出し */
 .maker-head { display: flex; align-items: center; gap: 6px; padding: 5px 2px 3px; }

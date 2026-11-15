@@ -138,7 +138,7 @@ function itemCard(it, opts = {}) {
       <h3 class="it-name" data-edit="${esc(it.id)}" title="タップで編集">${esc(it.name)}</h3>
       <div class="it-sub">
         <button class="folder-tag" data-move="${esc(it.id)}">${esc(f.icon)} ${esc(f.name)} ▾</button>
-        <span class="badge ${st.tone}">${st.label}</span>
+        <span class="badge ${st.tone}" title="${esc(st.label)}">${esc(st.short || st.label)}</span>
         ${meta ? `<span class="it-meta">${meta}</span>` : ''}
       </div>
     </div>
