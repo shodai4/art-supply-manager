@@ -77,40 +77,53 @@ test('楽天APIの応答から商品画像を取り出す（v2/旧形式・小�
   assert.equal(pickRakutenImageUrl(null), '');
 });
 
-test('楽天商品検索APIのURLを組み立てる', () => {
+test('楽天商品検索APIのURLを組み立てる（現行のopenapi版を使う）', () => {
+  assert.equal(RAKUTEN_SEARCH_ENDPOINT, 'https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20260701');
   const url = rakutenSearchUrl('1234567890', '4900669001911');
   assert.ok(url.startsWith(`${RAKUTEN_SEARCH_ENDPOINT}?`));
   const q = new URL(url).searchParams;
   assert.equal(q.get('applicationId'), '1234567890');
   assert.equal(q.get('keyword'), '4900669001911');
   assert.equal(q.get('hits'), '1');
+  assert.equal(q.get('format'), 'json');
   assert.equal(q.get('formatVersion'), '2');
 });
 
 test('JANから画像を取得（成功・未設定・APIエラー・画像なし・通信エラー）', async () => {
   const calls = [];
-  const okFetch = (u) => { calls.push(u); return Promise.resolve({ ok: true, status: 200, json: async () => ({ Items: [{ mediumImageUrls: [{ imageUrl: 'https://thumbnail.image.rakuten.co.jp/p.jpg?_ex=128x128' }] }] }) }); };
-  const url = await fetchRakutenImage('4900669001911', 'appid-1', { fetchImpl: okFetch });
+  const okFetch = (u, init) => {
+    calls.push({ url: u, headers: (init && init.headers) || {} });
+    return Promise.resolve({ ok: true, status: 200, json: async () => ({ Items: [{ mediumImageUrls: [{ imageUrl: 'https://thumbnail.image.rakuten.co.jp/p.jpg?_ex=128x128' }] }] }) });
+  };
+  const url = await fetchRakutenImage('4900669001911', 'appid-1', { accessKey: 'key-1', fetchImpl: okFetch });
   assert.equal(url, 'https://thumbnail.image.rakuten.co.jp/p.jpg?_ex=300x300');
   assert.equal(calls.length, 1);
-  assert.ok(calls[0].includes('keyword=4900669001911'));
+  assert.ok(calls[0].url.includes('keyword=4900669001911'));
+  // アクセスキーはヘッダーで送り、URLには載せない
+  assert.equal(calls[0].headers.accessKey, 'key-1');
+  assert.equal(calls[0].url.includes('key-1'), false);
 
-  await assert.rejects(() => fetchRakutenImage('4900669001911', '', { fetchImpl: okFetch }), /楽天アプリID/);
-  await assert.rejects(() => fetchRakutenImage('123', 'appid-1', { fetchImpl: okFetch }), /13桁/);
+  await assert.rejects(() => fetchRakutenImage('4900669001911', '', { accessKey: 'key-1', fetchImpl: okFetch }), /楽天アプリID/);
+  await assert.rejects(() => fetchRakutenImage('4900669001911', 'appid-1', { fetchImpl: okFetch }), /アクセスキー/);
+  await assert.rejects(() => fetchRakutenImage('123', 'appid-1', { accessKey: 'key-1', fetchImpl: okFetch }), /13桁/);
   await assert.rejects(
-    () => fetchRakutenImage('4900669001911', 'bad', { fetchImpl: () => Promise.resolve({ ok: false, status: 400, json: async () => ({ error: 'wrong_application_id', error_description: 'invalid application id' }) }) }),
-    /楽天アプリID/,
+    () => fetchRakutenImage('4900669001911', 'bad', { accessKey: 'key-1', fetchImpl: () => Promise.resolve({ ok: false, status: 403, json: async () => ({ errors: { errorCode: 403, errorMessage: 'Invalid Access Key' } }) }) }),
+    /アクセスキー/,
   );
   await assert.rejects(
-    () => fetchRakutenImage('4900669001911', 'appid-1', { fetchImpl: () => Promise.resolve({ ok: false, status: 429, json: async () => ({ error: 'too_many_requests' }) }) }),
+    () => fetchRakutenImage('4900669001911', 'appid-1', { accessKey: 'key-1', fetchImpl: () => Promise.resolve({ ok: false, status: 400, json: async () => ({ error: 'wrong_parameter', error_description: 'specify valid applicationId' }) }) }),
+    /アプリID/,
+  );
+  await assert.rejects(
+    () => fetchRakutenImage('4900669001911', 'appid-1', { accessKey: 'key-1', fetchImpl: () => Promise.resolve({ ok: false, status: 429, json: async () => ({ error: 'too_many_requests' }) }) }),
     /回数制限/,
   );
   await assert.rejects(
-    () => fetchRakutenImage('4900669001911', 'appid-1', { fetchImpl: () => Promise.resolve({ ok: true, status: 200, json: async () => ({ Items: [] }) }) }),
+    () => fetchRakutenImage('4900669001911', 'appid-1', { accessKey: 'key-1', fetchImpl: () => Promise.resolve({ ok: true, status: 200, json: async () => ({ Items: [] }) }) }),
     /商品画像が見つかりません/,
   );
   await assert.rejects(
-    () => fetchRakutenImage('4900669001911', 'appid-1', { fetchImpl: () => Promise.reject(new TypeError('Failed to fetch')) }),
+    () => fetchRakutenImage('4900669001911', 'appid-1', { accessKey: 'key-1', fetchImpl: () => Promise.reject(new TypeError('Failed to fetch')) }),
     /通信できません/,
   );
 });
@@ -118,6 +131,8 @@ test('JANから画像を取得（成功・未設定・APIエラー・画像な�
 test('楽天APIのエラーは短い案内文にする', () => {
   assert.match(describeRakutenError({ error: 'wrong_application_id' }, 400), /アプリID/);
   assert.match(describeRakutenError({ error: 'too_many_requests' }, 429), /回数制限/);
+  assert.match(describeRakutenError({ errors: { errorCode: 403, errorMessage: 'Invalid Access Key' } }, 403), /アクセスキー/);
+  assert.match(describeRakutenError({ errors: { errorCode: 403, errorMessage: 'REQUEST_CONTEXT_BODY_HTTP_REFERRER_MISSING' } }, 403), /許可サイト/);
   assert.match(describeRakutenError({}, 404), /見つかりません/);
   assert.match(describeRakutenError({}, 500), /HTTP 500/);
   assert.match(describeRakutenError({ error: 'unknown' }, 400), /unknown/);

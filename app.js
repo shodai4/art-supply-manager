@@ -19,7 +19,8 @@ import {
   chooseScanStrategy, isNativeShell, nativeScannerPlugin, loadVendorScanner, VENDOR_SCANNER_PATH,
 } from './scanner.js';
 import {
-  compressImageFile, listPhotos, putPhoto, deletePhoto, clearPhotos, fetchRakutenImage,
+  compressImageFile, listPhotos, putPhoto, deletePhoto, clearPhotos, fetchProductImage,
+  resolveImageProxyUrl, normalizeProxyUrl, canUseImageProxy,
 } from './images.js';
 
 const $ = (id) => document.getElementById(id);
@@ -521,34 +522,51 @@ function renderSettings() {
   $('stQty').textContent = s.qty;
   $('stRestock').textContent = s.needRestock;
   const appId = String(state.settings.rakutenAppId || '');
+  const accessKey = String(state.settings.rakutenAccessKey || '');
+  const proxyUrl = String(state.settings.imageProxyUrl || '');
   if (document.activeElement !== $('fRakuten')) $('fRakuten').value = appId;
-  $('rakutenState').textContent = appId
-    ? `登録済み（末尾 ${appId.slice(-4)}）。JANで商品画像を取得できます`
-    : '未登録。JANからの画像取得は使えません（手元写真と画像URLはこのまま使えます）';
+  if (document.activeElement !== $('fAccessKey')) $('fAccessKey').value = accessKey;
+  if (document.activeElement !== $('fProxyUrl')) $('fProxyUrl').value = proxyUrl;
+  // 中継サーバーがあれば設定ゼロで使える。無ければ自分のアプリIDが要る
+  if (canUseImageProxy(state.settings)) {
+    $('rakutenState').textContent = appId
+      ? 'JANで商品画像を取得できます（中継サーバー経由・自分のアプリIDは予備）'
+      : 'JANで商品画像を取得できます（設定は不要です）';
+  } else if (appId && accessKey) {
+    $('rakutenState').textContent = `JANで商品画像を取得できます（自分の認証情報・末尾 ${appId.slice(-4)}）`;
+  } else {
+    $('rakutenState').textContent = 'JANからの画像取得は未設定です（下の設定から）';
+  }
   $('backupNote').textContent = `機種変更・データ消失対策。書き出したファイルは Google ドライブ等に保存してください。手元写真は端末内に保存され、JSONには含まれません（${photoCount}枚）。`;
   renderDictionaryState();
 }
 
-/* ---------------- 楽天アプリID（設定） ---------------- */
-$('btnSaveRakuten').addEventListener('click', () => {
+/* ---------------- 画像取得の設定（中継サーバーURL・楽天アプリID） ---------------- */
+$('btnSaveImageSettings').addEventListener('click', () => {
   const appId = $('fRakuten').value.trim().replace(/\s+/g, '');
-  state = { ...state, settings: { ...state.settings, rakutenAppId: appId } };
+  const rakutenAccessKey = $('fAccessKey').value.trim().replace(/\s+/g, '');
+  const rawProxy = $('fProxyUrl').value.trim();
+  const imageProxyUrl = normalizeProxyUrl(rawProxy);
+  if (rawProxy && !imageProxyUrl) { toast('中継サーバーURLは https:// から始まる形で入れてください'); return; }
+  state = { ...state, settings: { ...state.settings, rakutenAppId: appId, rakutenAccessKey, imageProxyUrl } };
   save();
   render();
-  toast(appId ? '楽天アプリIDを保存しました' : '楽天アプリIDを削除しました');
+  toast('画像取得の設定を保存しました');
 });
 
 /** JANコードから楽天の商品画像を取得して「画像URL」に入れる */
 $('btnFetchImage').addEventListener('click', async () => {
   const jan = normalizeJAN($('fJan').value);
   if (!/^\d{13}$/.test(jan)) { toast('JANを13桁で入力してください'); return; }
-  const appId = String(state.settings.rakutenAppId || '').trim();
-  if (!appId) { toast('楽天アプリIDが未設定です（設定タブで登録）'); return; }
   const btn = $('btnFetchImage');
   btn.disabled = true;
   btn.textContent = '取得しています…';
   try {
-    const url = await fetchRakutenImage(jan, appId);
+    const url = await fetchProductImage(jan, {
+      appId: String(state.settings.rakutenAppId || '').trim(),
+      accessKey: String(state.settings.rakutenAccessKey || '').trim(),
+      proxyUrl: resolveImageProxyUrl(state.settings),
+    });
     $('fImageUrl').value = url;
     renderPhotoPreview();
     toast('商品画像をセットしました（保存で確定）');

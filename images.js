@@ -145,7 +145,9 @@ export async function compressImageFile(file, { maxEdge = MAX_EDGE, quality = JP
 }
 
 /* ---------------- 楽天API（JANから商品画像） ---------------- */
-export const RAKUTEN_SEARCH_ENDPOINT = 'https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601';
+// 楽天市場 商品検索API（現行版 2026-07-01）。旧 app.rakuten.co.jp の 20220601 は2026年8月に廃止された。
+// 自分の認証情報で直接叩く上級者向けの経路。通常は中継サーバー（下の fetchProductImage）を使う。
+export const RAKUTEN_SEARCH_ENDPOINT = 'https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20260701';
 
 /** 商品検索APIのURL（ブラウザから直接叩く。applicationId は設定画面で保存したもの） */
 export function rakutenSearchUrl(appId, jan, { hits = 1 } = {}) {
@@ -153,6 +155,7 @@ export function rakutenSearchUrl(appId, jan, { hits = 1 } = {}) {
     applicationId: String(appId || '').trim(),
     keyword: String(jan || '').trim(),
     hits: String(hits),
+    format: 'json',
     formatVersion: '2',
   });
   return `${RAKUTEN_SEARCH_ENDPOINT}?${params.toString()}`;
@@ -181,10 +184,21 @@ export function pickRakutenImageUrl(payload) {
   return '';
 }
 
+/** APIエラーの文（新形式 errors.errorMessage と旧形式の両対応） */
+export function rakutenErrorMessage(payload) {
+  return String(payload?.errors?.errorMessage ?? payload?.error_description ?? payload?.error ?? '');
+}
+
 /** APIエラーの短い案内文 */
 export function describeRakutenError(payload, status) {
-  const code = String(payload?.error || payload?.error_description || '');
-  if (/wrong_application_id|invalid_application_id|wrong_parameter|invalid_request/i.test(code)) {
+  const code = rakutenErrorMessage(payload);
+  if (/invalid access key|access key/i.test(code)) {
+    return '楽天アクセスキーが正しくないようです（設定を確認）';
+  }
+  if (/referrer|not allowed|forbidden/i.test(code)) {
+    return '楽天APIの許可サイト設定を確認してください';
+  }
+  if (/wrong_application_id|invalid_application_id|wrong_parameter|invalid_request|specify valid applicationid|api configuration not found/i.test(code)) {
     return '楽天アプリIDが正しくないようです（設定を確認）';
   }
   if (Number(status) === 429 || /rate|too_many|limit/i.test(code)) {
@@ -199,25 +213,138 @@ export function describeRakutenError(payload, status) {
 }
 
 /** JANで楽天の商品検索APIを叩き、商品画像URLを返す（見つからなければ例外） */
-export async function fetchRakutenImage(jan, appId, { fetchImpl, hits = 1 } = {}) {
+export async function fetchRakutenImage(jan, appId, { accessKey = '', fetchImpl, hits = 1 } = {}) {
   const id = String(appId || '').trim();
   if (!id) throw new Error('楽天アプリIDが未設定です（設定で登録）');
+  const key = String(accessKey || '').trim();
+  if (!key) throw new Error('楽天アクセスキーが未設定です（設定で登録）');
   const code = String(jan || '').trim();
   if (!/^\d{8,14}$/.test(code)) throw new Error('JANコードを13桁で入力してください');
   const doFetch = fetchImpl || (typeof fetch === 'function' ? fetch.bind(globalThis) : null);
   if (!doFetch) throw new Error('この端末では画像を取得できません');
   let res;
   try {
-    res = await doFetch(rakutenSearchUrl(id, code, { hits }), { headers: { Accept: 'application/json' } });
+    // アクセスキーはURLに載せずヘッダーで送る
+    res = await doFetch(rakutenSearchUrl(id, code, { hits }), { headers: { Accept: 'application/json', accessKey: key } });
   } catch (e) {
     throw new Error('通信できませんでした（オフライン・許可ドメインを確認）');
   }
   let payload = null;
   try { payload = await res.json(); } catch { payload = null; }
-  if (!res.ok || (payload && payload.error)) {
+  if (!res.ok || (payload && (payload.error || payload.errors))) {
     throw new Error(describeRakutenError(payload, res.status));
   }
   const url = pickRakutenImageUrl(payload);
   if (!url) throw new Error('商品画像が見つかりませんでした');
   return url;
+}
+
+/* ---------------- 中継サーバー（Cloudflare Workers）経由の画像取得 ---------------- */
+/**
+ * みんなが共通で使う中継サーバー（workers/rakuten-image-proxy）。
+ * デプロイできたら、この1行にURLを入れるだけで全員がアプリID未登録のまま使える。
+ * 例: export const DEFAULT_IMAGE_PROXY_URL = 'https://rakuten-image-proxy.example.workers.dev';
+ */
+export const DEFAULT_IMAGE_PROXY_URL = '';
+
+/** URLの前後の空白と末尾スラッシュを落とし、http(s) だけ通す */
+export function normalizeProxyUrl(value) {
+  const s = String(value ?? '').trim().replace(/\/+$/, '');
+  if (!s || !/^https?:\/\//i.test(s)) return '';
+  return s;
+}
+
+/** 使う中継サーバー（設定で入れたURL → 同梱の既定URL の順） */
+export function resolveImageProxyUrl(settings = {}) {
+  return normalizeProxyUrl(settings?.imageProxyUrl) || normalizeProxyUrl(DEFAULT_IMAGE_PROXY_URL);
+}
+
+/** 中継サーバーに投げるURL（例: https://…workers.dev/?jan=4900669001911） */
+export function imageProxyUrl(proxyBase, jan) {
+  const base = normalizeProxyUrl(proxyBase);
+  if (!base) return '';
+  const code = String(jan ?? '').replace(/\s+/g, '');
+  if (!code) return '';
+  return `${base}/?jan=${encodeURIComponent(code)}`;
+}
+
+/** 中継サーバーの応答から画像URLを取り出す（https・300x300にそろえる） */
+export function pickProxyImageUrl(payload) {
+  const raw = String(payload?.imageUrl ?? '').trim();
+  if (!/^https?:\/\//i.test(raw)) return '';
+  return upgradeRakutenImage(raw.replace(/^http:\/\//i, 'https://'));
+}
+
+/** 中継サーバーが使える状態か（設定URLか既定URLがある） */
+export function canUseImageProxy(settings = {}) {
+  return Boolean(resolveImageProxyUrl(settings));
+}
+
+function proxyError(message, code, status) {
+  const err = new Error(message);
+  err.code = code;
+  err.status = Number(status) || 0;
+  return err;
+}
+
+/** 中継サーバーのエラーを短い案内文にする */
+export function describeProxyError(payload, status) {
+  const code = String(payload?.error ?? '');
+  const message = String(payload?.message ?? '');
+  if (code === 'invalid_jan' || code === 'missing_jan') return message || 'JANコードを確認してください';
+  if (code === 'image_not_found' || Number(status) === 404) return '商品画像が見つかりませんでした';
+  if (code === 'rate_limited' || Number(status) === 429) return '画像取得が混み合っています（少し待って再試行）';
+  if (code === 'not_configured') return '中継サーバーの設定が未完了です';
+  if (Number(status) >= 500) return '中継サーバーに接続できませんでした';
+  return message || `画像を取得できませんでした（HTTP ${status || '不明'}）`;
+}
+
+/** 中継サーバー経由でJANから商品画像URLを取得（見つからなければ例外） */
+export async function fetchRakutenImageViaProxy(jan, proxyBase, { fetchImpl } = {}) {
+  const url = imageProxyUrl(proxyBase, jan);
+  if (!url) throw proxyError('中継サーバーが未設定です', 'proxy_unset', 0);
+  const doFetch = fetchImpl || (typeof fetch === 'function' ? fetch.bind(globalThis) : null);
+  if (!doFetch) throw new Error('この端末では画像を取得できません');
+  let res;
+  try {
+    res = await doFetch(url, { headers: { Accept: 'application/json' } });
+  } catch {
+    throw proxyError('通信できませんでした（オフラインを確認）', 'network', 0);
+  }
+  let payload = null;
+  try { payload = await res.json(); } catch { payload = null; }
+  if (!res.ok || (payload && payload.error)) {
+    throw proxyError(describeProxyError(payload, res.status), String(payload?.error || 'proxy_error'), res.status);
+  }
+  const imageUrl = pickProxyImageUrl(payload);
+  if (!imageUrl) throw proxyError('商品画像が見つかりませんでした', 'image_not_found', 404);
+  return imageUrl;
+}
+
+/** 中継サーバーが落ちているときだけ、自分のアプリIDでの直接取得に切り替えてよいか */
+export function shouldFallbackToAppId(err) {
+  if (!err) return false;
+  if (err.code === 'network' || err.code === 'proxy_unset') return true;
+  return Number(err.status) >= 500;
+}
+
+/**
+ * JANから商品画像URLを取得する入口。
+ * 設定ゼロ（中継サーバーあり）なら誰でもそのまま取得でき、
+ * 中継サーバーが無い/落ちているときは自分の楽天アプリIDで直接叩く。
+ */
+export async function fetchProductImage(jan, { appId = '', accessKey = '', proxyUrl = '', fetchImpl } = {}) {
+  const code = String(jan ?? '').replace(/[\s\-]/g, '');
+  if (!/^\d{13}$/.test(code)) throw new Error('JANコードを13桁で入力してください');
+  const proxy = normalizeProxyUrl(proxyUrl) || normalizeProxyUrl(DEFAULT_IMAGE_PROXY_URL);
+  const id = String(appId ?? '').trim();
+  if (proxy) {
+    try {
+      return await fetchRakutenImageViaProxy(code, proxy, { fetchImpl });
+    } catch (err) {
+      if (!id || !shouldFallbackToAppId(err)) throw err;
+    }
+  }
+  if (!id) throw new Error('画像取得の設定がありません（設定で中継サーバーURLか楽天アプリIDを登録）');
+  return fetchRakutenImage(code, id, { accessKey, fetchImpl });
 }

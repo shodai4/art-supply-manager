@@ -58,7 +58,8 @@ test('配信ファイル jan-extra.json がルートにある（初期構造）'
 test('新しく足したファイルは絵文字を含まない（表示方針）', () => {
   const files = [
     'index.html', 'app.js', 'styles.css', 'core.js', 'shops.js', 'jan-extra.js', 'scanner.js',
-    'sw.js', 'vendor/README.md',
+    'sw.js', 'vendor/README.md', 'images.js', 'workers/rakuten-image-proxy/src/index.js',
+    'docs/rakuten-proxy-setup.md',
   ];
   for (const file of files) {
     const text = read(file);
@@ -97,4 +98,25 @@ test('Capacitor 判定と同梱スキャナの参照', () => {
   assert.equal(vendorScannerCtor({ __Html5QrcodeLibrary__: { Html5Qrcode: 'x' } }), 'x');
   assert.equal(vendorScannerCtor({ Html5Qrcode: 'y' }), 'y');
   assert.equal(vendorScannerCtor({}), null);
+});
+
+test('画像取得の設定は「中継サーバーURL＋上級者の認証情報」に整理され、画像ボタンは中継サーバー経由', () => {
+  const html = read('index.html');
+  const app = read('app.js');
+  const images = read('images.js');
+
+  // 設定画面: 普段見えるのは状態の1行だけで、入力は開閉式の中にまとめる
+  assert.match(html, /<details class="advanced">/);
+  for (const id of ['rakutenState', 'fProxyUrl', 'fRakuten', 'fAccessKey', 'btnSaveImageSettings']) {
+    assert.ok(html.includes(`id="${id}"`), `#${id} がありません`);
+  }
+  assert.equal(html.includes('btnSaveRakuten'), false, '旧ボタンが残っている');
+
+  // 画像を取得ボタンは中継サーバー経由の入口を使う（自分のアプリIDは逃げ道）
+  assert.match(app, /fetchProductImage\(/);
+  assert.match(app, /accessKey: String\(state\.settings\.rakutenAccessKey/);
+  assert.equal(/fetchRakutenImage\(/.test(app), false);
+
+  // 全員に効くURLは1か所の定数（デプロイ後にここへ入れる）
+  assert.match(images, /export const DEFAULT_IMAGE_PROXY_URL = '';/);
 });

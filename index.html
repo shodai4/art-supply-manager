@@ -7,7 +7,7 @@
 <meta name="description" content="画材の在庫をフォルダ（家・アトリエ・持ち出し・ストック）で管理。JANバーコード読み取り対応の画材管理アプリ。">
 <title>画材管理 ｜ Art Supply Manager</title>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="styles.css?v=1.1.0">
+<link rel="stylesheet" href="styles.css?v=1.2.0">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
 </head>
@@ -156,16 +156,27 @@
       <input type="file" id="fileImport" accept="application/json,.json" class="sr">
     </div>
     <div class="card">
-      <h2 class="card-t">商品画像（楽天API）</h2>
-      <p class="hint">楽天ウェブサービスで無料のアプリIDを発行し、下に貼り付けてください。アプリの「許可ドメイン」に shodai4.com を入れると、このアプリからJANで商品画像を取得できます。</p>
-      <div class="field">
-        <label for="fRakuten">楽天アプリID</label>
-        <input id="fRakuten" placeholder="1234567890123456789" autocomplete="off" autocapitalize="off" spellcheck="false">
-      </div>
-      <div class="actions">
-        <button class="btn primary" id="btnSaveRakuten">保存</button>
-      </div>
-      <p class="hint" id="rakutenState" style="margin:10px 0 0"></p>
+      <h2 class="card-t">商品画像</h2>
+      <p class="hint" id="rakutenState">—</p>
+      <details class="advanced">
+        <summary>設定する</summary>
+        <p class="hint">中継サーバーのURLを入れると、楽天アプリIDの登録なしでJANから商品画像を取得できます。</p>
+        <div class="field">
+          <label for="fProxyUrl">中継サーバーURL</label>
+          <input id="fProxyUrl" placeholder="https://rakuten-image-proxy.xxx.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="url">
+        </div>
+        <div class="field">
+          <label for="fRakuten">楽天アプリID（自分のIDで取得する）</label>
+          <input id="fRakuten" placeholder="1234567890123456789" autocomplete="off" autocapitalize="off" spellcheck="false">
+        </div>
+        <div class="field">
+          <label for="fAccessKey">楽天アクセスキー（自分のIDで取得する）</label>
+          <input id="fAccessKey" placeholder="アクセスキー" autocomplete="off" autocapitalize="off" spellcheck="false">
+        </div>
+        <div class="actions">
+          <button class="btn primary" id="btnSaveImageSettings">保存</button>
+        </div>
+      </details>
     </div>
     <div class="card">
       <h2 class="card-t">JAN辞書</h2>
@@ -349,6 +360,6 @@
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<script type="module" src="app.js?v=1.1.0"></script>
+<script type="module" src="app.js?v=1.2.0"></script>
 </body>
 </html>

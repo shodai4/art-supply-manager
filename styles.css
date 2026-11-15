@@ -349,3 +349,12 @@ main { padding: 0 0 56px; }
 
 /* 編集シート内の通販行は横幅を使い切る */
 #shopLinks { width: 100%; }
+
+/* ---------- 設定の詳細（たまにしか触らない項目は閉じておく） ---------- */
+details.advanced { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 10px; }
+details.advanced summary { cursor: pointer; font-size: 13px; font-weight: 700; color: var(--ink-2); list-style: none; }
+details.advanced summary::-webkit-details-marker { display: none; }
+details.advanced summary::before { content: '+ '; font-weight: 700; }
+details.advanced[open] summary::before { content: '- '; }
+details.advanced[open] summary { margin-bottom: 10px; }
+details.advanced > .hint:first-of-type { margin-top: 0; }
