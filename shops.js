@@ -15,7 +15,7 @@ import { normalizeJAN } from './core.js';
  * 値はコードに直接書かず、必要になったらここだけを書き換える。
  */
 export const SHOP_AFFILIATE_CONFIG = {
-  amazonTag: '',
+  amazonTag: 'shodai4-22',
   rakutenAffiliateId: '598e3f74.c89b09de.598e3f75.325c6ad1',
   yahooSid: '',
   yahooPid: '',
@@ -117,4 +117,4 @@ export function describeSearchQuery(query, item = {}) {
 }
 
 /** 画面に出す帰属表示（App Store / ASP規約向けの短い注記） */
-export const AFFILIATE_NOTE = '通販サイトへのリンクを含みます。アフィリエイトプログラムを利用する場合があります。';
+export const AFFILIATE_NOTE = '通販サイトへのリンクを含みます。Amazonのアソシエイトとして、適格販売により収入を得ています。';

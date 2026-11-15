@@ -132,6 +132,7 @@ test('アプリ内から参照する法務ページが用意されている', ()
   assert.match(privacy, /バーコード（JANコード）の読み取りのためだけに、端末内で使用/);
   assert.match(privacy, /外部サーバーへ送信することはありません/);
   assert.match(privacy, /アフィリエイトプログラム/);
+  assert.match(privacy, /Amazonのアソシエイトとして、適格販売により収入を得ています。/);
   const support = fs.readFileSync(path.join(ROOT, 'support.html'), 'utf8');
   assert.match(support, /shodai121ueda\+artsupply@gmail\.com/);
   assert.match(support, /privacy\.html/);

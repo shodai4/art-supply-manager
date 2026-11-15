@@ -63,29 +63,40 @@ test('検索語が作れないときはリンクを出さない', () => {
   assert.match(describeSearchQuery('', {}), /検索語がありません/);
 });
 
-test('帰属表示とデフォルト設定は絵文字なし・楽天IDのみ設定', () => {
+test('帰属表示とデフォルト設定は絵文字なし・Amazonタグと楽天IDを設定', () => {
   const re = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/u;
   assert.equal(re.test(AFFILIATE_NOTE), false);
-  assert.match(AFFILIATE_NOTE, /アフィリエイト/);
+  assert.match(AFFILIATE_NOTE, /アフィリエイト|アソシエイト/);
+  // Amazonアソシエイトの表示義務（適格販売であることの明記）
+  assert.match(AFFILIATE_NOTE, /Amazonのアソシエイトとして、適格販売により収入を得ています。/);
   assert.deepEqual(SHOP_AFFILIATE_CONFIG, {
-    amazonTag: '',
+    amazonTag: 'shodai4-22',
     rakutenAffiliateId: '598e3f74.c89b09de.598e3f75.325c6ad1',
     yahooSid: '',
     yahooPid: '',
   });
 });
 
-test('実際の設定で楽天アフィリエイトURLが組み立てられる', () => {
+test('実際の設定でAmazonタグが付き、楽天IDも維持される', () => {
+  const amazonPlain = plainSearchUrl('amazon', '4900669001911');
+  const amazon = applyAffiliate('amazon', amazonPlain);
+  assert.equal(amazon, `${amazonPlain}&tag=shodai4-22`);
+  assert.match(amazon, /^https:\/\/www\.amazon\.co\.jp\/s\?k=4900669001911&tag=shodai4-22$/);
+
+  // 検索語がJANでなくても同じようにタグが付く
+  const byName = applyAffiliate('amazon', plainSearchUrl('amazon', 'ホルベイン シルバー'));
+  assert.ok(byName.endsWith('&tag=shodai4-22'));
+
   const plain = plainSearchUrl('rakuten', '4900669001911');
   const url = applyAffiliate('rakuten', plain);
   assert.ok(url.startsWith('https://hb.afl.rakuten.co.jp/hgc/598e3f74.c89b09de.598e3f75.325c6ad1/?pc='));
   assert.ok(url.endsWith('&link_type=hybrid_url'));
   assert.equal(decodeURIComponent(url.split('pc=')[1].split('&')[0]), plain);
 
-  // 楽天だけ加工され、Amazon・Yahoo!は素の検索URLのまま
+  // 実設定の全リンク：Amazonだけタグ付き、楽天はハイブリッドURL、Yahoo!は素のまま
   const links = shopSearchLinks(item);
   assert.equal(links.length, 3);
-  assert.ok(links.find((l) => l.id === 'rakuten').url.startsWith('https://hb.afl.rakuten.co.jp/hgc/'));
-  assert.equal(links.find((l) => l.id === 'amazon').url, plainSearchUrl('amazon', '4900669001911'));
+  assert.equal(links.find((l) => l.id === 'amazon').url, `${amazonPlain}&tag=shodai4-22`);
+  assert.ok(links.find((l) => l.id === 'rakuten').url.startsWith('https://hb.afl.rakuten.co.jp/hgc/598e3f74.c89b09de.598e3f75.325c6ad1/?pc='));
   assert.equal(links.find((l) => l.id === 'yahoo').url, plainSearchUrl('yahoo', '4900669001911'));
 });

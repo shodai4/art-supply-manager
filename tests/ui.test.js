@@ -44,8 +44,9 @@ test('通販・辞書の導線がHTMLにある（短いラベル）', () => {
     assert.ok(html.includes('shop-links') || true);
     assert.ok(read('shops.js').includes(label.replace(/[><]/g, '')), `${label} が shops.js にありません`);
   }
-  // 法務・規約の注記は最下部の極小1行に逃がす
+  // 法務・規約の注記は最下部の極小1行に逃がす（Amazonアソシエイトの表示義務を含む）
   assert.match(html, /foot-note[\s\S]*アフィリエイト/);
+  assert.match(html, /foot-note[\s\S]*Amazonのアソシエイトとして、適格販売により収入を得ています。/);
 });
 
 test('配信ファイル jan-extra.json がルートにある（初期構造）', () => {

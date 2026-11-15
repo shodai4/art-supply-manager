@@ -89,12 +89,14 @@ node scripts/add-jan-extra.mjs \
 
 ```js
 export const SHOP_AFFILIATE_CONFIG = {
-  amazonTag: '',            // 例: 'shodai4-22'
-  rakutenAffiliateId: '',   // 例: '1234abcd.5678efgh'
+  amazonTag: 'shodai4-22', // AmazonアソシエイトのトラッキングID
+  rakutenAffiliateId: '598e3f74.c89b09de.598e3f75.325c6ad1',
   yahooSid: '',             // バリューコマース
   yahooPid: '',
 };
 ```
+
+- Amazonアソシエイトの表示義務として、設定画面の最下部と `privacy.html` に「Amazonのアソシエイトとして、適格販売により収入を得ています。」を明記している。
 
 - 検索語は **JAN優先**（最も正確）。無ければ「メーカー＋商品名＋色名」。
 - Amazon: `https://www.amazon.co.jp/s?k=<語>&tag=<タグ>`
