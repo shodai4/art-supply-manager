@@ -1,10 +1,10 @@
 // 画材管理アプリ UI（storage + rendering + バーコード読取）
 import {
-  STORAGE_KEY, CATEGORIES, STATUSES, DEFAULT_FOLDERS,
+  STORAGE_KEY, CATEGORIES, STATUSES, DEFAULT_FOLDERS, SORT_MODES, MAKER_NONE,
   createItem, adjustStock, computeShoppingList, filterItems, moveItems, sortItems, countByFolder,
   addFolder, updateFolder, reorderFolders, deleteFolder, upsertItem, deleteItems,
   exportState, importState, summarize, blankState,
-  isValidJAN, normalizeJAN, detectMaker, lookupJAN,
+  isValidJAN, normalizeJAN, detectMaker, lookupJAN, itemMaker, listMakers, groupByMaker,
 } from './core.js';
 import { JAN_DICTIONARY, JAN_PREFIXES } from './jan-database.js';
 
@@ -12,7 +12,7 @@ const $ = (id) => document.getElementById(id);
 const clone = (v) => JSON.parse(JSON.stringify(v));
 
 let state = loadState();
-let ui = { tab: 'stock', folderId: 'all', query: '', category: 'all', status: 'all', editingId: null, moveIds: [], folderEditId: null, scannedJAN: '' };
+let ui = { tab: 'stock', folderId: 'all', query: '', category: 'all', status: 'all', maker: 'all', editingId: null, moveIds: [], folderEditId: null, scannedJAN: '' };
 let scanner = null; // html5-qrcode instance
 let rafId = 0;
 
@@ -63,10 +63,7 @@ function render() {
   renderHeader();
   renderChips();
   renderFilters();
-  const filtered = sortItems(filterItems(state.items, {
-    query: ui.query, folderId: ui.folderId, category: ui.category, status: ui.status,
-  }), state.settings.sort);
-  renderList(filtered);
+  renderList(currentList());
   renderShopping();
   renderFolders();
   renderSettings();
@@ -96,53 +93,88 @@ function renderChips() {
 
 function renderFilters() {
   const catSel = $('fCategory');
-  if (!catSel.options.length) {
-    catSel.innerHTML = '<option value="all">すべてのカテゴリ</option>' +
-      CATEGORIES.map((c) => `<option value="${c.id}">${c.icon} ${c.label}</option>`).join('');
+  if (!catSel.dataset.ready) {
+    catSel.innerHTML = '<option value="all">カテゴリ：すべて</option>' +
+      CATEGORIES.map((c) => `<option value="${c.id}">${esc(c.icon)} ${esc(c.label)}</option>`).join('');
     $('fStatus').innerHTML = '<option value="all">残量：すべて</option>' +
-      STATUSES.map((s) => `<option value="${s.id}">${s.label}</option>`).join('');
+      STATUSES.map((s) => `<option value="${s.id}">${esc(s.label)}</option>`).join('');
+    $('fSort').innerHTML = SORT_MODES.map((m) => `<option value="${m.id}">${esc(m.label)}</option>`).join('');
+    catSel.dataset.ready = '1';
   }
   catSel.value = ui.category;
   $('fStatus').value = ui.status;
+
+  // メーカー（登録内容から作る。未設定アイテムがある時だけ「未設定」を出す）
+  const makers = listMakers(state.items);
+  const hasNone = state.items.some((it) => !itemMaker(it));
+  if (ui.maker !== 'all' && (ui.maker === MAKER_NONE ? !hasNone : !makers.includes(ui.maker))) ui.maker = 'all';
+  const makerSel = $('fMakerFilter');
+  makerSel.innerHTML = '<option value="all">メーカー：すべて</option>' +
+    makers.map((m) => `<option value="${esc(m)}">${esc(m)}</option>`).join('') +
+    (hasNone ? `<option value="${MAKER_NONE}">メーカー未設定</option>` : '');
+  makerSel.value = ui.maker;
+  makerSel.disabled = !makers.length;
+
+  const sortSel = $('fSort');
+  sortSel.value = SORT_MODES.some((m) => m.id === state.settings.sort) ? state.settings.sort : 'updated';
   $('q').value = ui.query;
 }
 
-function itemCard(it) {
+/** 絞り込み＋並び替え済みの一覧 */
+function currentList() {
+  return sortItems(filterItems(state.items, {
+    query: ui.query, folderId: ui.folderId, category: ui.category, status: ui.status, maker: ui.maker,
+  }), state.settings.sort);
+}
+
+function itemCard(it, opts = {}) {
   const st = statusMeta(it.status);
   const f = folderOf(it.folderId);
-  const meta = [it.maker, it.colorName, it.size, it.colorCode].filter(Boolean).map(esc).join(' ・ ');
+  const maker = opts.hideMaker ? '' : itemMaker(it);
+  const meta = [maker, it.colorName, it.size, it.colorCode].filter(Boolean).map(esc).join(' ・ ');
   return `
-  <article class="card" data-id="${esc(it.id)}">
-    <div class="item-head">
-      <h3 class="item-title">${esc(it.name)}</h3>
-      <span class="badge ${st.tone}">${st.label}</span>
-    </div>
-    ${meta ? `<p class="item-meta">${meta}</p>` : ''}
-    ${it.jan ? `<p class="item-meta">JAN ${esc(it.jan)}${lookupJAN(it.jan) ? ' ・ 内蔵辞書に一致' : ''}</p>` : ''}
-    <div class="item-foot">
-      <button class="folder-tag" data-move="${esc(it.id)}" style="border:1px dashed #ccd6e2;background:#fff">${esc(f.icon)} ${esc(f.name)} ▾</button>
-      <div class="stepper">
-        <button data-step="-1" data-id="${esc(it.id)}" aria-label="1減らす">−</button>
-        <span class="qty">${Number(it.qty) || 0}<small>点</small></span>
-        <button data-step="1" data-id="${esc(it.id)}" aria-label="1増やす">＋</button>
-        <button class="icon-btn" data-edit="${esc(it.id)}" aria-label="編集">✎</button>
+  <article class="item" data-id="${esc(it.id)}">
+    <div class="it-main">
+      <h3 class="it-name" data-edit="${esc(it.id)}" title="タップで編集">${esc(it.name)}</h3>
+      <div class="it-sub">
+        <button class="folder-tag" data-move="${esc(it.id)}">${esc(f.icon)} ${esc(f.name)} ▾</button>
+        <span class="badge ${st.tone}">${st.label}</span>
+        ${meta ? `<span class="it-meta">${meta}</span>` : ''}
       </div>
+    </div>
+    <div class="it-side">
+      <button class="step" data-step="-1" data-id="${esc(it.id)}" aria-label="1減らす">−</button>
+      <span class="qty">${Number(it.qty) || 0}<small>点</small></span>
+      <button class="step" data-step="1" data-id="${esc(it.id)}" aria-label="1増やす">＋</button>
+      <button class="icon-btn" data-edit="${esc(it.id)}" aria-label="編集">✎</button>
     </div>
   </article>`;
 }
 
+function makerHeading(maker, count) {
+  return `<div class="maker-head"><span class="mh-name">${esc(maker || 'メーカー未設定')}</span><span class="mh-n">${count}</span></div>`;
+}
+
 function renderList(items) {
   if (!items.length) {
-    $('itemList').innerHTML = `<div class="empty"><b>まだ画材がありません</b>右下の＋から登録、または📷読取でJANから追加できます。<br>（はじめての登録は「🎒 持ち出し用」などフォルダを選んで）</div>`;
+    $('itemList').innerHTML = state.items.length
+      ? `<div class="empty"><b>条件に合う画材がありません</b>絞り込みや検索語を変えてみてください。</div>`
+      : '<div class="empty"><b>まだ画材がありません</b>右下の＋から登録、または📷読取でJANから追加できます。<br>（はじめての登録は「🎒 持ち出し用」などフォルダを選んで）</div>';
     return;
   }
-  $('itemList').innerHTML = items.map(itemCard).join('');
+  if (state.settings.sort === 'maker') {
+    $('itemList').innerHTML = groupByMaker(items)
+      .map((g) => makerHeading(g.maker, g.items.length) + g.items.map((it) => itemCard(it, { hideMaker: true })).join(''))
+      .join('');
+    return;
+  }
+  $('itemList').innerHTML = items.map((it) => itemCard(it)).join('');
 }
 
 function renderShopping() {
   const list = computeShoppingList(state.items);
   $('shoppingList').innerHTML = list.length
-    ? list.map(itemCard).join('')
+    ? list.map((it) => itemCard(it)).join('')
     : '<div class="empty"><b>補充の必要はありません</b>残量「残りわずか」「使い切り」の画材がここに自動で集まります。</div>';
 }
 
@@ -176,11 +208,16 @@ $('tabbar').addEventListener('click', (e) => {
 });
 $('q').addEventListener('input', (e) => { ui.query = e.target.value; renderListSafely(); });
 function renderListSafely() {
-  const filtered = sortItems(filterItems(state.items, { query: ui.query, folderId: ui.folderId, category: ui.category, status: ui.status }), state.settings.sort);
-  renderList(filtered);
+  renderList(currentList());
 }
 $('fCategory').addEventListener('change', (e) => { ui.category = e.target.value; render(); });
 $('fStatus').addEventListener('change', (e) => { ui.status = e.target.value; render(); });
+$('fMakerFilter').addEventListener('change', (e) => { ui.maker = e.target.value; render(); });
+$('fSort').addEventListener('change', (e) => {
+  state = { ...state, settings: { ...state.settings, sort: e.target.value } };
+  save();
+  render();
+});
 $('folderChips').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-folder]');
   if (!b) return;

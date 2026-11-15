@@ -22,6 +22,17 @@ export const STATUSES = [
   { id: 'empty', label: '使い切り/要補充', tone: 'bad' },
 ];
 
+/** 並び替え（一覧のソート）選択肢 */
+export const SORT_MODES = [
+  { id: 'maker', label: '並び：メーカー順' },
+  { id: 'updated', label: '並び：新しい順' },
+  { id: 'name', label: '並び：名前順' },
+  { id: 'shortage', label: '並び：残量少ない順' },
+];
+
+/** メーカーフィルタで「未設定」を表す値 */
+export const MAKER_NONE = '__none__';
+
 export const DEFAULT_FOLDERS = [
   { id: 'home', name: '家', icon: '🏠', color: '#2f80ed' },
   { id: 'atelier', name: 'アトリエ', icon: '🎨', color: '#e07b39' },
@@ -124,6 +135,10 @@ export function filterItems(items, filter = {}) {
     if (filter.folderId && filter.folderId !== 'all' && it.folderId !== filter.folderId) return false;
     if (filter.category && filter.category !== 'all' && it.category !== filter.category) return false;
     if (filter.status && filter.status !== 'all' && it.status !== filter.status) return false;
+    if (filter.maker && filter.maker !== 'all') {
+      const m = itemMaker(it);
+      if (filter.maker === MAKER_NONE ? m !== '' : m !== filter.maker) return false;
+    }
     if (filter.shortageOnly && !(it.status === 'low' || it.status === 'empty' || Number(it.qty) === 0)) return false;
     if (!q) return true;
     const hay = [it.name, it.maker, it.brand, it.colorName, it.colorCode, it.size, it.jan, it.shop, it.memo]
@@ -140,12 +155,46 @@ export function moveItems(items, ids, folderId, folders) {
   return items.map((it) => (set.has(it.id) ? { ...it, folderId, updatedAt: new Date().toISOString() } : it));
 }
 
+/** 表示・並び替えに使うメーカー名（maker が無ければ brand） */
+export function itemMaker(item) {
+  return String(item?.maker || item?.brand || '').trim();
+}
+
+/** 絞り込み用のメーカー一覧（登録済みアイテムから・あいうえお順） */
+export function listMakers(items) {
+  return [...new Set(items.map(itemMaker).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja'));
+}
+
+/** メーカー見出し用のグルーピング（メーカー順に並べた配列を渡す） */
+export function groupByMaker(items) {
+  const groups = [];
+  const index = new Map();
+  for (const it of items) {
+    const key = itemMaker(it);
+    if (!index.has(key)) {
+      index.set(key, groups.length);
+      groups.push({ maker: key, items: [] });
+    }
+    groups[index.get(key)].items.push(it);
+  }
+  return groups;
+}
+
 export function sortItems(items, mode = 'updated') {
   const copy = [...items];
-  if (mode === 'name') return copy.sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+  const byName = (a, b) => a.name.localeCompare(b.name, 'ja');
+  if (mode === 'name') return copy.sort(byName);
+  if (mode === 'maker') {
+    return copy.sort((a, b) => {
+      const am = itemMaker(a);
+      const bm = itemMaker(b);
+      if (!am !== !bm) return am ? -1 : 1; // メーカー未設定は最後にまとめる
+      return am.localeCompare(bm, 'ja') || byName(a, b);
+    });
+  }
   if (mode === 'shortage') {
     const rank = (i) => ({ empty: 0, low: 1, enough: 2, new: 3 }[i.status] ?? 4);
-    return copy.sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name, 'ja'));
+    return copy.sort((a, b) => rank(a) - rank(b) || byName(a, b));
   }
   return copy.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
 }

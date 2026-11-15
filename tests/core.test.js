@@ -5,7 +5,8 @@ import {
   createItem, adjustStock, computeShoppingList, filterItems, moveItems, sortItems,
   addFolder, renameFolder, updateFolder, reorderFolders, deleteFolder,
   upsertItem, deleteItems, exportState, importState, summarize, blankState,
-  countByFolder, DEFAULT_FOLDERS, CATEGORIES,
+  countByFolder, DEFAULT_FOLDERS, CATEGORIES, SORT_MODES, MAKER_NONE,
+  itemMaker, listMakers, groupByMaker,
 } from '../core.js';
 
 test('JANチェックディジット計算', () => {
@@ -151,4 +152,56 @@ test('JSONエクスポート→インポートの往復と異常系', () => {
   // 存在しないフォルダを指すアイテムは先頭フォルダへ寄せる
   const fixed = importState(JSON.stringify({ folders: [{ id: 'x', name: 'X' }], items: [{ name: 'Y', folderId: 'zzz' }] }));
   assert.equal(fixed.items[0].folderId, 'x');
+});
+
+test('メーカー順ソート（未設定は最後・同じメーカー内は名前順）', () => {
+  const items = [
+    createItem({ name: 'ジェッソ', maker: 'ターナー' }),
+    createItem({ name: '鉛筆B', maker: '' }),
+    createItem({ name: 'シルバー', maker: 'ホルベイン' }),
+    createItem({ name: 'ウルトラマリン', maker: 'ホルベイン' }),
+    createItem({ name: 'アクリルガッシュ', maker: 'ターナー' }),
+    createItem({ name: '名もなき筆', maker: '   ' }),
+  ];
+  const sorted = sortItems(items, 'maker');
+  assert.deepEqual(sorted.map((i) => i.name), [
+    'アクリルガッシュ', 'ジェッソ', 'ウルトラマリン', 'シルバー', '鉛筆B', '名もなき筆',
+  ]); // ターナー → ホルベイン → 未設定（未設定は登録順のまま）
+  assert.equal(sorted.at(-1).maker, ''); // 空白のみは createItem で空に正規化される
+  // brand しか無いアイテムは brand をメーカーとして扱う
+  assert.equal(itemMaker(createItem({ name: 'X', brand: 'リキテックス' })), 'リキテックス');
+  // 他のモードは従来どおり
+  assert.equal(sortItems(items, 'name')[0].name, 'アクリルガッシュ');
+  assert.ok(SORT_MODES.some((m) => m.id === 'maker') && SORT_MODES.some((m) => m.id === 'updated'));
+});
+
+test('メーカー見出し用のグルーピングとメーカー一覧', () => {
+  const items = [
+    createItem({ name: 'A', maker: 'ホルベイン' }),
+    createItem({ name: 'B', maker: 'ターナー' }),
+    createItem({ name: 'C', maker: 'ホルベイン' }),
+    createItem({ name: 'D', maker: '' }),
+  ];
+  const groups = groupByMaker(sortItems(items, 'maker'));
+  assert.deepEqual(groups.map((g) => g.maker), ['ターナー', 'ホルベイン', '']);
+  assert.deepEqual(groups.map((g) => g.items.length), [1, 2, 1]);
+  assert.deepEqual(groups[1].items.map((i) => i.name), ['A', 'C']);
+  assert.deepEqual(listMakers(items), ['ターナー', 'ホルベイン']); // あいうえお順・未設定は含めない
+  assert.deepEqual(listMakers([]), []);
+});
+
+test('メーカーフィルタ（指定メーカー／未設定の抽出）', () => {
+  const items = [
+    createItem({ name: 'シルバー', maker: 'ホルベイン', status: 'low' }),
+    createItem({ name: 'ジェッソ', maker: 'ターナー' }),
+    createItem({ name: '筆', maker: '' }),
+  ];
+  assert.deepEqual(filterItems(items, { maker: 'ホルベイン' }).map((i) => i.name), ['シルバー']);
+  assert.deepEqual(filterItems(items, { maker: MAKER_NONE }).map((i) => i.name), ['筆']);
+  assert.equal(filterItems(items, { maker: 'all' }).length, 3);
+  // 他の条件と組み合わせ
+  assert.equal(filterItems(items, { maker: 'ホルベイン', status: 'low' }).length, 1);
+  assert.equal(filterItems(items, { maker: 'ホルベイン', status: 'enough' }).length, 0);
+  // 空白だけのメーカーは「未設定」扱い
+  assert.equal(filterItems([createItem({ name: 'Z', maker: '  ' })], { maker: MAKER_NONE }).length, 1);
 });
