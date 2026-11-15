@@ -148,12 +148,24 @@
     </div>
     <div class="card">
       <h2 class="card-t">バックアップ（JSON）</h2>
-      <p class="hint">機種変更・データ消失対策。書き出したファイルは Google ドライブ等に保存してください。</p>
+      <p class="hint" id="backupNote">機種変更・データ消失対策。書き出したファイルは Google ドライブ等に保存してください。</p>
       <div class="actions">
         <button class="btn primary" id="btnExport">書き出す</button>
         <button class="btn" id="btnImport">読み込む</button>
       </div>
       <input type="file" id="fileImport" accept="application/json,.json" class="sr">
+    </div>
+    <div class="card">
+      <h2 class="card-t">商品画像（楽天API）</h2>
+      <p class="hint">楽天ウェブサービスで無料のアプリIDを発行し、下に貼り付けてください。アプリの「許可ドメイン」に shodai4.com を入れると、このアプリからJANで商品画像を取得できます。</p>
+      <div class="field">
+        <label for="fRakuten">楽天アプリID</label>
+        <input id="fRakuten" placeholder="1234567890123456789" autocomplete="off" autocapitalize="off" spellcheck="false">
+      </div>
+      <div class="actions">
+        <button class="btn primary" id="btnSaveRakuten">保存</button>
+      </div>
+      <p class="hint" id="rakutenState" style="margin:10px 0 0"></p>
     </div>
     <div class="card">
       <h2 class="card-t">内蔵JAN辞書</h2>
@@ -226,12 +238,30 @@
     <div class="field"><label for="fFolderInput">保管場所</label><select id="fFolderInput"></select></div>
     <div class="field"><label for="fJan">JANコード</label><input id="fJan" inputmode="numeric" placeholder="13桁（読取ボタンでも可）">
       <p class="hint" id="janHint" style="margin:4px 0 0"></p>
+      <button type="button" class="btn mini wide" id="btnFetchImage">このJANで画像を取得（楽天）</button>
     </div>
     <div class="field-row">
       <div class="field"><label for="fShop">購入店</label><input id="fShop" placeholder="世界堂"></div>
       <div class="field"><label for="fPrice">単価(円)</label><input id="fPrice" type="number" min="0" inputmode="numeric"></div>
     </div>
     <div class="field"><label for="fMemo">メモ</label><textarea id="fMemo" rows="2" placeholder="使いかけ、混色メモなど"></textarea></div>
+    <div class="field">
+      <label>写真（実物）</label>
+      <div class="photo-edit">
+        <div class="photo-prev" id="photoPrev"><span class="ph-txt">写真なし<br>アイコン表示</span></div>
+        <div class="photo-btns">
+          <button type="button" class="btn mini" id="btnPhotoPick">写真を追加／変更</button>
+          <button type="button" class="btn mini danger" id="btnPhotoClear" hidden>写真を削除</button>
+        </div>
+      </div>
+      <p class="hint" id="photoHint" style="margin:6px 0 0">長辺320px・JPEGに自動圧縮して端末内に保存します（外部へは送りません）</p>
+    </div>
+    <input type="file" id="fPhoto" accept="image/*" class="sr">
+    <div class="field">
+      <label for="fImageUrl">画像URL（任意）</label>
+      <input id="fImageUrl" type="url" inputmode="url" placeholder="https://..." autocomplete="off" autocapitalize="off" spellcheck="false">
+      <p class="hint" id="imageUrlHint" style="margin:4px 0 0">JANから取得するか、商品ページの画像URLを貼り付けます</p>
+    </div>
     <div class="actions">
       <button type="button" class="btn" data-close="sheetItem">キャンセル</button>
       <button type="submit" class="btn primary">保存</button>

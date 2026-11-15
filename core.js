@@ -97,6 +97,16 @@ function uid() {
   return `i${Date.now().toString(36)}${seq.toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 }
 
+/**
+ * 商品画像URL（楽天APIで取得したもの・手入力）を整える。
+ * http(s) 以外（javascript: など）は捨てる。
+ */
+export function normalizeImageUrl(value) {
+  const s = String(value ?? '').trim();
+  if (!s) return '';
+  return /^https?:\/\/[^\s]+$/i.test(s) ? s : '';
+}
+
 /** 新規アイテム（不足項目は初期値で補完） */
 export function createItem(partial = {}) {
   const status = STATUSES.some((s) => s.id === partial.status) ? partial.status : 'enough';
@@ -116,6 +126,7 @@ export function createItem(partial = {}) {
     shop: String(partial.shop || '').trim(),
     price: Number.isFinite(+partial.price) && partial.price !== '' ? Math.max(0, Math.round(+partial.price)) : null,
     memo: String(partial.memo || '').trim(),
+    imageUrl: normalizeImageUrl(partial.imageUrl),
     createdAt: partial.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -223,7 +234,7 @@ export function blankState() {
     version: APP_VERSION,
     folders: DEFAULT_FOLDERS.map((f) => ({ ...f })),
     items: [],
-    settings: { sort: 'updated', layout: 'grid', askBeforeDelete: true },
+    settings: { sort: 'updated', layout: 'grid', askBeforeDelete: true, rakutenAppId: '' },
     updatedAt: new Date().toISOString(),
   };
 }

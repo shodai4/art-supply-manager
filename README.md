@@ -12,7 +12,9 @@
 - 並び替え（メーカー順／新しい順／名前順／残量少ない順）＋絞込（メーカー・カテゴリ・残量）。メーカー順ではメーカー見出しでグループ分け
 - 残量「残りわずか・使い切り」を自動で集める買い物リスト
 - スマホのカメラでJANバーコード読取 → 内蔵辞書から商品情報を自動補完
-- JSONバックアップ / 復元（機種変更・データ消失対策）
+- **商品画像（実物写真）**: 編集シートで手元の写真を選ぶと、長辺320px・JPEG品質0.75に自動圧縮して端末内（IndexedDB `art-supply-images`）へ保存。グリッドの棚には写真を白背景・`object-fit: contain` で見切れなく表示し、リスト左のサムネイルにも出る。写真が無い画材は従来の絵具チューブSVGのまま
+- **楽天APIでJANから画像取得**: 設定で楽天ウェブサービスのアプリIDを保存すると、JANコードから楽天商品検索APIをブラウザから直接叩いて商品画像URL（`_ex=300x300`）を取得し「画像URL」に入れられる。画像URLを手で貼ることも可能。表示優先順は ①手元写真（IndexedDB）→ ②画像URL → ③チューブSVG／カテゴリ別アイコン（読み込み失敗時は自動でアイコンへ）
+- JSONバックアップ / 復元（機種変更・データ消失対策）。手元写真は端末内のみで、JSONには含まれません
 
 ## 使い方（ローカル）
 
@@ -33,12 +35,15 @@ python3 -m http.server 8080      # または任意の静的サーバー
 | `styles.css` | スタイル（横はみ出しゼロ設計） |
 | `app.js` | UI・localStorage保存・バーコード読取（BarcodeDetector＋html5-qrcodeフォールバック） |
 | `core.js` | DOM非依存のロジック（JAN検証・在庫増減・絞り込み・フォルダ操作・JSON入出力） |
+| `images.js` | 手元写真の圧縮（canvas）・IndexedDB保存と、楽天APIからの商品画像取得 |
 | `jan-database.js` | 実在確認済みJAN辞書＋メーカープレフィックス表 |
 | `sw.js` / `manifest.webmanifest` | PWA（オフラインキャッシュ・ホーム画面追加） |
 | `icon.svg` / `icon-192.png` / `icon-512.png` | アプリアイコン（manifest の192/512px用PNGを含む） |
 | `tests/core.test.js` | ロジックの単体テスト |
 | `tests/jan.test.js` | 辞書データの妥当性テスト |
+| `tests/images.test.js` | 写真の縮小計算・画像URLの検証・楽天APIの応答/エラー処理のテスト |
 | `preview-375.html` | 375px幅での表示確認用（iframe）。`preview-375.html?src=<URL>` で任意URLを375×812で表示 |
+| `preview-393.html` | 393px幅での表示確認用（iframe）。`preview-393.html?src=<URL>` で任意URLを393×852で表示 |
 
 ## テスト
 
@@ -54,6 +59,14 @@ node --test tests/
 - 並び替え（メーカー順・新しい順・名前順・残量少ない順）とメーカー見出し用グルーピング
 - フォルダ間移動、フォルダ追加・改名・色/アイコン・並び替え・削除（中身移動）・最後の1個は削除不可
 - JSONエクスポート→インポート往復、壊れたJSON・想定外構造の拒否、存在しないフォルダ参照の補正
+- 写真の縮小サイズ（長辺320px・縦横比維持・拡大しない）、画像URLの http(s) 検証、楽天APIのURL組み立て・応答からの画像抽出（`_ex=300x300`）・エラー案内
+
+## 商品画像（実物写真）の扱い
+
+- **手元写真**: 編集シートの「写真を追加／変更」で選んだ画像を、`<canvas>` で長辺320px・JPEG品質0.75（1枚15〜30KB前後）に圧縮し、IndexedDB（DB名 `art-supply-images` / ストア `photos` / キーは画材ID）へBlobで保存します。localStorage（5MB）を圧迫しません。写真は端末内だけに保存され、外部へ送信されません
+- **表示優先順**: ①手元写真（IndexedDB）→ ②`imageUrl`（楽天API取得または手入力）→ ③従来の絵具チューブSVG／カテゴリ別アイコン。画像の読み込みに失敗した場合は自動でアイコン表示に戻ります
+- **楽天APIの設定**: 設定タブの「楽天アプリID」に、[楽天ウェブサービス](https://webservice.rakuten.co.jp/) で無料発行したアプリIDを保存してください。アプリの「許可ドメイン」に `shodai4.com`（と `shodai4.github.io`）を入れると、ブラウザから直接APIを叩けます。JANを入れて「このJANで画像を取得（楽天）」を押すと商品画像URLがセットされます（未設定・画像なし・回数制限は短いトーストで案内）
+- **バックアップ**: JSONには `imageUrl` は入りますが、手元写真は含まれません（設定画面にもその旨を表示）
 
 ## JAN辞書について（重要）
 
@@ -74,6 +87,7 @@ node --test tests/
 
 `localStorage` のキーは `art-supply-manager/v1`。エクスポートJSONは
 `{ app, version, exportedAt, folders[], items[], settings }` で、そのまま Supabase 等へ同期する拡張も可能な形にしています。
+各アイテムは `imageUrl`（商品画像URL）を持ち、手元写真のBlobは IndexedDB `art-supply-images` にアイテムIDで保存します（JSONには含みません）。`settings.rakutenAppId` に楽天アプリIDを保持します。
 
 ## 公開（サーバー代0円）
 

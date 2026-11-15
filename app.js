@@ -5,8 +5,12 @@ import {
   addFolder, updateFolder, reorderFolders, deleteFolder, upsertItem, deleteItems,
   exportState, importState, summarize, blankState,
   isValidJAN, normalizeJAN, detectMaker, lookupJAN, itemMaker, listMakers, groupByMaker,
+  normalizeImageUrl,
 } from './core.js';
 import { JAN_DICTIONARY, JAN_PREFIXES, VERIFIED_AT } from './jan-database.js';
+import {
+  compressImageFile, listPhotos, putPhoto, deletePhoto, clearPhotos, fetchRakutenImage,
+} from './images.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -27,6 +31,33 @@ let ui = {
 };
 let scanner = null; // html5-qrcode instance
 let rafId = 0;
+
+/* ---------------- 写真（IndexedDBのBlobを表示用URLに） ---------------- */
+const photoUrls = new Map(); // itemId -> objectURL
+let photoCount = 0;
+let pendingPhoto = null;     // { kind:'set', blob, url, width, height, bytes } | { kind:'delete' }
+
+function setPhotoUrl(id, blob) {
+  const prev = photoUrls.get(id);
+  if (prev) URL.revokeObjectURL(prev);
+  photoUrls.set(id, URL.createObjectURL(blob));
+}
+function dropPhotoUrl(id) {
+  const prev = photoUrls.get(id);
+  if (prev) URL.revokeObjectURL(prev);
+  photoUrls.delete(id);
+}
+/** 起動時に保存済みの手元写真をまとめて読み込む */
+async function preloadPhotos() {
+  try {
+    const rows = await listPhotos();
+    for (const row of rows) if (row && row.id && row.blob) setPhotoUrl(row.id, row.blob);
+    photoCount = rows.length;
+    render();
+  } catch (e) {
+    console.warn('写真の読み込みに失敗', e);
+  }
+}
 
 /* ---------------- storage ---------------- */
 function loadState() {
@@ -210,6 +241,13 @@ function renderFolderGrid() {
   }).join('');
 }
 
+/** アイテムの実物画像（手元写真 → 画像URL の順。無ければ空文字でアイコン表示） */
+function shelfImage(it) {
+  const src = photoUrls.get(it.id) || normalizeImageUrl(it.imageUrl);
+  if (!src) return '';
+  return `<img class="shelfimg" src="${esc(src)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.classList.add('imgfail')">`;
+}
+
 /** 画材タイル1枚 */
 function itemTile(it) {
   const st = statusMeta(it.status);
@@ -226,6 +264,7 @@ function itemTile(it) {
     <span class="sw">
       ${dot}<span class="qbadge">${Number(it.qty) || 0}</span>
       <svg class="inh" aria-hidden="true"><use href="#${icon}"/></svg>
+      ${shelfImage(it)}
     </span>
     <span class="tname">${esc(displayName(it))}</span>
   </button>`;
@@ -236,8 +275,12 @@ function itemRow(it) {
   const st = statusMeta(it.status);
   const f = folderOf(it.folderId);
   const meta = [itemMaker(it), it.colorName, it.size, it.colorCode].filter(Boolean).map(esc).join(' ・ ');
+  const glyph = GLYPH[it.category];
+  const thumbColor = glyph ? glyph.color : guessColor(it);
+  const thumbIcon = glyph ? glyph.icon : 'i-tube';
   return `
   <article class="item" data-id="${esc(it.id)}">
+    <span class="thumb"><svg class="ic" aria-hidden="true" style="color:${esc(thumbColor)}"><use href="#${thumbIcon}"/></svg>${shelfImage(it)}</span>
     <div class="it-main">
       <h3 class="it-name" data-edit="${esc(it.id)}" title="タップで編集">${esc(displayName(it))}</h3>
       <div class="it-sub">
@@ -304,8 +347,45 @@ function renderSettings() {
   $('stKinds').textContent = s.kinds;
   $('stQty').textContent = s.qty;
   $('stRestock').textContent = s.needRestock;
+  const appId = String(state.settings.rakutenAppId || '');
+  if (document.activeElement !== $('fRakuten')) $('fRakuten').value = appId;
+  $('rakutenState').textContent = appId
+    ? `登録済み（末尾 ${appId.slice(-4)}）。JANで商品画像を取得できます`
+    : '未登録。JANからの画像取得は使えません（手元写真と画像URLはこのまま使えます）';
+  $('backupNote').textContent = `機種変更・データ消失対策。書き出したファイルは Google ドライブ等に保存してください。手元写真は端末内に保存され、JSONには含まれません（${photoCount}枚）。`;
   $('dictInfo').textContent = `収録 ${JAN_DICTIONARY.length}件（${JAN_DICTIONARY.filter((d) => d.category === 'oil').length}件が油絵具）/ メーカー判別 ${JAN_PREFIXES.length}件（実在確認済みのみ・${VERIFIED_AT}時点）`;
 }
+
+/* ---------------- 楽天アプリID（設定） ---------------- */
+$('btnSaveRakuten').addEventListener('click', () => {
+  const appId = $('fRakuten').value.trim().replace(/\s+/g, '');
+  state = { ...state, settings: { ...state.settings, rakutenAppId: appId } };
+  save();
+  render();
+  toast(appId ? '楽天アプリIDを保存しました' : '楽天アプリIDを削除しました');
+});
+
+/** JANコードから楽天の商品画像を取得して「画像URL」に入れる */
+$('btnFetchImage').addEventListener('click', async () => {
+  const jan = normalizeJAN($('fJan').value);
+  if (!/^\d{13}$/.test(jan)) { toast('JANを13桁で入力してください'); return; }
+  const appId = String(state.settings.rakutenAppId || '').trim();
+  if (!appId) { toast('楽天アプリIDが未設定です（設定タブで登録）'); return; }
+  const btn = $('btnFetchImage');
+  btn.disabled = true;
+  btn.textContent = '取得しています…';
+  try {
+    const url = await fetchRakutenImage(jan, appId);
+    $('fImageUrl').value = url;
+    renderPhotoPreview();
+    toast('商品画像をセットしました（保存で確定）');
+  } catch (err) {
+    toast(err.message || '画像を取得できませんでした');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'このJANで画像を取得（楽天）';
+  }
+});
 
 /* ---------------- 絞込・並替 ---------------- */
 function chip(kind, value, label, active) {
@@ -446,6 +526,11 @@ function openItemSheet(id, preset = {}) {
   $('fShop').value = data.shop || '';
   $('fPrice').value = data.price ?? '';
   $('fMemo').value = data.memo || '';
+  $('fImageUrl').value = (it && it.imageUrl) || '';
+  if (pendingPhoto && pendingPhoto.url) URL.revokeObjectURL(pendingPhoto.url);
+  pendingPhoto = null;
+  $('photoHint').textContent = '長辺320px・JPEGに自動圧縮して端末内に保存します（外部へは送りません）';
+  renderPhotoPreview();
   $('makerList').innerHTML = [...new Set([...JAN_DICTIONARY.map((d) => d.maker), 'ターナー', 'リキテックス', 'ウィンザー＆ニュートン', 'マツダ', '名村大成堂', 'クサカベ', 'ホルベイン'])].map((m) => `<option value="${esc(m)}">`).join('');
   $('btnDeleteItem').hidden = !it;
   updateJanHint();
@@ -462,6 +547,73 @@ $('sheetItem').addEventListener('click', (e) => {
   input.value = String(next);
 });
 
+/* ---------------- 写真（追加・変更・削除）と画像URL ---------------- */
+/** 編集シートのプレビューに出す画像（保存前の選択 → 保存済み写真 → 画像URL の順） */
+function previewSource() {
+  if (pendingPhoto && pendingPhoto.kind === 'set') return pendingPhoto.url;
+  if (pendingPhoto && pendingPhoto.kind === 'delete') return normalizeImageUrl($('fImageUrl').value);
+  if (ui.editingId && photoUrls.has(ui.editingId)) return photoUrls.get(ui.editingId);
+  return normalizeImageUrl($('fImageUrl').value);
+}
+function renderPhotoPreview() {
+  const src = previewSource();
+  $('photoPrev').innerHTML = src
+    ? `<img src="${esc(src)}" alt="写真プレビュー" decoding="async" referrerpolicy="no-referrer" onerror="this.classList.add('imgfail')">`
+    : '<span class="ph-txt">写真なし<br>アイコン表示</span>';
+  const exists = (pendingPhoto && pendingPhoto.kind === 'set')
+    || (!(pendingPhoto && pendingPhoto.kind === 'delete') && Boolean(ui.editingId && photoUrls.has(ui.editingId)));
+  $('btnPhotoClear').hidden = !exists;
+}
+
+$('btnPhotoPick').addEventListener('click', () => $('fPhoto').click());
+$('fPhoto').addEventListener('change', async (e) => {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  $('photoHint').textContent = '写真を圧縮しています…';
+  try {
+    const out = await compressImageFile(file);
+    if (pendingPhoto && pendingPhoto.url) URL.revokeObjectURL(pendingPhoto.url);
+    pendingPhoto = { kind: 'set', ...out, url: URL.createObjectURL(out.blob) };
+    $('photoHint').textContent = `長辺${Math.max(out.width, out.height)}px・約${Math.round(out.bytes / 1024)}KBに圧縮しました（保存で確定）`;
+    renderPhotoPreview();
+  } catch (err) {
+    $('photoHint').textContent = '写真を読み込めませんでした。別の画像で試してください';
+    toast(err.message || '写真を読み込めませんでした');
+  }
+});
+$('btnPhotoClear').addEventListener('click', () => {
+  if (pendingPhoto && pendingPhoto.url) URL.revokeObjectURL(pendingPhoto.url);
+  pendingPhoto = { kind: 'delete' };
+  $('photoHint').textContent = '保存すると手元写真を削除します（この端末内の写真だけ）';
+  renderPhotoPreview();
+});
+$('fImageUrl').addEventListener('input', renderPhotoPreview);
+
+/** 保存時に手元写真をIndexedDBへ反映する（新規は採番されたIDで保存） */
+async function applyPendingPhoto(id) {
+  const p = pendingPhoto;
+  pendingPhoto = null;
+  if (!p || !id) return;
+  try {
+    const had = photoUrls.has(id);
+    if (p.kind === 'delete') {
+      await deletePhoto(id);
+      dropPhotoUrl(id);
+      if (had) photoCount = Math.max(0, photoCount - 1);
+      return;
+    }
+    await putPhoto(id, p.blob, { width: p.width, height: p.height });
+    setPhotoUrl(id, p.blob);
+    if (!had) photoCount += 1;
+  } catch (err) {
+    console.warn('写真の保存に失敗', err);
+    toast(`写真を保存できませんでした（${err.message}）`);
+  } finally {
+    if (p.kind === 'set' && p.url) URL.revokeObjectURL(p.url);
+  }
+}
+
 function updateJanHint() {
   const v = normalizeJAN($('fJan').value);
   const hint = $('janHint');
@@ -474,12 +626,15 @@ function updateJanHint() {
 }
 $('fJan').addEventListener('input', updateJanHint);
 
-$('itemForm').addEventListener('submit', (e) => {
+$('itemForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const janRaw = $('fJan').value.trim();
   const jan = normalizeJAN(janRaw);
   if (janRaw && !/^\d{13}$/.test(jan)) { toast('JANは13桁で入力してください'); return; }
   if (jan && !isValidJAN(jan)) { toast('JANのチェックディジットが合いません'); return; }
+  const imageUrlRaw = $('fImageUrl').value.trim();
+  const imageUrl = normalizeImageUrl(imageUrlRaw);
+  if (imageUrlRaw && !imageUrl) { toast('画像URLは http(s):// で始まるURLを入れてください'); return; }
   const partial = {
     name: $('fName').value,
     maker: $('fMaker').value,
@@ -494,19 +649,24 @@ $('itemForm').addEventListener('submit', (e) => {
     shop: $('fShop').value,
     price: $('fPrice').value,
     memo: $('fMemo').value,
+    imageUrl,
   };
   let savedFolder = partial.folderId;
+  let targetId = '';
   if (ui.editingId) {
     const prev = state.items.find((i) => i.id === ui.editingId);
+    targetId = prev.id;
     state = upsertItem(state, createItem({ ...partial, id: prev.id, createdAt: prev.createdAt }));
     toast('保存しました');
   } else {
     const created = createItem(partial);
+    targetId = created.id;
     state = upsertItem(state, created);
     savedFolder = created.folderId;
     toast('画材を追加しました');
   }
   save();
+  await applyPendingPhoto(targetId);
   closeSheet('sheetItem');
   ui.tab = 'stock';
   ui.mode = 'items';
@@ -514,11 +674,16 @@ $('itemForm').addEventListener('submit', (e) => {
   render();
 });
 
-$('btnDeleteItem').addEventListener('click', () => {
+$('btnDeleteItem').addEventListener('click', async () => {
   if (!ui.editingId) return;
   if (!confirm('この画材を削除しますか？（元に戻せません）')) return;
-  state = deleteItems(state, [ui.editingId]);
+  const id = ui.editingId;
+  state = deleteItems(state, [id]);
   save();
+  try {
+    await deletePhoto(id);
+    dropPhotoUrl(id);
+  } catch (err) { console.warn('写真の削除に失敗', err); }
   closeSheet('sheetItem');
   render();
   toast('削除しました');
@@ -765,7 +930,9 @@ $('btnExport').addEventListener('click', () => {
   a.download = `art-supply-backup-${stamp}.json`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 3000);
-  toast('バックアップを書き出しました');
+  toast(photoCount
+    ? `バックアップを書き出しました（手元写真${photoCount}枚は端末内のみ・JSONに含みません）`
+    : 'バックアップを書き出しました');
 });
 $('btnImport').addEventListener('click', () => $('fileImport').click());
 $('fileImport').addEventListener('change', async (e) => {
@@ -783,12 +950,16 @@ $('fileImport').addEventListener('change', async (e) => {
     e.target.value = '';
   }
 });
-$('btnWipe').addEventListener('click', () => {
+$('btnWipe').addEventListener('click', async () => {
   if (!confirm('この端末の画材データをすべて削除します。元に戻せません。')) return;
   if (!confirm('本当に削除しますか？（バックアップは書き出し済みですか？）')) return;
   localStorage.removeItem(STORAGE_KEY);
   state = blankState();
-  save(); render();
+  save();
+  try { await clearPhotos(); } catch (e) { console.warn('写真の削除に失敗', e); }
+  [...photoUrls.keys()].forEach(dropPhotoUrl);
+  photoCount = 0;
+  render();
   toast('全データを削除しました');
 });
 $('btnDict').addEventListener('click', () => {
@@ -824,3 +995,4 @@ if ('serviceWorker' in navigator) {
 }
 
 render();
+preloadPhotos();
