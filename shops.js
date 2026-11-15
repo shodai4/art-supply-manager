@@ -16,7 +16,7 @@ import { normalizeJAN } from './core.js';
  */
 export const SHOP_AFFILIATE_CONFIG = {
   amazonTag: '',
-  rakutenAffiliateId: '',
+  rakutenAffiliateId: '598e3f74.c89b09de.598e3f75.325c6ad1',
   yahooSid: '',
   yahooPid: '',
 };

@@ -63,11 +63,29 @@ test('検索語が作れないときはリンクを出さない', () => {
   assert.match(describeSearchQuery('', {}), /検索語がありません/);
 });
 
-test('帰属表示とデフォルト設定は絵文字なし・空のID', () => {
+test('帰属表示とデフォルト設定は絵文字なし・楽天IDのみ設定', () => {
   const re = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/u;
   assert.equal(re.test(AFFILIATE_NOTE), false);
   assert.match(AFFILIATE_NOTE, /アフィリエイト/);
   assert.deepEqual(SHOP_AFFILIATE_CONFIG, {
-    amazonTag: '', rakutenAffiliateId: '', yahooSid: '', yahooPid: '',
+    amazonTag: '',
+    rakutenAffiliateId: '598e3f74.c89b09de.598e3f75.325c6ad1',
+    yahooSid: '',
+    yahooPid: '',
   });
+});
+
+test('実際の設定で楽天アフィリエイトURLが組み立てられる', () => {
+  const plain = plainSearchUrl('rakuten', '4900669001911');
+  const url = applyAffiliate('rakuten', plain);
+  assert.ok(url.startsWith('https://hb.afl.rakuten.co.jp/hgc/598e3f74.c89b09de.598e3f75.325c6ad1/?pc='));
+  assert.ok(url.endsWith('&link_type=hybrid_url'));
+  assert.equal(decodeURIComponent(url.split('pc=')[1].split('&')[0]), plain);
+
+  // 楽天だけ加工され、Amazon・Yahoo!は素の検索URLのまま
+  const links = shopSearchLinks(item);
+  assert.equal(links.length, 3);
+  assert.ok(links.find((l) => l.id === 'rakuten').url.startsWith('https://hb.afl.rakuten.co.jp/hgc/'));
+  assert.equal(links.find((l) => l.id === 'amazon').url, plainSearchUrl('amazon', '4900669001911'));
+  assert.equal(links.find((l) => l.id === 'yahoo').url, plainSearchUrl('yahoo', '4900669001911'));
 });
