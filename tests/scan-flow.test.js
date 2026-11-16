@@ -271,12 +271,13 @@ test('スキャン画面に「連続スキャン」トグルとログ・完了�
     assert.ok(html.includes(`id="${id}"`), `#${id} がありません`);
   }
   // 短い文言（絵描きが読める言葉）
-  assert.match(html, />連続スキャン</);
+  assert.match(html, />連続スキャン OFF</);
   assert.match(html, />完了</);
   assert.match(html, /1本読むと閉じます/);
-  // トグルは aria-pressed で状態を持つ（ON/OFFの文字はCSSで出す）
+  // トグルは aria-pressed で状態を持ち、ON/OFFは画面の文字でも出す
   assert.match(html, /id="btnContinuous"[^>]*aria-pressed="false"/);
-  assert.match(read('styles.css'), /#btnContinuous\[aria-pressed="true"\]::after/);
+  assert.match(html, /id="btnContinuous"[^>]*>連続スキャン OFF</);
+  assert.match(app, /`連続スキャン \$\{scanContinuous \? 'ON' : 'OFF'\}`/);
 
   // 画面側は scan-flow.js の判定を通す
   assert.match(app, /from '\.\/scan-flow\.js'/);

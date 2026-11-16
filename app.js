@@ -1441,6 +1441,7 @@ $('btnRescan').addEventListener('click', () => { stopScanner(); startScanner(); 
 /* --- 連続スキャンの表示（トグル・ログ・status） --- */
 function renderScanMode() {
   $('btnContinuous').setAttribute('aria-pressed', String(scanContinuous));
+  $('btnContinuous').textContent = `連続スキャン ${scanContinuous ? 'ON' : 'OFF'}`;
   $('scanModeNote').textContent = scanContinuous ? '閉じずに続けて登録します' : '1本読むと閉じます';
   $('scanLog').hidden = !scanContinuous;
   renderScanLog();
