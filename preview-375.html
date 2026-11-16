@@ -8,13 +8,31 @@ p{font-size:12px;color:#555;margin:0 0 8px}</style></head>
 <body>
 <!-- 使い方: preview-375.html?src=<アプリのURL>（省略時は同じフォルダの index.html）
      ローカル: preview-375.html?src=http://127.0.0.1:8080/
-     GitHub Pages: https://shodai4.github.io/art-supply-manager/preview-375.html -->
+     GitHub Pages: https://shodai4.com/art-supply-manager/preview-375.html
+     広告の余白の確認: preview-375.html?ad=56 を付けると、iOSアプリでAdMobバナーが
+     出ている状態（--ad-h と data-ad-banner）を再現し、最下部に確認用の帯を出す -->
 <div>
   <p>375×812（iPhone SE/13 mini 相当）でアプリを表示</p>
   <div class="frame"><iframe id="frame" title="アトリコ 375px"></iframe></div>
 </div>
 <script>
   var q = new URLSearchParams(location.search);
-  document.getElementById('frame').src = q.get('src') || './';
+  var frame = document.getElementById('frame');
+  var ad = parseInt(q.get('ad') || '0', 10);
+  // バナーが出ている状態を再現する（余白の確認用。アプリ本体はWebでは広告を出さない）
+  frame.addEventListener('load', function () {
+    if (!(ad > 0)) return;
+    try {
+      var doc = frame.contentDocument;
+      doc.body.setAttribute('data-ad-banner', 'true');
+      doc.documentElement.style.setProperty('--ad-h', ad + 'px');
+      var bar = doc.createElement('div');
+      bar.style.cssText = 'position:fixed;left:0;right:0;bottom:0;height:' + ad
+        + 'px;background:#20262e;color:#cfd6df;font:11px/1 system-ui;display:grid;place-items:center;z-index:99';
+      bar.textContent = 'AdMob バナー（' + ad + 'px・確認用）';
+      doc.body.appendChild(bar);
+    } catch (e) { /* 別オリジンのときは何もしない */ }
+  });
+  frame.src = q.get('src') || './';
 </script>
 </body></html>

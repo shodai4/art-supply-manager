@@ -169,7 +169,7 @@ button, a, select, label, summary, .hbtn, .vpill, .fab, .tabbar button { touch-a
   display: flex; align-items: center; gap: 6px; padding: 10px 12px 2px;
   font-size: 11.5px; font-weight: 800; color: var(--soft-ink); letter-spacing: .02em;
 }
-.sechead .ic { width: 14px; height: 14px; color: var(--muted-ink); }
+.sechead .ic { width: 14px; height: 14px; color: var(--ink-2); }
 .sechead b {
   font-size: 10px; font-weight: 700; color: var(--muted-ink);
   background: var(--surface-3); border-radius: 999px; padding: 0 6px; line-height: 15px;
