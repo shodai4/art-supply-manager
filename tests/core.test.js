@@ -7,7 +7,8 @@ import {
   upsertItem, deleteItems, exportState, importState, summarize, blankState,
   countByFolder, DEFAULT_FOLDERS, CATEGORIES, SORT_MODES, MAKER_NONE,
   itemMaker, listMakers, groupByMaker, stripEmoji,
-  isMakerGroupOn, withSortMode, toggleMakerGroup,
+  isMakerGroupOn, withSortMode, withViewGroup, viewGroupOf, VIEW_GROUPS,
+  groupByFolder, groupBySeries, seriesLabel,
 } from '../core.js';
 
 test('JANチェックディジット計算', () => {
@@ -231,27 +232,74 @@ test('絵文字を含む旧データは読み込み時に文字だけへ整え�
   assert.equal(CATEGORIES.every((c) => !('icon' in c) || !c.icon), true);
 });
 
-test('並び順の切り替え（「メーカー別」と並替メニューが連動する）', () => {
+test('一覧の分け方（すべて / フォルダ別 / メーカー別）と並替メニューの連動', () => {
   const base = blankState().settings;
+  assert.deepEqual(VIEW_GROUPS.map((g) => g.label), ['すべて', 'フォルダ別', 'メーカー別']);
+  assert.equal(viewGroupOf(base), 'all');
   assert.equal(isMakerGroupOn(base), false);
-  // メーカー順にすると「メーカー別」がオン
-  const on = toggleMakerGroup(base);
-  assert.equal(on.sort, 'maker');
-  assert.equal(isMakerGroupOn(on), true);
-  // もう一度押すと直前に見ていた並びへ戻る
-  assert.equal(toggleMakerGroup(on).sort, 'updated');
+
+  // メーカー別にすると、並びもメーカー順になる
+  const maker = withViewGroup(base, 'maker');
+  assert.equal(viewGroupOf(maker), 'maker');
+  assert.equal(maker.sort, 'maker');
+  assert.equal(isMakerGroupOn(maker), true);
+
+  // メーカー別を外すと、直前に見ていた並びへ戻る
   const fromName = withSortMode({ ...base, sort: 'name' }, 'maker');
-  assert.equal(fromName.sortBeforeMaker, 'name');
-  assert.equal(toggleMakerGroup(fromName).sort, 'name');
+  assert.equal(viewGroupOf(fromName), 'maker');
+  assert.equal(withViewGroup(fromName, 'all').sort, 'name');
+  assert.equal(withViewGroup(fromName, 'all').groupMode, 'all');
+
+  // フォルダ別は並びを変えない（名前順のままフォルダでまとめる）
+  const folder = withViewGroup({ ...base, sort: 'name' }, 'folder');
+  assert.equal(viewGroupOf(folder), 'folder');
+  assert.equal(folder.sort, 'name');
+  assert.equal(withViewGroup(folder, 'all').sort, 'name');
+
   // 並替メニューでメーカー順を選んでも同じ状態になる
-  assert.deepEqual(withSortMode({ ...base, sort: 'shortage' }, 'maker'), toggleMakerGroup({ ...base, sort: 'shortage' }));
-  // メーカー順以外を選ぶとオフになり、次にメーカー順へ戻すと直前の並びを覚えている
-  const off = withSortMode(fromName, 'name');
+  assert.deepEqual(withSortMode({ ...base, sort: 'shortage' }, 'maker'), withViewGroup({ ...base, sort: 'shortage' }, 'maker'));
+  // メーカー別のときに名前順を選ぶと「すべて」に戻る（見出しと並びが食い違わない）
+  const off = withSortMode(maker, 'name');
+  assert.equal(viewGroupOf(off), 'all');
   assert.equal(off.sort, 'name');
-  assert.equal(isMakerGroupOn(off), false);
-  assert.equal(withSortMode(off, 'maker').sortBeforeMaker, 'name');
-  // 知らない値は「新しい順」に倒す（壊れたデータでも落ちない）
-  assert.equal(withSortMode(base, 'unknown-mode').sort, 'updated');
-  assert.equal(withSortMode(undefined, 'maker').sort, 'maker');
-  assert.equal(withSortMode(base, 'maker').sortBeforeMaker, 'updated');
+  // フォルダ別のまま並びだけ変えるのはそのまま
+  assert.equal(viewGroupOf(withSortMode(folder, 'name')), 'folder');
+
+  // 古いデータ（groupMode 無し・sort==='maker'）は「メーカー別」とみなす
+  assert.equal(viewGroupOf({ sort: 'maker' }), 'maker');
+  assert.equal(viewGroupOf({}), 'all');
+  assert.equal(viewGroupOf(undefined), 'all');
+  assert.equal(viewGroupOf({ groupMode: 'こわれた' }), 'all');
+  // 知らない値は「すべて」に倒す
+  assert.equal(viewGroupOf(withViewGroup(base, 'unknown')), 'all');
+});
+
+test('フォルダ別にまとめると、フォルダの並び順で見出しが付く（未分類は末尾）', () => {
+  const a = createItem({ name: 'a', folderId: 'atelier' });
+  const b = createItem({ name: 'b', folderId: 'home' });
+  const c = createItem({ name: 'c', folderId: 'atelier' });
+  const d = createItem({ name: 'd', folderId: 'nowhere' });
+  const groups = groupByFolder([a, b, c, d], DEFAULT_FOLDERS);
+  assert.deepEqual(groups.map((g) => g.folderId), ['home', 'atelier', 'nowhere']);
+  assert.deepEqual(groups.map((g) => g.name), ['家', 'アトリエ', '']);
+  assert.deepEqual(groups.map((g) => g.items.length), [1, 2, 1]);
+  // 空でも落ちない
+  assert.deepEqual(groupByFolder(), []);
+  assert.deepEqual(groupByFolder([], DEFAULT_FOLDERS), []);
+});
+
+test('色見本はシリーズ（メーカー＋ブランド）ごとにまとまる', () => {
+  const a = createItem({ name: 'オイル 赤', maker: 'ホルベイン', brand: 'HOLBEIN' });
+  const b = createItem({ name: 'オイル 青', maker: 'ホルベイン', brand: 'HOLBEIN' });
+  const c = createItem({ name: 'アクリル 黄', maker: 'ホルベイン', brand: '' });
+  const d = createItem({ name: '水彩 緑', maker: 'クサカベ', brand: 'KUSAKABE' });
+  assert.equal(seriesLabel(a), 'ホルベイン HOLBEIN');
+  assert.equal(seriesLabel(c), 'ホルベイン（その他）', 'ブランド未設定はメーカー名（その他）');
+  assert.equal(seriesLabel(createItem({ name: '名無し' })), '未設定');
+
+  const groups = groupBySeries([a, b, c, d]);
+  assert.deepEqual(groups.map((g) => g.label), ['クサカベ KUSAKABE', 'ホルベイン HOLBEIN', 'ホルベイン（その他）']);
+  assert.deepEqual(groups.map((g) => g.items.length), [1, 2, 1]);
+  // ブランドがメーカー名で始まるときは重ねない
+  assert.equal(seriesLabel(createItem({ maker: '名村大成堂', brand: '名村大成堂' })), '名村大成堂');
 });

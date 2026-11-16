@@ -15,7 +15,7 @@ try {
 } catch (e) { /* 保存が読めないときはライト */ }
 </script>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="styles.css?v=1.7.0">
+<link rel="stylesheet" href="styles.css?v=1.8.0">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
 </head>
@@ -106,12 +106,6 @@ try {
   </div>
 
   <div class="tools" id="tools">
-    <button class="tool icon" id="btnFolders" aria-pressed="true" aria-label="保管場所フォルダ">
-      <svg class="ic" aria-hidden="true"><use href="#i-folder"/></svg>
-    </button>
-    <button class="tool" id="btnScan" aria-label="バーコードを読み取る">
-      <svg class="ic" aria-hidden="true"><use href="#i-scan"/></svg><span>読取</span>
-    </button>
     <button class="tool" id="btnSearch" aria-pressed="false" aria-label="検索">
       <svg class="ic" aria-hidden="true"><use href="#i-search"/></svg><span>検索</span>
     </button>
@@ -142,9 +136,13 @@ try {
     <button class="cbtn" id="btnUp" aria-label="上へ戻る" disabled><svg class="ic" aria-hidden="true"><use href="#i-up"/></svg></button>
   </nav>
 
-  <!-- 表示の切り替え（一覧の上部。ワンタップでメーカー別に見る） -->
+  <!-- 一覧の分け方（ワンタップで切り替え） -->
   <div class="viewrow" id="viewRow" hidden>
-    <button class="vpill" id="btnMakerGroup" aria-pressed="false" aria-label="メーカー別に分けて表示">メーカー別</button>
+    <div class="seg" role="group" aria-label="一覧の分け方">
+      <button class="vpill" id="btnViewAll" data-view-group="all" aria-pressed="true">すべて</button>
+      <button class="vpill" id="btnViewFolder" data-view-group="folder" aria-pressed="false">フォルダ別</button>
+      <button class="vpill" id="btnViewMaker" data-view-group="maker" aria-pressed="false">メーカー別</button>
+    </div>
   </div>
 </header>
 
@@ -263,6 +261,13 @@ try {
         <button class="btn" id="btnDict">一覧</button>
       </div>
     </div>
+    <div class="card" id="guideCard">
+      <h2 class="card-t">使い方</h2>
+      <p class="hint">登録・読取・色見本・補充・バックアップの要点をまとめて見られます</p>
+      <div class="actions">
+        <button class="btn" id="btnGuide">チュートリアルを見る</button>
+      </div>
+    </div>
     <div class="card">
       <h2 class="card-t">危険な操作</h2>
       <button class="btn danger" id="btnWipe" style="width:100%">全データを削除</button>
@@ -277,6 +282,7 @@ try {
   </section>
 </main>
 
+<button class="fab scan" id="btnScan" aria-label="バーコードを読み取る"><svg class="ic" aria-hidden="true"><use href="#i-scan"/></svg></button>
 <button class="fab" id="btnAdd" aria-label="画材を追加"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></button>
 
 <!-- 複数選択の操作バー -->
@@ -451,6 +457,25 @@ try {
   <div class="dict-list" id="dictFindList"></div>
 </div>
 
+<!-- チュートリアルシート -->
+<div class="sheet" id="sheetGuide" role="dialog" aria-modal="true" aria-labelledby="guideTitle">
+  <h2 id="guideTitle">使い方<button class="close" data-close="sheetGuide" aria-label="閉じる"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></h2>
+  <div class="guide">
+    <div class="gstep"><b>画材を追加する</b><span>右下の＋を押して、商品名・メーカー・保管場所を入れて保存します。JANがあると画像も自動で入ります。</span></div>
+    <div class="gstep"><b>バーコードで登録</b><span>右下の読取ボタンでバーコードを読みます。1本読むと編集シートが開き、JANと商品名が自動で入ります。</span></div>
+    <div class="gstep"><b>続けて読み取る（連続スキャン）</b><span>読取画面の「連続スキャン」をONにすると、カメラを閉じずに読み続けられます。辞書にある画材は自動で登録され、画像も後から入ります。</span></div>
+    <div class="gstep"><b>辞書から選んで登録</b><span>編集シートの「辞書から探す」で色名・メーカー・品番から選ぶと、商品名やJANが自動で入ります。</span></div>
+    <div class="gstep"><b>一覧の分け方</b><span>在庫一覧の上部で「すべて／フォルダ別／メーカー別」を切り替えます。メーカー別では見出しごとに点数が出ます。</span></div>
+    <div class="gstep"><b>色見本の見方</b><span>色見本タブには色名か写真のある画材がシリーズごとに並びます。タップすると編集できます。</span></div>
+    <div class="gstep"><b>買うものリスト</b><span>補充タブに、残りわずか・使い切った画材が自動で集まります。通販ボタンからそのまま探せます。</span></div>
+    <div class="gstep"><b>保管場所（フォルダ）</b><span>場所タブでフォルダを追加・名前変更・移動できます。フォルダは階層にできます。</span></div>
+    <div class="gstep"><b>まとめて移動する</b><span>一覧の選択ボタンで複数選択のモードにして、画材を選んで「移動」を押すと、別のフォルダへまとめて移せます。</span></div>
+    <div class="gstep"><b>バックアップ</b><span>設定の「バックアップ保存」でJSONを書き出せます。機種変更の前に保存しておくと安心です（手元写真は端末内に残ります）。</span></div>
+    <div class="gstep"><b>表示（ナイトモード）</b><span>設定の「表示」で自動・ライト・ダークを選べます。</span></div>
+    <div class="gstep"><b>画面の拡大</b><span>ダブルタップやピンチでは拡大しません。文字を大きくしたいときは端末の設定から変えてください。</span></div>
+  </div>
+</div>
+
 <!-- 通販シート -->
 <div class="sheet" id="sheetShop" role="dialog" aria-modal="true" aria-labelledby="shopTitle">
   <h2 id="shopTitle"><span id="shopItemName">通販</span><button class="close" data-close="sheetShop" aria-label="閉じる"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></h2>
@@ -494,6 +519,6 @@ try {
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<script type="module" src="app.js?v=1.7.0"></script>
+<script type="module" src="app.js?v=1.8.0"></script>
 </body>
 </html>

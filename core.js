@@ -452,12 +452,14 @@ export function sortItems(items, mode = 'updated') {
   return copy.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
 }
 
-/* ---------------- 並び順の切り替え（一覧上部の「メーカー別」と連動） ---------------- */
+/* ---------------- 一覧の分け方（すべて / フォルダ別 / メーカー別） ---------------- */
 
-/** 「メーカー別」表示（メーカー見出しで分ける）がオンか */
-export function isMakerGroupOn(settings = {}) {
-  return settings?.sort === 'maker';
-}
+/** 一覧の上部に出す3択 */
+export const VIEW_GROUPS = [
+  { id: 'all', label: 'すべて' },
+  { id: 'folder', label: 'フォルダ別' },
+  { id: 'maker', label: 'メーカー別' },
+];
 
 /** 使える並び順か（知らない値は「新しい順」に倒す） */
 function normalizeSortMode(mode) {
@@ -465,24 +467,108 @@ function normalizeSortMode(mode) {
 }
 
 /**
+ * いまの分け方。
+ * 知らない値や古いデータ（groupMode が無い）は「すべて」。
+ * 以前の「メーカー順＝メーカー見出し」のデータは「メーカー別」とみなす。
+ */
+export function viewGroupOf(settings = {}) {
+  const g = String(settings?.groupMode || '');
+  if (g === 'all' || g === 'folder' || g === 'maker') return g;
+  return settings?.sort === 'maker' ? 'maker' : 'all';
+}
+
+/** 「メーカー別」で分けているか（メーカー順の見出し表示） */
+export function isMakerGroupOn(settings = {}) {
+  return viewGroupOf(settings) === 'maker';
+}
+
+/**
  * 並び順を変える設定を作る。
- * 「メーカー別」を外したときは、直前に見ていた並び（メーカー順以外）へ戻せるよう覚えておく。
+ * メーカー順を選ぶと「メーカー別」もオンになり、外すと直前に見ていた並びへ戻る。
  */
 export function withSortMode(settings = {}, mode = 'updated') {
   const next = normalizeSortMode(mode);
   const remembered = normalizeSortMode(settings?.sortBeforeMaker || 'updated');
   const before = remembered === 'maker' ? 'updated' : remembered;
+  const current = normalizeSortMode(settings?.sort || 'updated');
   if (next === 'maker') {
-    const current = normalizeSortMode(settings?.sort || 'updated');
-    return { ...settings, sort: 'maker', sortBeforeMaker: current === 'maker' ? before : current };
+    return {
+      ...settings, sort: 'maker', groupMode: 'maker',
+      sortBeforeMaker: current === 'maker' ? before : current,
+    };
   }
-  return { ...settings, sort: next, sortBeforeMaker: before };
+  const group = viewGroupOf(settings) === 'maker' ? 'all' : viewGroupOf(settings);
+  return { ...settings, sort: next, groupMode: group, sortBeforeMaker: before };
 }
 
-/** 「メーカー別」表示のオン・オフ（オンなら直前の並びへ戻す） */
-export function toggleMakerGroup(settings = {}) {
-  if (isMakerGroupOn(settings)) return withSortMode(settings, settings?.sortBeforeMaker || 'updated');
-  return withSortMode(settings, 'maker');
+/**
+ * 一覧の分け方（すべて / フォルダ別 / メーカー別）を変える。
+ * 「メーカー別」は並びもメーカー順にする（見出しの中をメーカー順で見るため）。
+ */
+export function withViewGroup(settings = {}, mode = 'all') {
+  const next = VIEW_GROUPS.some((g) => g.id === mode) ? mode : 'all';
+  if (next === 'maker') return withSortMode(settings, 'maker');
+  const current = viewGroupOf(settings);
+  const base = normalizeSortMode(settings?.sort || 'updated');
+  const sort = current === 'maker' ? normalizeSortMode(settings?.sortBeforeMaker || 'updated') : base;
+  return {
+    ...settings, groupMode: next, sort: sort === 'maker' ? 'updated' : sort,
+    sortBeforeMaker: normalizeSortMode(settings?.sortBeforeMaker || 'updated'),
+  };
+}
+
+/** フォルダ別のまとまり（フォルダの並び順。未分類は末尾） */
+export function groupByFolder(items = [], folders = []) {
+  const order = new Map((Array.isArray(folders) ? folders : []).map((f, i) => [String(f?.id ?? ''), i]));
+  const groups = new Map();
+  for (const it of Array.isArray(items) ? items : []) {
+    const id = String(it?.folderId || '');
+    if (!groups.has(id)) {
+      const folder = (Array.isArray(folders) ? folders : []).find((f) => String(f?.id ?? '') === id);
+      groups.set(id, { folderId: id, name: folder ? String(folder.name || '') : '', items: [] });
+    }
+    groups.get(id).items.push(it);
+  }
+  const big = Number.MAX_SAFE_INTEGER;
+  return [...groups.values()].sort((a, b) => {
+    const ai = order.has(a.folderId) ? order.get(a.folderId) : big;
+    const bi = order.has(b.folderId) ? order.get(b.folderId) : big;
+    return ai - bi;
+  });
+}
+
+/* ---------------- 色見本のシリーズ（メーカー＋ブランド） ---------------- */
+
+/** 色見本の見出しに使うシリーズ名（ブランド優先。無ければ「メーカー名（その他）」） */
+export function seriesLabel(item = {}) {
+  const brand = String(item?.brand || '').trim();
+  if (brand) {
+    const maker = itemMaker(item);
+    return maker && !brand.startsWith(maker) ? `${maker} ${brand}` : brand;
+  }
+  const maker = itemMaker(item);
+  return maker ? `${maker}（その他）` : '未設定';
+}
+
+/** 色見本をシリーズ（メーカー＋ブランド）ごとにまとめる */
+export function groupBySeries(items = []) {
+  const groups = [];
+  const index = new Map();
+  for (const it of Array.isArray(items) ? items : []) {
+    const maker = itemMaker(it);
+    const brand = String(it?.brand || '').trim();
+    const key = `${maker}|${brand}`;
+    if (!index.has(key)) {
+      index.set(key, groups.length);
+      groups.push({ key, label: seriesLabel(it), maker, brand, items: [] });
+    }
+    groups[index.get(key)].items.push(it);
+  }
+  // メーカー順 → ブランドがあるものを先、ブランド未設定（その他）は後ろ
+  return groups.sort((a, bk) => (a.maker ? 0 : 1) - (bk.maker ? 0 : 1)
+    || a.maker.localeCompare(bk.maker, 'ja')
+    || (a.brand ? 0 : 1) - (bk.brand ? 0 : 1)
+    || a.brand.localeCompare(bk.brand, 'ja'));
 }
 
 export function countByFolder(items) {

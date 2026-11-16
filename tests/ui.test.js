@@ -172,40 +172,113 @@ test('Yahoo!のAPIを使うため、規定のHTMLでクレジットを最下部�
   assert.ok(snippetAt > html.indexOf('foot-note'), 'クレジットは注記より下（アプリの下部）に置く');
 });
 
-test('一覧の上部の「メーカー別」で、ワンタップでメーカーごとに分けて見られる', () => {
+test('一覧の上部の3択（すべて / フォルダ別 / メーカー別）でワンタップで切り替えられる', () => {
   const html = read('index.html');
   const app = read('app.js');
   const css = read('styles.css');
 
-  // 一覧の上部（ヘッダー内）にピルが1つ。ツールバーは狭いので増やさない
-  assert.match(html, /<div class="viewrow" id="viewRow" hidden>\s*<button class="vpill" id="btnMakerGroup" aria-pressed="false"[^>]*>メーカー別</);
-  assert.equal(/id="btnMakerGroup"[^>]*>\s*<svg/.test(html), false, 'アイコンだけにせず言葉で分かるようにする');
-  assert.equal(/id="viewRow"[\s\S]{0,300}<svg/.test(html), false, 'ピルにアイコンを足さない');
+  // 一覧の上部に3択。ツールバーは狭いのでボタンを増やさない
+  const row = html.slice(html.indexOf('id="viewRow"'), html.indexOf('id="viewRow"') + 700);
+  assert.match(row, /<div class="seg" role="group" aria-label="一覧の分け方">/);
+  for (const [id, label] of [['btnViewAll', 'すべて'], ['btnViewFolder', 'フォルダ別'], ['btnViewMaker', 'メーカー別']]) {
+    assert.ok(row.includes(`id="${id}"`), `#${id} がありません`);
+    assert.ok(row.includes(`>${label}</button>`), `${label} のボタンがありません`);
+    assert.equal(new RegExp(`id="${id}"[^>]*>\\s*<svg`).test(row), false, 'アイコンだけにせず言葉で分かるようにする');
+  }
+  assert.equal(row.includes('<svg'), false, '3択にアイコンを足さない');
+  assert.equal(EMOJI.test(row), false, '3択の導線に絵文字がある');
 
-  // 押すとオン・オフが切り替わる（既存のメーカー見出しグループ表示を使う）
-  assert.match(app, /\$\('btnMakerGroup'\)\.addEventListener\('click', \(\) => \{[\s\S]{0,200}toggleMakerGroup\(state\.settings\)/);
-  assert.match(app, /renderTilesInto\(\$\('itemList'\), currentList\(\), \{ group: state\.settings\.sort === 'maker'/);
+  // 押すと分け方が変わる（既存のメーカー見出し・フォルダ見出しを使う）
+  assert.match(app, /\$\('viewRow'\)\.addEventListener\('click', \(e\) => \{[\s\S]{0,200}withViewGroup\(state\.settings, b\.dataset\.viewGroup\)/);
+  assert.match(app, /renderTilesInto\(\$\('itemList'\), currentList\(\), \{ group: viewGroupOf\(state\.settings\)/);
+  assert.match(app, /function viewBlocks\(items, group\) \{/);
+  assert.match(app, /groupByFolder\(items, state\.folders\)/);
+  assert.match(app, /groupByMaker\(items\)/);
   // 押されている状態が見た目で分かる
-  assert.match(app, /\$\('btnMakerGroup'\)\.setAttribute\('aria-pressed', String\(grouped\)\)/);
-  // 絞込・並替の「メーカー順」と矛盾しない（どちらから変えても同じ状態になる）
+  assert.match(app, /btn\.setAttribute\('aria-pressed', String\(group === g\.id\)\)/);
+  // 並替の「メーカー順」と連動（どちらから変えても同じ状態になる）
   assert.match(app, /withSortMode\(state\.settings, b\.dataset\.sort\)/);
-  assert.equal(/settings: \{ \.\.\.state\.settings, sort: b\.dataset\.sort \}/.test(app), false, '並替は連動する入口を通す');
-  // 出るのは在庫タブの一覧のときだけ（保管場所のグリッドでは出さない）
-  assert.match(app, /\$\('viewRow'\)\.hidden = ui\.tab !== 'stock' \|\| isFolderMode\(\)/);
 
-  // 375pxではみ出さない（横並び1つ・折り返さない・高さはツールバー並み）
+  // フォルダアイコンは「場所」タブと紛らわしいのでツールバーから外した
+  assert.equal(html.includes('id="btnFolders"'), false, 'ツールバーのフォルダボタンが残っている');
+  assert.equal(/btnFolders/.test(app), false, 'app.js に btnFolders が残っている');
+  assert.match(html, /data-tab="folders"[^>]*>場所</);
+
+  // 375pxではみ出さない（3等分・折り返さない）
   assert.match(css, /\.viewrow\s*\{[^}]*display:\s*flex/);
   assert.match(css, /\.viewrow\[hidden\]\s*\{\s*display:\s*none/);
+  assert.match(css, /\.seg\s*\{[^}]*display:\s*flex/);
+  assert.match(css, /\.vpill\s*\{[^}]*flex:\s*1 1 0/);
   assert.match(css, /\.vpill\s*\{[^}]*white-space:\s*nowrap/);
-  const pill = /\.vpill\s*\{([^}]*)\}/.exec(css)[1];
-  assert.match(pill, /height:\s*26px/);
-  assert.match(pill, /font-size:\s*11\.5px/);
-  // 押されているときの見た目（テーマの変数を使う）
   assert.match(css, /\.vpill\[aria-pressed="true"\]\s*\{[^}]*background:\s*var\(--accent-soft\)/);
+});
 
-  // 絵文字を使わない
-  const block = html.slice(html.indexOf('id="viewRow"'), html.indexOf('id="viewRow"') + 300);
-  assert.equal(EMOJI.test(block), false, 'メーカー別の導線に絵文字がある');
+test('右下の＋の上に、文字なしの読取ボタンがある（ツールバーの読取は無し）', () => {
+  const html = read('index.html');
+  const app = read('app.js');
+  const css = read('styles.css');
+
+  // フローティングボタンとして縦に並ぶ（＋のすぐ上）
+  const scan = html.indexOf('class="fab scan" id="btnScan"');
+  const add = html.indexOf('id="btnAdd"');
+  assert.ok(scan > 0, '読取のフローティングボタンがありません');
+  assert.ok(add > scan, '＋より前に読取ボタンを置く');
+  assert.match(html, /<button class="fab scan" id="btnScan" aria-label="バーコードを読み取る"><svg class="ic"/);
+  // 文字は入れない（アイコンだけ）
+  const scanTag = html.slice(scan, html.indexOf('</button>', scan) + 9);
+  assert.equal(/[ぁ-んァ-ヶ一-龠]/.test(scanTag.replace(/aria-label="[^"]*"/, '')), false, '読取ボタンに文字がある');
+  // ツールバーからは外した
+  const tools = html.slice(html.indexOf('id="tools"'), html.indexOf('id="searchRow"'));
+  assert.equal(tools.includes('btnScan'), false, 'ツールバーの読取ボタンが残っている');
+  assert.equal(tools.includes('読取'), false, 'ツールバーに読取の文字が残っている');
+
+  // 位置はCSSで＋の上。複数選択のバーが出たときも重ならない
+  assert.match(css, /\.fab\.scan\s*\{[^}]*bottom:\s*calc\(56px \+ 52px \+ 10px/);
+  assert.match(css, /body\.selecting \.fab\.scan\s*\{[^}]*bottom:\s*calc\(112px \+ 52px/);
+  // 出るのは在庫・補充のタブのときだけ（＋と同じ）
+  assert.match(app, /\$\('btnScan'\)\.style\.visibility = fabVisible/);
+  // 押すと読取シートが開く（動きは今までどおり）
+  assert.match(app, /\$\('btnScan'\)\.addEventListener\('click', \(\) => \{\s*openSheet\('sheetScan'\)/);
+});
+
+test('色見本はシリーズ（メーカー＋ブランド）ごとの見出しで並ぶ', () => {
+  const app = read('app.js');
+  const css = read('styles.css');
+  assert.match(app, /groupBySeries\(list\)\.map\(\(g\) => `/);
+  assert.match(app, /<div class="mhead"><span>\$\{esc\(g\.label \|\| seriesLabel\(g\.items\[0\]\)\)\}<\/span><b>\$\{g\.items\.length\}<\/b><\/div>/);
+  assert.match(app, /<div class="sgrid">\$\{g\.items\.map\(swatchTile\)\.join\(''\)\}<\/div>/);
+  assert.match(css, /\.mhead \+ \.sgrid\s*\{\s*padding-top:\s*6px/);
+  // 見出しの数字はそのシリーズの点数
+  assert.equal(/seriesLabel/.test(read('core.js')), true);
+});
+
+test('設定タブの「使い方」から、主要機能のチュートリアルを開ける', () => {
+  const html = read('index.html');
+  const app = read('app.js');
+  const css = read('styles.css');
+
+  // 設定タブ内のカード（危険な操作の前）
+  const guideCard = html.indexOf('id="guideCard"');
+  assert.ok(guideCard > 0, '使い方のカードがありません');
+  assert.ok(guideCard < html.indexOf('id="btnWipe"'), '使い方は危険な操作より上に置く');
+  assert.match(html, /id="btnGuide">チュートリアルを見る</);
+  // シートが開く
+  assert.match(html, /<div class="sheet" id="sheetGuide" role="dialog" aria-modal="true" aria-labelledby="guideTitle">/);
+  assert.match(html, /data-close="sheetGuide"/);
+  assert.match(app, /\$\('btnGuide'\)\.addEventListener\('click', \(\) => openSheet\('sheetGuide'\)\)/);
+
+  // 主要機能がひととおり載っている（短い日本語・絵文字なし）
+  const sheet = html.slice(html.indexOf('id="sheetGuide"'), html.indexOf('<!-- 通販シート -->'));
+  for (const word of ['バーコード', '連続スキャン', '辞書', '色見本', '買うものリスト', 'フォルダ', 'まとめて移動', 'バックアップ', 'ナイトモード']) {
+    assert.ok(sheet.includes(word), `${word} の説明がありません`);
+  }
+  assert.equal(EMOJI.test(sheet), false, 'チュートリアルに絵文字がある');
+  assert.ok((sheet.match(/class="gstep"/g) || []).length >= 10, '項目が少なすぎる');
+  // チュートリアルの見出しと本文のスタイルがある
+  assert.match(css, /\.gstep b\s*\{[^}]*font-weight:\s*800/);
+  assert.match(css, /\.gstep span\s*\{[^}]*font-size:\s*12\.5px/);
+  // 文字の大きさを変える導線（拡大抑止の代わり）を書いておく
+  assert.match(sheet, /端末の設定/);
 });
 
 test('画面サイズは固定（ダブルタップ・ピンチで拡大しない）', () => {

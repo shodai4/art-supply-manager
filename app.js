@@ -9,7 +9,8 @@ import {
   folderParentId, folderChildren, folderChain, folderDepth, folderPathLabel, folderSubtreeIds,
   folderTree, folderOptions, countByFolderDeep,
   toggleSelection, isSelected, selectAllIds, pruneSelection, searchDictionary, dictionaryHaystack,
-  isMakerGroupOn, withSortMode, toggleMakerGroup,
+  isMakerGroupOn, withSortMode, withViewGroup, viewGroupOf, VIEW_GROUPS,
+  groupByFolder, groupBySeries, seriesLabel,
 } from './core.js';
 import {
   FREE_ITEM_LIMIT, FREE_FOLDER_LIMIT, PRO_BENEFITS, isPro, itemQuota, folderQuota,
@@ -444,7 +445,7 @@ function render() {
   if (folderMode) { renderFolderGrid(); $('subFolderRow').innerHTML = ''; }
   else {
     renderSubFolders();
-    renderTilesInto($('itemList'), currentList(), { group: state.settings.sort === 'maker', emptyKey: 'items' });
+    renderTilesInto($('itemList'), currentList(), { group: viewGroupOf(state.settings), emptyKey: 'items' });
   }
   if (ui.tab === 'swatch') renderSwatches();
   renderShopping();
@@ -460,7 +461,9 @@ function render() {
   $('crumb').hidden = ui.tab !== 'stock';
   $('viewRow').hidden = ui.tab !== 'stock' || isFolderMode();
   $('searchRow').hidden = !ui.searchOpen || ui.tab !== 'stock';
-  $('btnAdd').style.visibility = ui.tab === 'stock' || ui.tab === 'shopping' ? 'visible' : 'hidden';
+  const fabVisible = ui.tab === 'stock' || ui.tab === 'shopping';
+  $('btnAdd').style.visibility = fabVisible ? 'visible' : 'hidden';
+  $('btnScan').style.visibility = fabVisible ? 'visible' : 'hidden'; // 右下の＋の上（読取）
 }
 
 function isFolderMode() {
@@ -473,7 +476,6 @@ function renderHeader() {
 }
 
 function renderTools() {
-  $('btnFolders').setAttribute('aria-pressed', String(isFolderMode()));
   const searchOpen = ui.searchOpen && ui.tab === 'stock';
   $('btnSearch').setAttribute('aria-pressed', String(searchOpen));
   const filtering = ui.category !== 'all' || ui.status !== 'all' || ui.maker !== 'all';
@@ -486,10 +488,12 @@ function renderTools() {
   $('btnSelect').hidden = isFolderMode();
   $('btnSelect').setAttribute('aria-pressed', String(ui.selectMode));
   $('btnSelect').setAttribute('aria-label', ui.selectMode ? '選択をやめる' : '複数選択');
-  // 「メーカー別」は一覧の上部のピル（オン・オフが見た目で分かるように）
-  const grouped = isMakerGroupOn(state.settings);
-  $('btnMakerGroup').setAttribute('aria-pressed', String(grouped));
-  $('btnMakerGroup').setAttribute('aria-label', grouped ? 'メーカー別をやめる' : 'メーカー別に分けて表示');
+  // 一覧の分け方（すべて / フォルダ別 / メーカー別）は上部の3択で見た目に出す
+  const group = viewGroupOf(state.settings);
+  for (const g of VIEW_GROUPS) {
+    const btn = $(`btnView${g.id === 'all' ? 'All' : g.id === 'folder' ? 'Folder' : 'Maker'}`);
+    if (btn) btn.setAttribute('aria-pressed', String(group === g.id));
+  }
 }
 
 function renderCrumb() {
@@ -590,7 +594,10 @@ function renderSwatches() {
     $('swatchGrid').innerHTML = '<div class="empty"><b>色見本はまだありません</b>画材を編集して、色名か写真を入れると並びます</div>';
     return;
   }
-  $('swatchGrid').innerHTML = `<div class="sgrid">${list.map(swatchTile).join('')}</div>`;
+  // シリーズ（メーカー＋ブランド）ごとに見出しを付けて並べる
+  $('swatchGrid').innerHTML = groupBySeries(list).map((g) => `
+    <div class="mhead"><span>${esc(g.label || seriesLabel(g.items[0]))}</span><b>${g.items.length}</b></div>
+    <div class="sgrid">${g.items.map(swatchTile).join('')}</div>`).join('');
 }
 
 /** アイテムの実物画像（手元写真 → 画像URL の順。無ければ空文字でアイコン表示） */
@@ -669,7 +676,22 @@ function itemRow(it, opts = {}) {
   </article>`;
 }
 
-/** アイテム群をグリッド／リストで描画（メーカー見出し対応） */
+/**
+ * 一覧の見出しのまとまり（すべて / フォルダ別 / メーカー別）。
+ * 見出しの右の数字は、そのまとまりの点数。
+ */
+function viewBlocks(items, group) {
+  if (group === 'maker') {
+    return [...groupByMaker(items)].sort((a, b) => String(a.maker || '未設定').localeCompare(String(b.maker || '未設定'), 'ja'))
+      .map((g) => ({ label: g.maker || '未設定', items: g.items }));
+  }
+  if (group === 'folder') {
+    return groupByFolder(items, state.folders).map((g) => ({ label: g.name || '未分類', items: g.items }));
+  }
+  return [{ label: '', items }];
+}
+
+/** アイテム群をグリッド／リストで描画（見出しつきのグループ対応） */
 function renderTilesInto(el, items, opts = {}) {
   if (!items.length) {
     el.innerHTML = opts.emptyKey === 'shopping'
@@ -679,10 +701,10 @@ function renderTilesInto(el, items, opts = {}) {
         : '<div class="empty"><b>まだ画材がありません</b>右下の＋ か 読取 から登録できます<button class="btn mini wide" data-add-samples>サンプルを入れる</button></div>');
     return;
   }
-  const blocks = opts.group ? groupByMaker(items) : [{ maker: '', items }];
+  const blocks = viewBlocks(items, opts.group);
   el.innerHTML = blocks.map((g) => {
-    const head = opts.group
-      ? `<div class="mhead"><span>${esc(g.maker || '未設定')}</span><b>${g.items.length}</b></div>`
+    const head = g.label
+      ? `<div class="mhead"><span>${esc(g.label)}</span><b>${g.items.length}</b></div>`
       : '';
     const body = (opts.forceList || ui.layout === 'list')
       ? g.items.map((it) => itemRow(it, opts)).join('')
@@ -960,13 +982,7 @@ $('sheetSort').addEventListener('click', (e) => {
 });
 
 /* ---------------- ツールバー・ナビ ---------------- */
-$('btnFolders').addEventListener('click', () => {
-  ui.mode = 'folders';
-  ui.folderId = 'all';
-  ui.tab = 'stock';
-  exitSelect();
-  render();
-});
+// 保管場所のグリッドへは、一覧の「戻る」（家アイコン）と下の「場所」タブから入る
 $('btnHome').addEventListener('click', () => {
   ui.mode = 'folders';
   ui.folderId = 'all';
@@ -1000,9 +1016,13 @@ $('btnLayout').addEventListener('click', () => {
   render();
 });
 
-/** 一覧上部の「メーカー別」（ワンタップでメーカー見出しの表示に切り替える） */
-$('btnMakerGroup').addEventListener('click', () => {
-  state = { ...state, settings: toggleMakerGroup(state.settings) };
+/** 一覧上部の3択（すべて / フォルダ別 / メーカー別。ワンタップで見出しを切り替える） */
+$('viewRow').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-view-group]');
+  if (!b) return;
+  const next = withViewGroup(state.settings, b.dataset.viewGroup);
+  if (viewGroupOf(next) === viewGroupOf(state.settings) && next.sort === state.settings.sort) return;
+  state = { ...state, settings: next };
   save();
   render();
 });
@@ -1979,6 +1999,9 @@ $('dictFindList').addEventListener('click', (e) => {
   const d = mergedDict.find((x) => x.jan === b.dataset.dictJan);
   applyDictEntry(d);
 });
+
+/* ---------------- チュートリアル（使い方） ---------------- */
+$('btnGuide').addEventListener('click', () => openSheet('sheetGuide'));
 
 /* ---------------- PWA（アプリ内では Service Worker を使わない） ---------------- */
 if ('serviceWorker' in navigator && !isNativeShell(window)) {
