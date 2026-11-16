@@ -77,8 +77,9 @@ test('画面: 複数選択の入口・選択マーク・操作バーがある', 
   for (const id of ['btnSelect', 'selBar', 'selCount', 'btnSelAll', 'btnSelMove', 'btnSelCancel']) {
     assert.ok(html.includes(`id="${id}"`), `#${id} がありません`);
   }
-  // 短いラベル（文字を増やさない）
-  assert.match(html, />選択</);
+  // ツールバーが狭いので選択はアイコンだけ（aria-label で説明）
+  assert.match(html, /id="btnSelect"[^>]*aria-label="複数選択"/);
+  assert.match(html, /class="tool icon" id="btnSelect"/);
   assert.match(html, />全選択</);
   assert.match(html, />移動</);
   assert.match(html, />やめる</);
