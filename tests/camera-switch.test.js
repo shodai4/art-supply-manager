@@ -68,7 +68,10 @@ test('切り替えは「カメラを止めてから開き直す」順で、連�
   assert.match(app, /async function restartScanner\(\) \{\s*await stopScanner\(\);/);
   assert.match(app, /await startScanner\(\);\s*\}/);
   // 開き直す前に、古いストリームを止めて片付ける
-  assert.match(app, /function stopScanner\(\) \{[\s\S]{0,1200}return Promise\.resolve\(stopping\)/);
+  assert.match(app, /function stopScanner\(\) \{[\s\S]{0,1400}const settled = Promise\.resolve\(stopping\)/);
+  // 止まらない版の stop() で切り替えが詰まらないよう、待つ時間に上限を置く
+  assert.match(app, /const timeout = new Promise\(\(resolve\) => setTimeout\(resolve, SCAN_STOP_TIMEOUT_MS\)\);/);
+  assert.match(app, /return Promise\.race\(\[settled, timeout\]\)/);
   // 起動時も前のストリームを待ってから開く
   assert.match(app, /async function startScanner\(\) \{\s*const token = \(scanStartToken \+= 1\);\s*await stopScanner\(\);/);
   // 向きは getUserMedia と同梱スキャナの両方に効く

@@ -1543,6 +1543,7 @@ let scanLimitHit = false;   // 新規登録が無料上限で止まっている�
 let scannerLive = false;    // カメラ（またはネイティブ読取）が動いているか
 let scanFacing = DEFAULT_FACING; // 使っているカメラの向き（外=environment / 内=user）
 let scanSwitchBusy = false; // カメラ切り替えの再起動中
+const SCAN_STOP_TIMEOUT_MS = 800; // スキャナの停止を待つ上限（止まらないときに詰まらせない）
 const SCAN_LOG_MAX = 5;     // 画面に出す直近件数
 
 $('btnScan').addEventListener('click', () => {
@@ -1776,6 +1777,7 @@ async function startScanner() {
  * 同梱スキャナの stop() は非同期なので、Promise を返して再起動側が待てるようにしている
  * （向きの切り替えで、古いストリームと新しいストリームが重ならないようにする）。
  */
+/** 同梱スキャナの停止を待つ上限（ミリ秒）。止まらない版でも切り替えを詰まらせない */
 function stopScanner() {
   scannerLive = false;
   if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(rafId);
@@ -1799,9 +1801,20 @@ function stopScanner() {
   } catch (e) {
     stopping = Promise.reject(e);
   }
-  return Promise.resolve(stopping)
-    .then(() => { s.clear?.(); holder?.remove(); })
-    .catch(() => { holder?.remove(); });
+  const settled = Promise.resolve(stopping)
+    .then(() => { try { s.clear?.(); } catch (e) { /* 後片付けの失敗は無視 */ } })
+    .catch(() => {});
+  const timeout = new Promise((resolve) => setTimeout(resolve, SCAN_STOP_TIMEOUT_MS));
+  // stop() が返ってこない版でも、古いカメラを確実に手放してから次を開く
+  return Promise.race([settled, timeout]).then(() => {
+    holder?.querySelectorAll?.('video').forEach((v) => {
+      try {
+        v.srcObject?.getTracks?.().forEach((t) => t.stop());
+        v.srcObject = null;
+      } catch (e) { /* 参照の異なる実装でも落ちない */ }
+    });
+    holder?.remove();
+  });
 }
 
 /** 読み取った値の受け口（通常モード／連続モードの分岐）。受け付けたら true */
