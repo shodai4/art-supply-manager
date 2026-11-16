@@ -280,12 +280,13 @@ button, a, select, label, summary, .hbtn, .vpill, .fab, .tabbar button { touch-a
 }
 .tilewrap.low .tstep .n { color: var(--warn); }
 .tilewrap.out .tstep .n { color: var(--bad); }
-/* リストの星はフォルダタグの左（サムネイルを隠さない）。名前の幅を圧迫しない大きさ */
-.it-sub .fav.sm {
-  position: static; flex: 0 0 auto; width: 20px; height: 20px;
-  background: none; box-shadow: none;
+/* リストの星はサムネイルの右下に重ねる（名前・メタの幅を削らない小さいボタン） */
+.item .thumb .fav.sm {
+  position: absolute; right: 0; bottom: 0; z-index: 3;
+  width: 18px; height: 18px; border-radius: 8px 0 8px 0;
+  background: var(--badge-bg); box-shadow: 0 0 0 1px rgba(15, 25, 40, .08);
 }
-.it-sub .fav.sm .ic { width: 14px; height: 14px; }
+.item .thumb .fav.sm .ic { width: 12px; height: 12px; }
 
 /* ---------- 複数選択（タイル・行のチェックと操作バー） ---------- */
 .selmark {

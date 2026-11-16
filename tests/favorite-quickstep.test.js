@@ -151,8 +151,8 @@ test('星とステッパーは375pxのカードに収まる（等分・小さい
   assert.match(css, /\.tstep\s*\{[^}]*display:\s*flex[^}]*height:\s*22px/);
   assert.match(css, /\.tstep \.step\s*\{[^}]*flex:\s*1 1 0[^}]*min-width:\s*0/);
   assert.match(css, /\.tstep \.n\s*\{[^}]*font-variant-numeric:\s*tabular-nums/);
-  // リストの星は名前の幅を圧迫しない
-  assert.match(css, /\.it-sub \.fav\.sm\s*\{[^}]*position:\s*static/);
+  // リストの星はサムネイルの右下に重ねて、名前・メタの幅を削らない
+  assert.match(css, /\.item \.thumb \.fav\.sm\s*\{[^}]*position:\s*absolute[^}]*width:\s*18px/);
   // 在庫切れの色
   assert.match(css, /\.tilewrap\.out \.tstep \.n\s*\{[^}]*color:\s*var\(--bad\)/);
 });
