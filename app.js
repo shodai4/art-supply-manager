@@ -28,6 +28,10 @@ import {
 import {
   chooseScanStrategy, isNativeShell, nativeScannerPlugin, loadVendorScanner, VENDOR_SCANNER_PATH,
 } from './scanner.js';
+import {
+  createScanSession, resetScanSession, checkCooldown, markScanned, applyScan,
+  scanLogCount, describeScanLog,
+} from './scan-flow.js';
 import { shouldOpenExternally, openInExternalBrowser } from './links.js';
 import {
   compressImageFile, listPhotos, putPhoto, deletePhoto, clearPhotos, fetchProductImageInfo,
@@ -1417,12 +1421,78 @@ $('moveOptions').addEventListener('click', (e) => {
 });
 
 /* ---------------- バーコード読取 ---------------- */
+let scanSession = createScanSession();
+let scanContinuous = false; // 連続スキャン（スキャン画面を開いている間の設定）
+let scanLog = [];           // 今回の読み取りログ（新しいものが先頭）
+let scanLimitHit = false;   // 新規登録が無料上限で止まっているか
+let scannerLive = false;    // カメラ（またはネイティブ読取）が動いているか
+const SCAN_LOG_MAX = 5;     // 画面に出す直近件数
+
 $('btnScan').addEventListener('click', () => {
   openSheet('sheetScan');
   $('manualJan').value = '';
+  resetScanSession(scanSession);
+  clearScanLog();
+  renderScanMode();
   startScanner();
 });
 $('btnRescan').addEventListener('click', () => { stopScanner(); startScanner(); });
+
+/* --- 連続スキャンの表示（トグル・ログ・status） --- */
+function renderScanMode() {
+  $('btnContinuous').setAttribute('aria-pressed', String(scanContinuous));
+  $('scanModeNote').textContent = scanContinuous ? '閉じずに続けて登録します' : '1本読むと閉じます';
+  $('scanLog').hidden = !scanContinuous;
+  renderScanLog();
+}
+
+function setContinuousScan(on) {
+  scanContinuous = Boolean(on);
+  if (!scanContinuous) { // 通常モードに戻したら次のスキャンは1本で閉じる
+    scanLog = [];
+    scanLimitHit = false;
+    resetScanSession(scanSession);
+  }
+  hideScanStatus();
+  renderScanMode();
+}
+
+function clearScanLog() {
+  scanLog = [];
+  scanLimitHit = false;
+  hideScanStatus();
+  renderScanLog();
+}
+
+function renderScanLog() {
+  $('scanLogCount').textContent = `${scanLogCount(scanLog)}件`;
+  $('scanLogList').innerHTML = scanLog.slice(0, SCAN_LOG_MAX).map((e) =>
+    `<li data-k="${esc(e.kind)}"><span class="k">${esc(e.label)}</span><span class="n">${esc(e.name || e.jan)}</span></li>`).join('');
+  $('scanLimitNote').hidden = !scanLimitHit;
+}
+
+function showScanStatus(msg, tone = '') {
+  const el = $('scanStatus');
+  el.hidden = false;
+  el.className = `scan-status${tone ? ` ${tone}` : ''}`;
+  el.textContent = msg;
+}
+
+function hideScanStatus() {
+  const el = $('scanStatus');
+  el.hidden = true;
+  el.className = 'scan-status';
+  el.textContent = '';
+}
+
+$('btnContinuous').addEventListener('click', () => setContinuousScan(!scanContinuous));
+$('btnScanDone').addEventListener('click', () => {
+  const read = scanLogCount(scanLog);
+  const summary = describeScanLog(scanLog);
+  stopScanner();
+  closeSheet('sheetScan');
+  if (read > 0) toast(`連続スキャン: ${summary}`);
+});
 
 function showScanMsg(msg) {
   $('scanMsg').hidden = false;
@@ -1449,15 +1519,27 @@ async function startScanner() {
 
   // 1) Capacitor のネイティブスキャナ（iOSアプリで最優先）
   if (strategy === 'native') {
-    try {
-      const { barcodes } = await native.startScan({ formats: ['EAN_13', 'EAN_8', 'UPC_A', 'CODE_128'] });
-      const value = barcodes?.[0]?.rawValue;
-      if (value) onScan(value);
-      else showScanMsg('読み取れませんでした');
-    } catch (e) {
-      console.warn('ネイティブスキャナ失敗', e);
-      showScanMsg('カメラを起動できません。手入力をどうぞ');
-    }
+    // ネイティブのスキャナは1回で閉じるので、連続モードでは読み取るたびに開き直す
+    const runNative = async () => {
+      scannerLive = true;
+      while (scannerLive) {
+        let value = '';
+        try {
+          const { barcodes } = await native.startScan({ formats: ['EAN_13', 'EAN_8', 'UPC_A', 'CODE_128'] });
+          value = barcodes?.[0]?.rawValue || '';
+        } catch (e) {
+          console.warn('ネイティブスキャナ失敗', e);
+          scannerLive = false;
+          // 連続モードの途中で閉じた（キャンセル）ときは、エラー扱いにしない
+          if (!scanContinuous || scanLogCount(scanLog) === 0) showScanMsg('カメラを起動できません。手入力をどうぞ');
+          return;
+        }
+        if (!value) { scannerLive = false; showScanMsg('読み取れませんでした'); return; }
+        onScan(value);
+        if (!scanContinuous) { scannerLive = false; return; }
+      }
+    };
+    runNative();
     return;
   }
 
@@ -1473,11 +1555,17 @@ async function startScanner() {
       $('scanReticle').hidden = false;
       $('scanMsg').hidden = true;
       await video.play();
+      scannerLive = true;
       const tick = async () => {
+        if (!scannerLive) return;
         if (video.readyState === 4) {
           try {
             const codes = await detector.detect(video);
-            if (codes && codes.length) { onScan(codes[0].rawValue); return; }
+            // 通常モードは1本で閉じる。連続モードは止めずに読み続ける（同じJANはクールダウンで間引く）
+            if (codes && codes.length) {
+              onScan(codes[0].rawValue);
+              if (!scanContinuous) return;
+            }
           } catch (e) { /* 連続検出時の失敗は無視 */ }
         }
         rafId = requestAnimationFrame(tick);
@@ -1502,7 +1590,8 @@ async function startScanner() {
     const inst = new Html5Qrcode('qrReader', { verbose: false });
     scanner = inst;
     await inst.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 240, height: 140 } },
-      (text) => onScan(text), () => {});
+      (text) => { onScan(text); }, () => {});
+    scannerLive = true;
   } catch (e) {
     console.warn('html5-qrcode失敗', e);
     showScanMsg('カメラを起動できません。手入力をどうぞ');
@@ -1510,6 +1599,7 @@ async function startScanner() {
 }
 
 function stopScanner() {
+  scannerLive = false;
   if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(rafId);
   rafId = 0;
   const video = $('scanVideo');
@@ -1525,19 +1615,59 @@ function stopScanner() {
   document.getElementById('qrReader')?.remove();
 }
 
+/** 読み取った値の受け口（通常モード／連続モードの分岐）。受け付けたら true */
 function onScan(raw) {
   const jan = normalizeJAN(String(raw).replace(/\D/g, '').slice(0, 13));
-  if (!/^\d{13}$/.test(jan)) { toast('13桁のJANとして読めませんでした'); return; }
-  if (!isValidJAN(jan)) toast('読取値のチェックディジットが合いません（手入力をお試しください）');
-  stopScanner();
-  closeSheet('sheetScan');
-  applyJAN(jan);
+  if (!scanContinuous) {
+    if (!/^\d{13}$/.test(jan)) { toast('13桁のJANとして読めませんでした'); return false; }
+    if (!isValidJAN(jan)) toast('読取値のチェックディジットが合いません（手入力をお試しください）');
+    stopScanner();
+    closeSheet('sheetScan');
+    applyJAN(jan);
+    return true;
+  }
+  return continuousScan(jan);
+}
+
+/**
+ * 連続モードの1本。クールダウン→在庫へ反映→ログ、までを行い、カメラは閉じない。
+ * 同じJANがカメラの前に残っている間は何もしない（連続の誤爆防止）。
+ */
+function continuousScan(jan, { skipCooldown = false } = {}) {
+  if (!skipCooldown) {
+    const gate = checkCooldown(scanSession, jan, Date.now());
+    if (!gate.accepted) return false;
+  }
+  const { state: next, result } = applyScan(state, jan, { dict: mergedDict, folderId: ui.folderId });
+  if (result.kind === 'invalid') {
+    showScanStatus(result.message, 'bad');
+    return false;
+  }
+  markScanned(scanSession, jan, Date.now());
+  if (result.kind === 'limit') { // 新規登録だけ止める（登録済みの＋1は通る）
+    scanLimitHit = true;
+    showScanStatus(result.message, 'warn');
+    renderScanLog();
+    return true;
+  }
+  state = next;
+  save();
+  showScanStatus(result.message, result.kind === 'drafted' ? '' : 'good');
+  scanLog = [result, ...scanLog];
+  renderScanLog();
+  render();
+  return true;
 }
 
 $('btnManualLookup').addEventListener('click', () => {
   const jan = normalizeJAN($('manualJan').value);
   if (!/^\d{13}$/.test(jan)) { toast('13桁で入力してください'); return; }
   if (!isValidJAN(jan)) { toast('チェックディジットが合いません'); return; }
+  if (scanContinuous) { // 手入力は誤読ではないのでクールダウンを見ない
+    $('manualJan').value = '';
+    continuousScan(jan, { skipCooldown: true });
+    return;
+  }
   stopScanner(); closeSheet('sheetScan'); applyJAN(jan);
 });
 
@@ -1574,6 +1704,7 @@ $('testPills').innerHTML = TEST_SAMPLES.map((d) =>
 $('testPills').addEventListener('click', (e) => {
   const b = e.target.closest('[data-testjan]');
   if (!b) return;
+  if (scanContinuous) { onScan(b.dataset.testjan); return; } // 連続モードは閉じずに数える
   stopScanner(); closeSheet('sheetScan');
   applyJAN(b.dataset.testjan);
 });

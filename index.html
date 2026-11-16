@@ -15,7 +15,7 @@ try {
 } catch (e) { /* 保存が読めないときはライト */ }
 </script>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="styles.css?v=1.5.0">
+<link rel="stylesheet" href="styles.css?v=1.6.0">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
 </head>
@@ -382,10 +382,23 @@ try {
 <!-- スキャンシート -->
 <div class="sheet" id="sheetScan" role="dialog" aria-modal="true" aria-labelledby="scanTitle">
   <h2 id="scanTitle">バーコード読取<button class="close" data-close="sheetScan" aria-label="閉じる"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></h2>
+  <div class="scan-mode">
+    <button type="button" class="fchip" id="btnContinuous" aria-pressed="false" aria-label="連続スキャン">連続スキャン</button>
+    <span class="scan-mode-note" id="scanModeNote">1本読むと閉じます</span>
+  </div>
   <div class="scan-box" id="scanBox">
     <video id="scanVideo" playsinline muted hidden></video>
     <div class="reticle" id="scanReticle" hidden></div>
     <p id="scanMsg" style="margin:0;padding:12px">カメラを起動しています…</p>
+  </div>
+  <p class="scan-status" id="scanStatus" aria-live="polite" hidden></p>
+  <div class="scan-log" id="scanLog" hidden>
+    <div class="scan-log-head">
+      <b id="scanLogCount">0件</b>
+      <button type="button" class="btn" id="btnScanDone">完了</button>
+    </div>
+    <ul class="scan-log-list" id="scanLogList"></ul>
+    <p class="scan-log-note" id="scanLimitNote" hidden>無料の上限です（登録済みの＋1は続けられます）</p>
   </div>
   <div class="field" style="margin-top:12px">
     <label for="manualJan">JANを手入力</label>
@@ -476,6 +489,6 @@ try {
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<script type="module" src="app.js?v=1.5.0"></script>
+<script type="module" src="app.js?v=1.6.0"></script>
 </body>
 </html>

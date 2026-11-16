@@ -405,6 +405,31 @@ main { padding: 0 0 56px; }
 .scan-box video, .scan-box canvas { width: 100%; height: 100%; object-fit: cover; }
 .scan-box .reticle { position: absolute; inset: 22% 10%; border: 2px solid #6fe3b0; border-radius: 10px; }
 
+/* ---------- 連続スキャン（トグル・読み取りログ） ---------- */
+.scan-mode { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; }
+#btnContinuous { padding: 6px 11px; font-size: 12.5px; }
+#btnContinuous::after { content: "OFF"; margin-left: 4px; font-size: 10px; font-weight: 800; opacity: .7; }
+#btnContinuous[aria-pressed="true"]::after { content: "ON"; }
+.scan-mode-note { font-size: 11.5px; color: var(--muted-ink); }
+.scan-status { margin: 8px 0 0; padding: 7px 10px; border-radius: 10px; background: var(--surface-2); font-size: 12px; font-weight: 700; color: var(--soft-ink); }
+.scan-status.good { color: var(--good); background: var(--good-soft); }
+.scan-status.warn { color: var(--warn); background: var(--warn-soft); }
+.scan-status.bad { color: var(--bad); background: var(--bad-soft); }
+.scan-status[hidden] { display: none; }
+.scan-log { margin-top: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); }
+.scan-log[hidden] { display: none; }
+.scan-log-head { display: flex; align-items: center; gap: 8px; }
+.scan-log-head b { font-size: 12px; font-weight: 800; color: var(--ink-2); }
+.scan-log-head .btn { margin-left: auto; padding: 5px 14px; font-size: 12px; }
+.scan-log-list { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 3px; }
+.scan-log-list li { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: 12px; color: var(--soft-ink); }
+.scan-log-list .k { flex: 0 0 auto; min-width: 3.4em; font-size: 10.5px; font-weight: 800; color: var(--ink-3); }
+.scan-log-list .n { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scan-log-list li[data-k="added"] .k, .scan-log-list li[data-k="incremented"] .k { color: var(--good); }
+.scan-log-list li[data-k="drafted"] .k { color: var(--warn); }
+.scan-log-note { margin: 6px 0 0; font-size: 11px; font-weight: 700; color: var(--warn); }
+.scan-log-note[hidden] { display: none; }
+
 .folder-row { display: flex; align-items: center; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--line); padding-left: calc(var(--d, 0) * 14px); }
 .folder-row:last-child { border-bottom: none; }
 .folder-dot { width: 11px; height: 11px; border-radius: 50%; background: var(--surface-3); flex: 0 0 auto; }

@@ -24,6 +24,7 @@ export const WEB_ASSETS = [
   'jan-extra.json',
   'shops.js',
   'scanner.js',
+  'scan-flow.js',
   'app.js',
   'manifest.webmanifest',
   'icon.svg',
