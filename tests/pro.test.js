@@ -6,7 +6,7 @@ import {
   canAddItem, canAddFolder, canUseFeature, describeQuota, isQuotaTight,
   applyProEntitlement,
 } from '../pro.js';
-import { createItem, blankState, DEFAULT_FOLDERS } from '../core.js';
+import { createItem, blankState, DEFAULT_FOLDERS, addFolder } from '../core.js';
 
 const withItems = (n, folders = DEFAULT_FOLDERS) => ({
   ...blankState(),
@@ -75,31 +75,41 @@ test('新規アイテムは100点まで。既存の超過データは消さな�
   assert.equal(canAddItem(withItems(130), { pro: true }).ok, true);
 });
 
-test('新規フォルダは3つまで。既定の4フォルダはそのまま使える', () => {
-  // 初期状態は既定4フォルダ（この状態でも既存は消さない）
+test('既定の4フォルダは無料枠に数えず、あとから3つまで作れる（子フォルダも可）', () => {
   const base = blankState();
   assert.equal(base.folders.length, 4);
-  assert.equal(folderQuota(base, {}).full, true);
-  assert.equal(canAddFolder(base, {}).ok, false);
+  // 既定の4つだけの状態＝残り3つ。ここが「4 / 3」で作れなかった不具合の修正点
+  assert.equal(folderQuota(base, {}).used, 0);
+  assert.equal(folderQuota(base, {}).full, false);
+  assert.equal(canAddFolder(base, {}).ok, true);
+  assert.equal(describeQuota(folderQuota(base, {}), 'つ'), '0 / 3つ');
 
-  // 2つまでなら追加できる（3つになったら4つ目は作れない）
-  assert.equal(canAddFolder(withItems(0, DEFAULT_FOLDERS.slice(0, 2)), {}).ok, true);
-  assert.equal(canAddFolder(withItems(0, DEFAULT_FOLDERS.slice(0, 3)), {}).ok, false);
-  assert.equal(canAddFolder(withItems(0, DEFAULT_FOLDERS.slice(0, 3)), { pro: true }).ok, true);
-  assert.equal(canAddFolder(withItems(0, DEFAULT_FOLDERS.slice(0, 4)), { pro: true }).ok, true);
-  assert.equal(describeQuota(folderQuota(withItems(0, DEFAULT_FOLDERS.slice(0, 3)), {}), 'つ'), '3 / 3つ');
-  assert.equal(describeQuota(folderQuota(withItems(0, DEFAULT_FOLDERS.slice(0, 2)), {}), 'つ'), '2 / 3つ');
+  // 3つまでは作れる（子フォルダ・孫フォルダも1つとして数える）
+  let s = addFolder(base, { name: 'スタジオ' });
+  s = addFolder(s, { name: '引き出し1', parentId: 'home' });
+  s = addFolder(s, { name: '引き出し2', parentId: s.folders.at(-2).id });
+  assert.equal(folderQuota(s, {}).used, 3);
+  assert.equal(canAddFolder(s, {}).ok, false);
+  assert.equal(describeQuota(folderQuota(s, {}), 'つ'), '3 / 3つ');
+  // Proなら何個でも
+  assert.equal(canAddFolder(s, { pro: true }).ok, true);
+
+  // 既定フォルダの名前を変えてもIDはそのままなので枠に数えない
+  const renamed = { ...base, folders: base.folders.map((f) => (f.id === 'home' ? { ...f, name: '自宅' } : f)) };
+  assert.equal(folderQuota(renamed, {}).used, 0);
+  // 既定を消した状態でも数え方が壊れない
+  assert.equal(folderQuota({ folders: DEFAULT_FOLDERS.slice(0, 2) }, {}).used, 0);
 });
 
-test('Pro機能（色見本・画材費・iCloud）はProだけ。上限以外は常に使える', () => {
+test('Pro機能（画材費・iCloud）はProだけ。上限以外は常に使える', () => {
   for (const feature of PRO_FEATURES) {
     assert.equal(canUseFeature({}, feature), false, feature);
     assert.equal(canUseFeature({ pro: true }, feature), true, feature);
   }
   assert.equal(canUseFeature({}, 'unknown'), true);
   assert.equal(canUseFeature({}, ''), true);
-  assert.deepEqual(PRO_FEATURES, ['swatch', 'cost', 'icloud']);
-  assert.deepEqual(PRO_BENEFITS.map((b) => b.id), ['limit', 'swatch', 'cost', 'icloud']);
+  assert.deepEqual(PRO_FEATURES, ['cost', 'icloud']);
+  assert.deepEqual(PRO_BENEFITS.map((b) => b.id), ['limit', 'cost', 'icloud']);
   assert.ok(PRO_BENEFITS.every((b) => b.label && b.label.length <= 12));
 });
 

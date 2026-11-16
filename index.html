@@ -15,7 +15,7 @@ try {
 } catch (e) { /* 保存が読めないときはライト */ }
 </script>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="styles.css?v=1.9.1">
+<link rel="stylesheet" href="styles.css?v=1.10.0">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 </head>
@@ -86,12 +86,6 @@ try {
       <rect x="3.6" y="4.6" width="16.8" height="14.8" rx="1.2"/>
       <path d="M6.4 16.6 10 9.8l2.4 4 1.8-2.4 3.4 5.2z" fill="currentColor" stroke="none" opacity=".55"/>
     </symbol>
-    <symbol id="i-swatch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round">
-      <rect x="3.5" y="3.5" width="7.5" height="7.5" rx="1.4"/>
-      <rect x="13" y="3.5" width="7.5" height="7.5" rx="1.4" fill="currentColor" stroke="none" opacity=".45"/>
-      <rect x="3.5" y="13" width="7.5" height="7.5" rx="1.4" fill="currentColor" stroke="none" opacity=".45"/>
-      <rect x="13" y="13" width="7.5" height="7.5" rx="1.4"/>
-    </symbol>
     <symbol id="i-paper" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
       <path d="M6 3.4h7.6L18.8 8v12.6H6z"/><path d="M13.4 3.6V8h4.9"/>
       <path d="M8.8 12h7M8.8 15.2h7M8.8 18.4h4.4"/>
@@ -111,29 +105,6 @@ try {
     <span class="total" id="hdrTotal">全0種</span>
   </div>
 
-  <div class="tools" id="tools">
-    <button class="tool" id="btnSearch" aria-pressed="false" aria-label="検索">
-      <svg class="ic" aria-hidden="true"><use href="#i-search"/></svg><span>検索</span>
-    </button>
-    <button class="tool" id="btnFilter" aria-pressed="false" aria-label="絞り込み">
-      <svg class="ic" aria-hidden="true"><use href="#i-filter"/></svg><span>絞込</span>
-    </button>
-    <button class="tool" id="btnSort" aria-label="並び替え">
-      <svg class="ic" aria-hidden="true"><use href="#i-sort"/></svg><span>並替</span>
-    </button>
-    <button class="tool icon" id="btnSelect" aria-pressed="false" aria-label="複数選択">
-      <svg class="ic" aria-hidden="true"><use href="#i-select"/></svg>
-    </button>
-    <button class="tool icon" id="btnLayout" aria-label="リスト表示に切り替え">
-      <svg class="ic" id="layoutIcon" aria-hidden="true"><use href="#i-list"/></svg>
-    </button>
-  </div>
-
-  <div class="search-row" id="searchRow" hidden>
-    <input id="q" type="search" placeholder="名前・色・JAN" autocomplete="off" inputmode="search" enterkeyhint="search" aria-label="検索">
-    <button id="btnSearchClear" aria-label="検索をやめる"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button>
-  </div>
-
   <nav class="crumb root" id="crumb" aria-label="現在の場所">
     <button class="cbtn" id="btnHome" aria-label="保管場所へ戻る"><svg class="ic" aria-hidden="true"><use href="#i-home"/></svg></button>
     <span class="sep" aria-hidden="true">›</span>
@@ -141,15 +112,6 @@ try {
     <span class="quota" id="quotaNote"></span>
     <button class="cbtn" id="btnUp" aria-label="上へ戻る" disabled><svg class="ic" aria-hidden="true"><use href="#i-up"/></svg></button>
   </nav>
-
-  <!-- 一覧の分け方（ワンタップで切り替え） -->
-  <div class="viewrow" id="viewRow" hidden>
-    <div class="seg" role="group" aria-label="一覧の分け方">
-      <button class="vpill" id="btnViewAll" data-view-group="all" aria-pressed="true">すべて</button>
-      <button class="vpill" id="btnViewFolder" data-view-group="folder" aria-pressed="false">フォルダ別</button>
-      <button class="vpill" id="btnViewMaker" data-view-group="maker" aria-pressed="false">メーカー別</button>
-    </div>
-  </div>
 </header>
 
 <main>
@@ -160,11 +122,6 @@ try {
     <div id="itemList"></div>
   </section>
 
-  <!-- 色見本アルバム -->
-  <section id="view-swatch" hidden>
-    <div id="swatchGrid"></div>
-  </section>
-
   <!-- 買い物リスト -->
   <section id="view-shopping" hidden>
     <p class="lede">補充が必要なもの</p>
@@ -173,7 +130,7 @@ try {
 
   <!-- フォルダ -->
   <section id="view-folders" hidden>
-    <p class="lede">タップで編集</p>
+    <p class="lede">タップで開く・長押しでメニュー</p>
     <div class="card" id="folderList"></div>
     <button class="btn primary btn-block" id="btnAddFolder">＋ フォルダを追加</button>
   </section>
@@ -220,8 +177,7 @@ try {
       <div class="stat"><b id="stRestock">0</b><span>要補充</span></div>
     </div>
     <div class="card">
-      <h2 class="card-t">バックアップ（JSON）</h2>
-      <p class="hint" id="backupNote">機種変更・データ消失対策。書き出したファイルは Google ドライブ等に保存してください。</p>
+      <h2 class="card-t">バックアップ</h2>
       <div class="actions">
         <button class="btn primary" id="btnExport">バックアップ保存</button>
         <button class="btn" id="btnImport">復元</button>
@@ -230,56 +186,23 @@ try {
     </div>
     <div class="card" id="sampleCard">
       <h2 class="card-t">お試し</h2>
-      <p class="hint">サンプルの画材を入れます（値段は目安・あとで削除できます）</p>
       <div class="actions">
         <button class="btn" id="btnAddSamples" data-add-samples>サンプルを入れる</button>
       </div>
     </div>
     <div class="card">
-      <h2 class="card-t">商品画像</h2>
-      <p class="hint" id="rakutenState">—</p>
-      <details class="advanced">
-        <summary>設定する</summary>
-        <p class="hint">中継サーバーは同梱のものを自動で使います（楽天・Yahoo!の両方に対応）。変えたいときだけURLを入れてください。</p>
-        <div class="field">
-          <label for="fProxyUrl">中継サーバーURL</label>
-          <input id="fProxyUrl" placeholder="https://rakuten-image-proxy.shodai121ueda.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="url">
-        </div>
-        <div class="field">
-          <label for="fRakuten">楽天アプリID（自分のIDで取得する）</label>
-          <input id="fRakuten" placeholder="1234567890123456789" autocomplete="off" autocapitalize="off" spellcheck="false">
-        </div>
-        <div class="field">
-          <label for="fAccessKey">楽天アクセスキー（自分のIDで取得する）</label>
-          <input id="fAccessKey" placeholder="アクセスキー" autocomplete="off" autocapitalize="off" spellcheck="false">
-        </div>
-        <div class="actions">
-          <button class="btn primary" id="btnSaveImageSettings">保存</button>
-        </div>
-      </details>
-    </div>
-    <div class="card">
-      <h2 class="card-t">JAN辞書</h2>
-      <p class="hint" id="dictInfo">—</p>
-      <p class="micro" id="dictSyncState">—</p>
-      <div class="actions">
-        <button class="btn" id="btnDictSync">辞書を更新</button>
-        <button class="btn" id="btnDict">一覧</button>
-      </div>
+      <p class="dict-one" id="dictInfo">JAN辞書：—</p>
     </div>
     <div class="card" id="guideCard">
       <h2 class="card-t">使い方</h2>
-      <p class="hint">登録・読取・色見本・補充・バックアップの要点をまとめて見られます</p>
       <div class="actions">
         <button class="btn" id="btnGuide">チュートリアルを見る</button>
       </div>
     </div>
     <div class="card">
-      <h2 class="card-t">危険な操作</h2>
       <button class="btn danger" id="btnWipe" style="width:100%">全データを削除</button>
-      <p class="hint">データは端末のブラウザ内だけに保存され、サーバーへは送信されません。</p>
     </div>
-    <p class="micro foot-note">Amazonのアソシエイトとして、適格販売により収入を得ています。ほかの通販リンクもアフィリエイトの場合があります</p>
+    <p class="micro foot-note">Amazonのアソシエイトとして、適格販売により収入を得ています。</p>
     <p class="micro foot-links"><a href="privacy.html" target="_blank" rel="noopener noreferrer">プライバシー</a> ・ <a href="support.html" target="_blank" rel="noopener noreferrer">サポート</a></p>
     <p class="hint" style="text-align:center;margin:10px 0 0">お絵描き楽しも委員会（しょうだい）</p>
     <!-- Begin Yahoo! JAPAN Web Services Attribution Snippet -->
@@ -299,9 +222,41 @@ try {
   <button class="btn mini" id="btnSelCancel">やめる</button>
 </div>
 
+<!-- 下部操作ドック（タブバーのすぐ上。検索・絞込・並替・選択・表示切替と分け方の3択をまとめる） -->
+<div class="dock" id="dock" hidden>
+  <div class="search-row" id="searchRow" hidden>
+    <input id="q" type="search" placeholder="名前・色・JAN" autocomplete="off" inputmode="search" enterkeyhint="search" aria-label="検索">
+    <button id="btnSearchClear" aria-label="検索をやめる"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button>
+  </div>
+  <div class="tools" id="tools">
+    <button class="tool" id="btnSearch" aria-pressed="false" aria-label="検索">
+      <svg class="ic" aria-hidden="true"><use href="#i-search"/></svg><span>検索</span>
+    </button>
+    <button class="tool" id="btnFilter" aria-pressed="false" aria-label="絞り込み">
+      <svg class="ic" aria-hidden="true"><use href="#i-filter"/></svg><span>絞込</span>
+    </button>
+    <button class="tool" id="btnSort" aria-label="並び替え">
+      <svg class="ic" aria-hidden="true"><use href="#i-sort"/></svg><span>並替</span>
+    </button>
+    <button class="tool icon" id="btnSelect" aria-pressed="false" aria-label="複数選択">
+      <svg class="ic" aria-hidden="true"><use href="#i-select"/></svg>
+    </button>
+    <button class="tool icon" id="btnLayout" aria-label="リスト表示に切り替え">
+      <svg class="ic" id="layoutIcon" aria-hidden="true"><use href="#i-list"/></svg>
+    </button>
+  </div>
+  <!-- 一覧の分け方（ワンタップで切り替え） -->
+  <div class="viewrow" id="viewRow" hidden>
+    <div class="seg" role="group" aria-label="一覧の分け方">
+      <button class="vpill" id="btnViewAll" data-view-group="all" aria-pressed="true">すべて</button>
+      <button class="vpill" id="btnViewFolder" data-view-group="folder" aria-pressed="false">フォルダ別</button>
+      <button class="vpill" id="btnViewMaker" data-view-group="maker" aria-pressed="false">メーカー別</button>
+    </div>
+  </div>
+</div>
+
 <nav class="tabbar" id="tabbar">
   <button data-tab="stock" aria-selected="true">在庫</button>
-  <button data-tab="swatch" aria-selected="false">色見本</button>
   <button data-tab="shopping" aria-selected="false">補充</button>
   <button data-tab="folders" aria-selected="false">場所</button>
   <button data-tab="settings" aria-selected="false">設定</button>
@@ -364,7 +319,7 @@ try {
     </div>
     <div class="field"><label for="fMemo">メモ</label><textarea id="fMemo" rows="2" placeholder="使いかけ、混色メモなど"></textarea></div>
     <div class="field">
-      <label>色見本・写真メモ</label>
+      <label>写真メモ</label>
       <div class="photo-edit">
         <div class="photo-prev" id="photoPrev"><span class="ph-txt">写真なし<br>アイコン表示</span></div>
         <div class="photo-btns">
@@ -451,6 +406,24 @@ try {
   <div class="pill-row" id="moveOptions"></div>
 </div>
 
+<!-- フォルダの長押しメニュー（編集 / 移動 / 削除） -->
+<div class="sheet" id="sheetFolderMenu" role="dialog" aria-modal="true" aria-labelledby="folderMenuTitle">
+  <h2 id="folderMenuTitle">フォルダ<button class="close" data-close="sheetFolderMenu" aria-label="閉じる"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></h2>
+  <p class="hint" id="folderMenuPath" style="margin:0 0 10px"></p>
+  <div class="menulist">
+    <button class="menubtn" id="btnFolderRename"><svg class="ic" aria-hidden="true"><use href="#i-pen"/></svg>編集</button>
+    <button class="menubtn" id="btnFolderReparent"><svg class="ic" aria-hidden="true"><use href="#i-folder"/></svg>移動<small>フォルダを選ぶ</small></button>
+    <button class="menubtn danger" id="btnFolderRemove"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg>削除</button>
+  </div>
+</div>
+
+<!-- フォルダの移動先を選ぶ（最上位＋各フォルダ） -->
+<div class="sheet" id="sheetFolderMove" role="dialog" aria-modal="true" aria-labelledby="folderMoveTitle">
+  <h2 id="folderMoveTitle">移動先のフォルダ<button class="close" data-close="sheetFolderMove" aria-label="閉じる"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></h2>
+  <p class="hint" id="folderMoveNote" style="margin:0 0 10px"></p>
+  <div class="pill-row" id="folderMoveOptions"></div>
+</div>
+
 <!-- 辞書一覧シート -->
 <div class="sheet" id="sheetDict" role="dialog" aria-modal="true" aria-labelledby="dictTitle">
   <h2 id="dictTitle">JAN辞書<button class="close" data-close="sheetDict" aria-label="閉じる"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></h2>
@@ -475,9 +448,8 @@ try {
     <div class="gstep"><b>続けて読み取る（連続スキャン）</b><span>読取画面の「連続スキャン」をONにすると、カメラを閉じずに読み続けられます。辞書にある画材は自動で登録され、画像も後から入ります。</span></div>
     <div class="gstep"><b>辞書から選んで登録</b><span>編集シートの「辞書から探す」で色名・メーカー・品番から選ぶと、商品名やJANが自動で入ります。</span></div>
     <div class="gstep"><b>一覧の分け方</b><span>在庫一覧の上部で「すべて／フォルダ別／メーカー別」を切り替えます。メーカー別では見出しごとに点数が出ます。</span></div>
-    <div class="gstep"><b>色見本の見方</b><span>色見本タブには色名か写真のある画材がシリーズごとに並びます。タップすると編集できます。</span></div>
     <div class="gstep"><b>買うものリスト</b><span>補充タブに、残りわずか・使い切った画材が自動で集まります。通販ボタンからそのまま探せます。</span></div>
-    <div class="gstep"><b>保管場所（フォルダ）</b><span>場所タブでフォルダを追加・名前変更・移動できます。フォルダは階層にできます。</span></div>
+    <div class="gstep"><b>保管場所（フォルダ）</b><span>場所タブでフォルダを追加・名前変更・移動できます。フォルダは階層にできます（フォルダを開いて「＋子フォルダ」）。</span></div>
     <div class="gstep"><b>まとめて移動する</b><span>一覧の選択ボタンで複数選択のモードにして、画材を選んで「移動」を押すと、別のフォルダへまとめて移せます。</span></div>
     <div class="gstep"><b>バックアップ</b><span>設定の「バックアップ保存」でJSONを書き出せます。機種変更の前に保存しておくと安心です（手元写真は端末内に残ります）。</span></div>
     <div class="gstep"><b>表示（ナイトモード）</b><span>設定の「表示」で自動・ライト・ダークを選べます。</span></div>
@@ -528,6 +500,6 @@ try {
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<script type="module" src="app.js?v=1.9.1"></script>
+<script type="module" src="app.js?v=1.10.0"></script>
 </body>
 </html>

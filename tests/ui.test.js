@@ -34,19 +34,22 @@ test('在庫切れカードは一覧のクラスでグレー表示になり、�
 
 test('通販・辞書の導線がHTMLにある（短いラベル）', () => {
   const html = read('index.html');
-  for (const id of ['shopLinks', 'shopQuery', 'proposeBox', 'btnPropose', 'sheetShop', 'sheetPropose', 'btnDictSync', 'dictSyncState']) {
+  for (const id of ['shopLinks', 'shopQuery', 'proposeBox', 'btnPropose', 'sheetShop', 'sheetPropose', 'dictInfo']) {
     assert.ok(html.includes(`id="${id}"`), `#${id} がありません`);
   }
   assert.match(html, />辞書に提案</);
-  assert.match(html, />辞書を更新</);
   assert.match(html, />通販</);
+  // JAN辞書は設定に1行だけ（件数）。更新は起動時に裏で自動
+  assert.match(html, /id="dictInfo"/);
+  assert.equal(/>辞書を更新</.test(html), false, '辞書を更新ボタンが残っている');
   for (const label of ['>Amazon<', '>楽天市場<', '>Yahoo!<']) {
     assert.ok(html.includes('shop-links') || true);
     assert.ok(read('shops.js').includes(label.replace(/[><]/g, '')), `${label} が shops.js にありません`);
   }
   // 法務・規約の注記は最下部の極小1行に逃がす（Amazonアソシエイトの表示義務を含む）
-  assert.match(html, /foot-note[\s\S]*アフィリエイト/);
-  assert.match(html, /foot-note[\s\S]*Amazonのアソシエイトとして、適格販売により収入を得ています。/);
+  assert.match(html, /foot-note">Amazonのアソシエイトとして、適格販売により収入を得ています。</);
+  // 補足の文言は増やさない（必須の1文だけ）
+  assert.equal(/ほかの通販リンクも/.test(html), false, '補足のアフィリエイト文言が残っている');
 });
 
 test('配信ファイル jan-extra.json がルートにある（初期構造）', () => {
@@ -68,11 +71,11 @@ test('新しく足したファイルは絵文字を含まない（表示方針�
   }
 });
 
-test('第2弾の導線（Pro案内・色見本・画材費・復元）がHTMLとapp.jsにある', () => {
+test('第2弾の導線（Pro案内・画材費・復元）がHTMLとapp.jsにある', () => {
   const html = read('index.html');
   const app = read('app.js');
   for (const id of [
-    'view-swatch', 'swatchGrid', 'quotaNote',
+    'quotaNote',
     'sheetPro', 'proLead', 'proQuota', 'proSheetBenefits', 'btnProStart',
     'proCard', 'proState', 'proBenefits', 'btnProToggle',
     'costCard', 'costBody', 'costLock', 'costStock', 'costRecorded', 'costNote', 'costTabs', 'costBars', 'btnCsv', 'btnCostPro',
@@ -84,15 +87,15 @@ test('第2弾の導線（Pro案内・色見本・画材費・復元）がHTMLと
   assert.match(app, /from '\.\/pro\.js'/);
   assert.match(app, /canAddItem\(state, state\.settings\)/);
   assert.match(app, /canAddFolder\(state, state\.settings\)/);
-  assert.match(app, /requirePro\('swatch'\)/);
-  // 色見本は「在庫」の次にある独立したタブ（ツールバーは狭いので増やさない）
-  assert.match(html, /data-tab="swatch"[^>]*>色見本</);
+  // 色見本タブは廃止（タブバーは4つ）
+  assert.equal(/data-tab="swatch"/.test(html), false, '色見本タブが残っている');
+  assert.equal(/swatch/i.test(read('app.js')), false, 'app.js に色見本の処理が残っている');
   assert.match(app, /recordPurchase\(/);
   assert.match(app, /buildItemsCsvText\(/);
   assert.match(app, /mergeStates\(/);
-  // 色見本は編集シートから撮影・選択できる（写真メモ。iOS では capture を外して
+  // 写真メモは編集シートから撮影・選択できる（iOS では capture を外して
   // 「撮る / 選ぶ」の選択シートを出す＝カメラ固定にしない）
-  assert.match(html, /色見本・写真メモ/);
+  assert.match(html, /<label>写真メモ<\/label>/);
   assert.match(html, /id="fPhoto" accept="image\/\*"/);
   assert.equal(/id="fPhoto"[^>]*capture=/.test(html), false);
   // バックアップは言葉を短く（保存 / 復元）
@@ -100,14 +103,17 @@ test('第2弾の導線（Pro案内・色見本・画材費・復元）がHTMLと
   assert.match(html, /id="btnImport">復元</);
   // 新しい画面のスタイルがある
   const css = read('styles.css');
-  for (const sel of ['.sgrid', '.swt', '.bar .bf', '.pro-chip', '.quota']) {
+  for (const sel of ['.bar .bf', '.pro-chip', '.quota', '.menubtn', '.dock']) {
     assert.ok(css.includes(sel), `${sel} のスタイルがありません`);
   }
 });
 
 test('app.js が参照する要素IDはすべて index.html にある', () => {
-  // 動的に作る要素（スキャナの入れ物）はHTMLに無くてよい
-  const DYNAMIC_IDS = new Set(['qrReader']);
+  // 動的に作る要素（スキャナの入れ物）と、画面から外した任意の設定欄はHTMLに無くてよい
+  const DYNAMIC_IDS = new Set([
+    'qrReader',
+    'dictSyncState', 'fRakuten', 'fAccessKey', 'fProxyUrl', 'btnSaveImageSettings',
+  ]);
   const app = read('app.js');
   const html = read('index.html');
   const ids = new Set([...html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]));
@@ -138,28 +144,27 @@ test('Capacitor 判定と同梱スキャナの参照', () => {
   assert.equal(vendorScannerCtor({}), null);
 });
 
-test('画像取得の設定は「中継サーバーURL＋上級者の認証情報」に整理され、画像ボタンは中継サーバー経由', () => {
+test('画像取得の設定欄は設定画面から外し、中継サーバー経由の自動取得はそのまま残す', () => {
   const html = read('index.html');
   const app = read('app.js');
   const images = read('images.js');
 
-  // 設定画面: 普段見えるのは状態の1行だけで、入力は開閉式の中にまとめる
-  assert.match(html, /<details class="advanced">/);
+  // 設定画面に入力欄・カードを出さない（UIのみ削除）
   for (const id of ['rakutenState', 'fProxyUrl', 'fRakuten', 'fAccessKey', 'btnSaveImageSettings']) {
-    assert.ok(html.includes(`id="${id}"`), `#${id} がありません`);
+    assert.equal(html.includes(`id="${id}"`), false, `#${id} が残っている`);
   }
+  assert.equal(html.includes('商品画像'), false, '商品画像カードが残っている');
   assert.equal(html.includes('btnSaveRakuten'), false, '旧ボタンが残っている');
 
-  // 画像を取得ボタンは中継サーバー経由の入口を使う（自分のアプリIDは逃げ道）
+  // 中身の機能は壊さない（要素が無くても落ちないようガードする）
+  assert.match(app, /\$\('btnSaveImageSettings'\)\) \{/);
+  assert.match(app, /\$\('fRakuten'\)\?\.value/);
   assert.match(app, /fetchProductImageInfo\(/);
   assert.match(app, /accessKey: String\(state\.settings\.rakutenAccessKey/);
   assert.equal(/fetchRakutenImage\(/.test(app), false);
 
   // 全員に効くURLは1か所の定数（2026年11月16日にデプロイしたWorkersのURL）
   assert.match(images, /export const DEFAULT_IMAGE_PROXY_URL = 'https:\/\/rakuten-image-proxy\.shodai121ueda\.workers\.dev';/);
-
-  // 中継サーバーは楽天・Yahoo!の両方に対応していることを設定画面で伝える
-  assert.match(html, /楽天・Yahoo!の両方に対応/);
 });
 
 test('Yahoo!のAPIを使うため、規定のHTMLでクレジットを最下部に置く', () => {
@@ -172,12 +177,12 @@ test('Yahoo!のAPIを使うため、規定のHTMLでクレジットを最下部�
   assert.ok(snippetAt > html.indexOf('foot-note'), 'クレジットは注記より下（アプリの下部）に置く');
 });
 
-test('一覧の上部の3択（すべて / フォルダ別 / メーカー別）でワンタップで切り替えられる', () => {
+test('一覧の分け方の3択（すべて / フォルダ別 / メーカー別）でワンタップで切り替えられる', () => {
   const html = read('index.html');
   const app = read('app.js');
   const css = read('styles.css');
 
-  // 一覧の上部に3択。ツールバーは狭いのでボタンを増やさない
+  // 下部の操作ドックに3択。ツールバーは狭いのでボタンを増やさない
   const row = html.slice(html.indexOf('id="viewRow"'), html.indexOf('id="viewRow"') + 700);
   assert.match(row, /<div class="seg" role="group" aria-label="一覧の分け方">/);
   for (const [id, label] of [['btnViewAll', 'すべて'], ['btnViewFolder', 'フォルダ別'], ['btnViewMaker', 'メーカー別']]) {
@@ -232,24 +237,14 @@ test('右下の＋の上に、文字なしの読取ボタンがある（ツー�
   assert.equal(tools.includes('btnScan'), false, 'ツールバーの読取ボタンが残っている');
   assert.equal(tools.includes('読取'), false, 'ツールバーに読取の文字が残っている');
 
-  // 位置はCSSで＋の上。複数選択のバーが出たときも重ならない
-  assert.match(css, /\.fab\.scan\s*\{[^}]*bottom:\s*calc\(56px \+ 52px \+ 10px/);
-  assert.match(css, /body\.selecting \.fab\.scan\s*\{[^}]*bottom:\s*calc\(112px \+ 52px/);
+  // 位置はCSSで＋の上。下部ドック＋タブバーの高さを足した位置（重ならない）
+  assert.match(css, /\.fab\.scan\s*\{[^}]*bottom:\s*calc\(var\(--tabbar-h\) \+ var\(--dock-h\)/);
+  assert.match(css, /\.fab\s*\{[^}]*bottom:\s*calc\(var\(--tabbar-h\) \+ var\(--dock-h\)/);
+  assert.match(app, /setProperty\('--dock-h'/);
   // 出るのは在庫・補充のタブのときだけ（＋と同じ）
   assert.match(app, /\$\('btnScan'\)\.style\.visibility = fabVisible/);
   // 押すと読取シートが開く（動きは今までどおり）
   assert.match(app, /\$\('btnScan'\)\.addEventListener\('click', \(\) => \{\s*openSheet\('sheetScan'\)/);
-});
-
-test('色見本はシリーズ（メーカー＋ブランド）ごとの見出しで並ぶ', () => {
-  const app = read('app.js');
-  const css = read('styles.css');
-  assert.match(app, /groupBySeries\(list\)\.map\(\(g\) => `/);
-  assert.match(app, /<div class="mhead"><span>\$\{esc\(g\.label \|\| seriesLabel\(g\.items\[0\]\)\)\}<\/span><b>\$\{g\.items\.length\}<\/b><\/div>/);
-  assert.match(app, /<div class="sgrid">\$\{g\.items\.map\(swatchTile\)\.join\(''\)\}<\/div>/);
-  assert.match(css, /\.mhead \+ \.sgrid\s*\{\s*padding-top:\s*6px/);
-  // 見出しの数字はそのシリーズの点数
-  assert.equal(/seriesLabel/.test(read('core.js')), true);
 });
 
 test('設定タブの「使い方」から、主要機能のチュートリアルを開ける', () => {
@@ -269,7 +264,7 @@ test('設定タブの「使い方」から、主要機能のチュートリア�
 
   // 主要機能がひととおり載っている（短い日本語・絵文字なし）
   const sheet = html.slice(html.indexOf('id="sheetGuide"'), html.indexOf('<!-- 通販シート -->'));
-  for (const word of ['バーコード', '連続スキャン', '辞書', '色見本', '買うものリスト', 'フォルダ', 'まとめて移動', 'バックアップ', 'ナイトモード']) {
+  for (const word of ['バーコード', '連続スキャン', '辞書', '買うものリスト', 'フォルダ', '子フォルダ', 'まとめて移動', 'バックアップ', 'ナイトモード']) {
     assert.ok(sheet.includes(word), `${word} の説明がありません`);
   }
   assert.equal(EMOJI.test(sheet), false, 'チュートリアルに絵文字がある');
@@ -310,4 +305,84 @@ test('画面サイズは固定（ダブルタップ・ピンチで拡大しな�
   const inputFont = /\.field input, \.field select, \.field textarea\s*\{([^}]*)\}/.exec(css);
   assert.ok(inputFont, '入力欄のスタイルがありません');
   assert.match(inputFont[1], /font-size:\s*1[6-9]px|font-size:\s*1[6-9]\./);
+});
+
+test('操作系は下部のドックにまとめ、上部はタイトルと現在地だけにする', () => {
+  const html = read('index.html');
+  const app = read('app.js');
+  const css = read('styles.css');
+
+  // 上部（ヘッダー）にはタイトル・件数・現在地（パンくず）だけ
+  const header = html.slice(html.indexOf('<header class="app-header">'), html.indexOf('</header>'));
+  assert.ok(header.includes('id="hdrTotal"'), '件数がありません');
+  assert.ok(header.includes('id="crumb"'), '現在地（パンくず）がありません');
+  assert.equal(header.includes('id="tools"'), false, 'ツールバーが上部に残っている');
+  assert.equal(header.includes('id="viewRow"'), false, '3択が上部に残っている');
+  assert.equal(header.includes('id="searchRow"'), false, '検索欄が上部に残っている');
+
+  // 下部ドック（タブバーのすぐ上）に検索・絞込・並替・選択・表示切替と3択をまとめる
+  const dock = html.slice(html.indexOf('id="dock"') - 20, html.indexOf('<nav class="tabbar"'));
+  assert.ok(dock.includes('id="tools"'), 'ドックにツールバーがありません');
+  assert.ok(dock.includes('id="viewRow"'), 'ドックに3択がありません');
+  assert.ok(dock.includes('id="searchRow"'), 'ドックに検索欄がありません');
+  assert.ok(html.indexOf('id="dock"') < html.indexOf('id="tabbar"'), 'ドックはタブバーより前に置く');
+
+  // 画面の状態に合わせて出し入れする
+  assert.match(app, /\$\('dock'\)\.hidden = ui\.tab !== 'stock';/);
+  assert.match(app, /function syncBottomMetrics\(\)/);
+  assert.match(app, /setProperty\('--dock-h'/);
+
+  // CSS: ドックはタブバーの高さの上に固定、FABはその上、本文は下に余白をとる
+  assert.match(css, /\.dock\s*\{[^}]*position:\s*fixed/);
+  assert.match(css, /\.dock\s*\{[^}]*bottom:\s*calc\(var\(--tabbar-h\)/);
+  assert.match(css, /body\s*\{[^}]*padding-bottom:\s*calc\(var\(--tabbar-h\) \+ var\(--dock-h\) \+ var\(--fab-h\)/);
+  // 選択中はドックを選択バーに置き換える（2段に重ねない）
+  assert.match(css, /body\.selecting \.dock\s*\{\s*display:\s*none/);
+});
+
+test('タブバーは4つ（在庫・補充・場所・設定）で均等に並ぶ', () => {
+  const html = read('index.html');
+  const css = read('styles.css');
+  const bar = html.slice(html.indexOf('<nav class="tabbar"'), html.indexOf('</nav>', html.indexOf('<nav class="tabbar"')));
+  const tabs = [...bar.matchAll(/data-tab="([a-z]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(tabs, ['stock', 'shopping', 'folders', 'settings']);
+  assert.equal(bar.includes('色見本'), false, '色見本タブが残っている');
+  // 375pxで4等分（flex: 1 1 0 + min-width: 0）
+  const btn = /^\.tabbar button\s*\{([^}]*)\}/m.exec(css);
+  assert.ok(btn, '.tabbar button のスタイルがありません');
+  assert.match(btn[1], /flex:\s*1 1 0/);
+  assert.match(btn[1], /min-width:\s*0/);
+});
+
+test('フォルダは長押しで「編集 / 移動 / 削除」のメニューが開く', () => {
+  const html = read('index.html');
+  const app = read('app.js');
+  const css = read('styles.css');
+
+  for (const id of ['sheetFolderMenu', 'folderMenuTitle', 'folderMenuPath',
+    'btnFolderRename', 'btnFolderReparent', 'btnFolderRemove',
+    'sheetFolderMove', 'folderMoveOptions', 'folderMoveNote']) {
+    assert.ok(html.includes(`id="${id}"`), `#${id} がありません`);
+  }
+  const menu = html.slice(html.indexOf('id="sheetFolderMenu"'), html.indexOf('id="sheetFolderMove"'));
+  for (const label of ['編集', '移動', '削除']) assert.ok(menu.includes(`>${label}<`) || menu.includes(label), `${label} がありません`);
+
+  // 長押しの判定（約480ms・指を動かしたら発火しない・タップとは干渉しない）
+  assert.match(app, /const LONG_PRESS_MS = 480;/);
+  assert.match(app, /const LONG_PRESS_MOVE_PX = 10;/);
+  assert.match(app, /addEventListener\('pointerdown', startPress/);
+  assert.match(app, /pressTimer = setTimeout\(\(\) => \{[\s\S]{0,400}openFolderMenu\(id\)/);
+  assert.match(app, /if \(dx > LONG_PRESS_MOVE_PX \|\| dy > LONG_PRESS_MOVE_PX\) endPress\(\)/);
+  assert.match(app, /suppressClickUntil/);
+  // グリッド・子フォルダ・場所の一覧・フォルダ別見出しのどれでも開ける
+  assert.match(app, /#folderGrid \[data-folder\]/);
+  assert.match(app, /\[data-goto-folder\]/);
+  assert.match(app, /#folderList \[data-fid\]/);
+  assert.match(app, /\[data-folder-head\]/);
+  // 移動は最上位＋各フォルダから。自分と配下は選べない（循環防止）
+  assert.match(app, /folderOptions\(state\.folders, \{ exclude, noneLabel: '最上位（トップ）' \}\)/);
+  assert.match(app, /folderSubtreeIds\(state\.folders, id\)/);
+  // 長押し中に文字選択・iOSの吹き出しメニューを出さない
+  assert.match(css, /-webkit-touch-callout:\s*none/);
+  assert.match(css, /user-select:\s*none/);
 });

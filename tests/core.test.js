@@ -8,7 +8,7 @@ import {
   countByFolder, DEFAULT_FOLDERS, CATEGORIES, SORT_MODES, MAKER_NONE,
   itemMaker, listMakers, groupByMaker, stripEmoji,
   isMakerGroupOn, withSortMode, withViewGroup, viewGroupOf, VIEW_GROUPS,
-  groupByFolder, groupBySeries, seriesLabel,
+  groupByFolder,
 } from '../core.js';
 
 test('JANチェックディジット計算', () => {
@@ -286,20 +286,4 @@ test('フォルダ別にまとめると、フォルダの並び順で見出し�
   // 空でも落ちない
   assert.deepEqual(groupByFolder(), []);
   assert.deepEqual(groupByFolder([], DEFAULT_FOLDERS), []);
-});
-
-test('色見本はシリーズ（メーカー＋ブランド）ごとにまとまる', () => {
-  const a = createItem({ name: 'オイル 赤', maker: 'ホルベイン', brand: 'HOLBEIN' });
-  const b = createItem({ name: 'オイル 青', maker: 'ホルベイン', brand: 'HOLBEIN' });
-  const c = createItem({ name: 'アクリル 黄', maker: 'ホルベイン', brand: '' });
-  const d = createItem({ name: '水彩 緑', maker: 'クサカベ', brand: 'KUSAKABE' });
-  assert.equal(seriesLabel(a), 'ホルベイン HOLBEIN');
-  assert.equal(seriesLabel(c), 'ホルベイン（その他）', 'ブランド未設定はメーカー名（その他）');
-  assert.equal(seriesLabel(createItem({ name: '名無し' })), '未設定');
-
-  const groups = groupBySeries([a, b, c, d]);
-  assert.deepEqual(groups.map((g) => g.label), ['クサカベ KUSAKABE', 'ホルベイン HOLBEIN', 'ホルベイン（その他）']);
-  assert.deepEqual(groups.map((g) => g.items.length), [1, 2, 1]);
-  // ブランドがメーカー名で始まるときは重ねない
-  assert.equal(seriesLabel(createItem({ maker: '名村大成堂', brand: '名村大成堂' })), '名村大成堂');
 });

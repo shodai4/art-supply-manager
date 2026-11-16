@@ -32,7 +32,7 @@ test('画像・写真がまだ無い画材だけが自動取得の対象', () =>
   assert.equal(needsAutoImage(bare), true);
   // すでに画像URLがある
   assert.equal(needsAutoImage({ ...bare, imageUrl: IMG }), false);
-  // 手元の写真（色見本メモ）がある
+  // 手元の写真（写真メモ）がある
   assert.equal(needsAutoImage(bare, { photoIds: new Map([[bare.id, {}]]) }), false);
   assert.equal(needsAutoImage(bare, { photoIds: [bare.id] }), false);
   assert.equal(needsAutoImage(bare, { photoIds: new Set() }), true);

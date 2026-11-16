@@ -221,10 +221,10 @@ test('保存データの後方互換: parentId 無しで読める・壊れた親
   assert.equal(round.folders.find((f) => f.id === drawer1).parentId, s.folders.find((f) => f.id === drawer1).parentId);
 });
 
-test('無料のフォルダ上限は子フォルダも1つとして数える', () => {
-  const { s } = nestedState(); // 既定4 + アトリエ + 引き出し1/2 + 倉庫 = 8
+test('無料のフォルダ上限は子フォルダも1つとして数える（既定4つは数えない）', () => {
+  const { s } = nestedState(); // 既定4 + 机まわり + 引き出し1/2 + 倉庫 = 8
   assert.equal(s.folders.length, 8);
-  assert.equal(folderQuota(s, { pro: false }).used, 8);
+  assert.equal(folderQuota(s, { pro: false }).used, 4); // あとから作った4つだけ
   assert.equal(folderQuota(s, { pro: false }).full, true);
   assert.equal(canAddFolder(s, { pro: false }).ok, false);
   assert.equal(isPro({ proPreview: true }), true);

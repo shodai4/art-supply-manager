@@ -249,7 +249,7 @@ GitHub App の権限によっては `.github/workflows/*.yml` のプッシュが
 
 ## 8. Pro課金（StoreKit）とiCloudバックアップの接続点
 
-第2弾で、無料上限（100点・フォルダ3つ）と Pro 特典（上限解除・色見本アルバム・画材費とCSV・iCloudバックアップ）の土台を入れた。課金そのものはまだ繋いでおらず、設定の「Proプレビュー」で同じ状態を再現している。以下は iPhone 版で繋ぐときの設計。
+第2弾で、無料上限（100点・フォルダ3つ）と Pro 特典（上限解除・画材費とCSV・iCloudバックアップ）の土台を入れた。課金そのものはまだ繋いでおらず、設定の「Proプレビュー」で同じ状態を再現している。以下は iPhone 版で繋ぐときの設計。
 
 ### 8.1 課金（非消耗型の買い切り）
 
@@ -300,7 +300,7 @@ App Store 審査で必要なこと:
 ## 9. 残タスク（次のステップ）
 
 1. GitHub Secrets 4つ（`APPLE_TEAM_ID` / `APP_STORE_CONNECT_ISSUER_ID` / `APP_STORE_CONNECT_KEY_ID` / `APP_STORE_CONNECT_PRIVATE_KEY`）を登録し、ワークフローYAMLを `.github/workflows/` に配置（403ならオーナーが手動配置）。
-2. TestFlight の実機でバーコード読取・写真の撮る/選ぶ・通販リンクのSafari起動・色見本アルバム・追加辞書の同期を確認する。
+2. TestFlight の実機でバーコード読取・写真の撮る/選ぶ・通販リンクのSafari起動・追加辞書の同期を確認する。
 3. `cordova-plugin-purchase` を入れて Pro（非消耗型）を繋ぎ、`applyProEntitlement` まで通す（§8.1）。
 4. iCloud Drive へのJSON自動保存を入れる（§8.2）。
 5. 必要なら `@capacitor-mlkit/barcode-scanning` へ切り替えて読取速度を上げる。

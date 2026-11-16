@@ -10,7 +10,7 @@ import {
   folderTree, folderOptions, countByFolderDeep,
   toggleSelection, isSelected, selectAllIds, pruneSelection, searchDictionary, dictionaryHaystack,
   isMakerGroupOn, withSortMode, withViewGroup, viewGroupOf, VIEW_GROUPS,
-  groupByFolder, groupBySeries, seriesLabel,
+  groupByFolder,
 } from './core.js';
 import {
   FREE_ITEM_LIMIT, FREE_FOLDER_LIMIT, PRO_BENEFITS, isPro, itemQuota, folderQuota,
@@ -153,14 +153,9 @@ function applyDictionarySync(result) {
 function renderDictionaryState() {
   const merged = mergeDictionaries(JAN_DICTIONARY, extraEntries);
   const info = $('dictInfo');
-  if (info) info.textContent = `${describeCounts(merged)}・油絵具 ${mergedDict.filter((d) => d.category === 'oil').length}件`;
+  if (info) info.textContent = `JAN辞書：${merged.items.length.toLocaleString('ja-JP')}件${dictSyncing ? '（更新中）' : ''}`;
   const state = $('dictSyncState');
   if (state) state.textContent = describeSyncState(dictSync, { cachedCount: extraEntries.length });
-  const btn = $('btnDictSync');
-  if (btn) {
-    btn.disabled = dictSyncing;
-    btn.textContent = dictSyncing ? '更新中' : '辞書を更新';
-  }
   if ($('sheetDict')?.classList.contains('open')) renderDictList($('dictQ').value);
 }
 
@@ -364,7 +359,7 @@ function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-/* ---------------- 色見本の色を推測 ---------------- */
+/* ---------------- 絵具の色を推測（タイルのチューブ色） ---------------- */
 // 色名に含まれる語から絵具の色を推測する（長い語を優先）
 const COLOR_HINTS = [
   ['カドミウムレモン', '#f4cf3c'], ['カドミウムイエロー', '#f0b400'], ['カドミウムオレンジ', '#ef8b2c'],
@@ -448,7 +443,6 @@ function render() {
     renderSubFolders();
     renderTilesInto($('itemList'), currentList(), { group: viewGroupOf(state.settings), emptyKey: 'items' });
   }
-  if (ui.tab === 'swatch') renderSwatches();
   renderShopping();
   renderFolders();
   renderSettings();
@@ -457,15 +451,38 @@ function render() {
   document.querySelectorAll('#tabbar button').forEach((b) => {
     b.setAttribute('aria-selected', String(b.dataset.tab === ui.tab));
   });
-  for (const t of ['stock', 'swatch', 'shopping', 'folders', 'settings']) $(`view-${t}`).hidden = t !== ui.tab;
+  for (const t of ['stock', 'shopping', 'folders', 'settings']) $(`view-${t}`).hidden = t !== ui.tab;
   $('tools').hidden = ui.tab !== 'stock';
   $('crumb').hidden = ui.tab !== 'stock';
   $('viewRow').hidden = ui.tab !== 'stock' || isFolderMode();
   $('searchRow').hidden = !ui.searchOpen || ui.tab !== 'stock';
+  // 操作系は下のドックにまとめた（在庫タブだけ出す）
+  $('dock').hidden = ui.tab !== 'stock';
   const fabVisible = ui.tab === 'stock' || ui.tab === 'shopping';
   $('btnAdd').style.visibility = fabVisible ? 'visible' : 'hidden';
   $('btnScan').style.visibility = fabVisible ? 'visible' : 'hidden'; // 右下の＋の上（読取）
+  syncBottomMetrics();
 }
+
+/**
+ * 下部UI（タブバー・操作ドック・FAB）の高さを実測してCSS変数に入れる。
+ * ドックの有無や選択バーへの切り替えでFABの位置・本文の余白が重ならないようにする。
+ */
+function syncBottomMetrics() {
+  const dock = $('dock');
+  if (!dock) return;
+  const selecting = ui.selectMode && ui.tab === 'stock';
+  const selBar = $('selBar');
+  // 選択中は操作ドックの代わりに選択バーが同じ位置に出る（高さを入れ替えて測る）
+  const h = selecting
+    ? (selBar && !selBar.hidden ? Math.round(selBar.getBoundingClientRect().height) : 0)
+    : (dock.hidden ? 0 : Math.round(dock.getBoundingClientRect().height));
+  document.documentElement.style.setProperty('--dock-h', `${h}px`);
+  // FABは「＋」とその上の「読取」の2段分（52 + 8 + 44）＋余白
+  const fabH = ui.tab === 'stock' || ui.tab === 'shopping' ? 118 : 0;
+  document.documentElement.style.setProperty('--fab-h', `${fabH}px`);
+}
+window.addEventListener('resize', syncBottomMetrics);
 
 function isFolderMode() {
   return ui.tab === 'stock' && ui.mode === 'folders';
@@ -561,44 +578,8 @@ function renderSubFolders() {
   const counts = countByFolderDeep(state.folders, state.items);
   const chips = kids.map((f) =>
     `<button class="pill sub" data-goto-folder="${esc(f.id)}">${esc(f.name)}<b>${counts[f.id] || 0}</b></button>`).join('');
-  row.innerHTML = chips + `<button class="pill sub add" data-add-child="${esc(ui.folderId)}" aria-label="子フォルダを追加">＋</button>`;
+  row.innerHTML = chips + `<button class="pill sub add" data-add-child="${esc(ui.folderId)}" aria-label="この中のフォルダを作る">＋ 子フォルダ</button>`;
   row.hidden = false;
-}
-
-/** 色見本アルバムに並べる画材（色名か写真があるもの） */
-function swatchItems() {
-  return sortItems(state.items.filter((it) => it.colorName || photoUrls.has(it.id) || normalizeImageUrl(it.imageUrl)), 'maker');
-}
-
-/** 色見本1枚（写真があれば写真、無ければ色名から推測した色） */
-function swatchTile(it) {
-  const src = photoUrls.get(it.id) || normalizeImageUrl(it.imageUrl);
-  const color = guessColor(it);
-  const st = statusMeta(it.status);
-  const isEmpty = isEmptyStock(it);
-  const name = it.colorName || displayName(it);
-  const sub = itemMaker(it) || folderOf(it.folderId).name;
-  return `
-  <button class="swt${isEmpty ? ' item-card--empty' : ''}" data-edit="${esc(it.id)}" data-empty="${isEmpty ? '1' : '0'}" aria-label="${esc(`${name} ${Number(it.qty) || 0}点`)}">
-    <span class="swc" style="--c:${esc(color)}">
-      ${src ? `<img class="swimg" src="${esc(src)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : '<span class="swfill"></span>'}
-      <span class="swq">${Number(it.qty) || 0}</span>
-    </span>
-    <span class="swn">${esc(name)}</span>
-    <span class="swm">${esc(sub)}<span class="badge ${st.tone}">${esc(st.short || st.label)}</span></span>
-  </button>`;
-}
-
-function renderSwatches() {
-  const list = swatchItems();
-  if (!list.length) {
-    $('swatchGrid').innerHTML = '<div class="empty"><b>色見本はまだありません</b>画材を編集して、色名か写真を入れると並びます</div>';
-    return;
-  }
-  // シリーズ（メーカー＋ブランド）ごとに見出しを付けて並べる
-  $('swatchGrid').innerHTML = groupBySeries(list).map((g) => `
-    <div class="mhead"><span>${esc(g.label || seriesLabel(g.items[0]))}</span><b>${g.items.length}</b></div>
-    <div class="sgrid">${g.items.map(swatchTile).join('')}</div>`).join('');
 }
 
 /** アイテムの実物画像（手元写真 → 画像URL の順。無ければ空文字でアイコン表示） */
@@ -612,7 +593,7 @@ function shelfImage(it) {
 document.addEventListener('error', (e) => {
   const img = e.target;
   if (!img || img.tagName !== 'IMG') return;
-  if (img.classList.contains('shelfimg') || img.classList.contains('previewimg') || img.classList.contains('swimg')) img.classList.add('imgfail');
+  if (img.classList.contains('shelfimg') || img.classList.contains('previewimg')) img.classList.add('imgfail');
 }, true);
 
 // 実画像が読み込めたら、枠に hasimg を付ける（背景の「画像なし」アイコンと棚の影をCSSで完全に隠す）。
@@ -620,10 +601,10 @@ document.addEventListener('error', (e) => {
 document.addEventListener('load', (e) => {
   const img = e.target;
   if (!img || img.tagName !== 'IMG') return;
-  if (!img.classList.contains('shelfimg') && !img.classList.contains('swimg')) return;
+  if (!img.classList.contains('shelfimg')) return;
   if (img.classList.contains('imgfail')) return;
   img.classList.add('imgloaded');
-  // グリッドの棚（.sw）・リストのサムネイル（.thumb）・色見本（.swc）のどれでも親が枠
+  // グリッドの棚（.sw）・リストのサムネイル（.thumb）のどちらでも親が枠
   img.parentElement?.classList.add('hasimg');
 }, true);
 
@@ -699,7 +680,8 @@ function viewBlocks(items, group) {
       .map((g) => ({ label: g.maker || '未設定', items: g.items }));
   }
   if (group === 'folder') {
-    return groupByFolder(items, state.folders).map((g) => ({ label: g.name || '未分類', items: g.items }));
+    // 見出しのフォルダでも長押しメニューを開けるよう、フォルダIDを持たせる
+    return groupByFolder(items, state.folders).map((g) => ({ label: g.name || '未分類', items: g.items, folderId: g.folderId }));
   }
   return [{ label: '', items }];
 }
@@ -717,7 +699,7 @@ function renderTilesInto(el, items, opts = {}) {
   const blocks = viewBlocks(items, opts.group);
   el.innerHTML = blocks.map((g) => {
     const head = g.label
-      ? `<div class="mhead"><span>${esc(g.label)}</span><b>${g.items.length}</b></div>`
+      ? `<div class="mhead"${g.folderId ? ` data-folder-head="${esc(g.folderId)}"` : ''}><span>${esc(g.label)}</span><b>${g.items.length}</b></div>`
       : '';
     const body = (opts.forceList || ui.layout === 'list')
       ? g.items.map((it) => itemRow(it, opts)).join('')
@@ -777,23 +759,9 @@ function renderSettings() {
   $('stKinds').textContent = s.kinds;
   $('stQty').textContent = s.qty;
   $('stRestock').textContent = s.needRestock;
-  const appId = String(state.settings.rakutenAppId || '');
-  const accessKey = String(state.settings.rakutenAccessKey || '');
-  const proxyUrl = String(state.settings.imageProxyUrl || '');
-  if (document.activeElement !== $('fRakuten')) $('fRakuten').value = appId;
-  if (document.activeElement !== $('fAccessKey')) $('fAccessKey').value = accessKey;
-  if (document.activeElement !== $('fProxyUrl')) $('fProxyUrl').value = proxyUrl;
-  // 中継サーバーがあれば設定ゼロで使える。無ければ自分のアプリIDが要る
-  if (canUseImageProxy(state.settings)) {
-    $('rakutenState').textContent = appId
-      ? 'JANで商品画像を取得できます（中継サーバー経由・自分のアプリIDは予備）'
-      : 'JANで商品画像を取得できます（設定は不要です）';
-  } else if (appId && accessKey) {
-    $('rakutenState').textContent = `JANで商品画像を取得できます（自分の認証情報・末尾 ${appId.slice(-4)}）`;
-  } else {
-    $('rakutenState').textContent = 'JANからの画像取得は未設定です（下の設定から）';
-  }
-  $('backupNote').textContent = `機種変更・データ消失対策。書き出したファイルは Google ドライブ等に保存してください。手元写真は端末内に保存され、JSONには含まれません（${photoCount}枚）。`;
+  // 商品画像の設定欄は画面から外した（中継サーバー経由の自動取得はそのまま動く）。
+  // 入力欄がある版のHTMLでも動くよう、要素があるときだけ値を入れる。
+  $('fRakuten') && ($('fRakuten').value = String(state.settings.rakutenAppId || ''));
   renderPlan();
   renderCost();
   renderDictionaryState();
@@ -808,8 +776,8 @@ function renderPlan() {
   const pro = isPro(state.settings);
   const q = itemQuota(state, state.settings);
   const fq = folderQuota(state, state.settings);
-  // フォルダは既定4つ（無料上限3）で始まるので、個数だけ出す（4 / 3つ と書かない）
-  $('proState').textContent = `${pro ? 'Pro（プレビュー）' : '無料'} ・ 画材 ${describeQuota(q)} ・ フォルダ ${fq.used}つ`;
+  // フォルダの枠は「あとから作った分」だけ数える（最初からある4つは数えない）
+  $('proState').textContent = `${pro ? 'Pro（プレビュー）' : '無料'} ・ 画材 ${describeQuota(q)} ・ フォルダ ${describeQuota(fq, 'つ')}`;
   $('proBenefits').innerHTML = PRO_BENEFITS.map((b) => `<span class="pro-chip">${esc(b.label)}</span>`).join('');
   $('btnProToggle').textContent = pro ? 'Proプレビューを終了' : 'Proプレビューを試す';
 }
@@ -818,13 +786,12 @@ function renderPlan() {
 function openProSheet(what = 'item') {
   const lead = {
     item: `無料は${FREE_ITEM_LIMIT}点まで`,
-    folder: `無料はフォルダ${FREE_FOLDER_LIMIT}つまで`,
-    swatch: '色見本アルバムはPro',
+    folder: `無料で追加できるフォルダは${FREE_FOLDER_LIMIT}つまで`,
     cost: '画材費とCSVはPro',
   }[what] || 'Proで全部使えます';
   $('proLead').textContent = lead;
   $('proQuota').textContent = what === 'folder'
-    ? `フォルダ ${folderQuota(state, state.settings).used}つ`
+    ? `フォルダ ${describeQuota(folderQuota(state, state.settings), 'つ')}`
     : `画材 ${describeQuota(itemQuota(state, state.settings))}`;
   $('proSheetBenefits').innerHTML = PRO_BENEFITS.map((b) => `<span class="pro-chip">${esc(b.label)}</span>`).join('');
   $('btnProStart').hidden = isPro(state.settings);
@@ -911,18 +878,22 @@ function downloadCsv() {
 
 $('btnCsv').addEventListener('click', downloadCsv);
 
-/* ---------------- 画像取得の設定（中継サーバーURL・楽天アプリID） ---------------- */
-$('btnSaveImageSettings').addEventListener('click', () => {
-  const appId = $('fRakuten').value.trim().replace(/\s+/g, '');
-  const rakutenAccessKey = $('fAccessKey').value.trim().replace(/\s+/g, '');
-  const rawProxy = $('fProxyUrl').value.trim();
-  const imageProxyUrl = normalizeProxyUrl(rawProxy);
-  if (rawProxy && !imageProxyUrl) { toast('中継サーバーURLは https:// から始まる形で入れてください'); return; }
-  state = { ...state, settings: { ...state.settings, rakutenAppId: appId, rakutenAccessKey, imageProxyUrl } };
-  save();
-  render();
-  toast('画像取得の設定を保存しました');
-});
+/* ---------------- 画像取得の設定（画面からは外した。値はバックアップから引き継げる） ---------------- */
+// 設定画面の「商品画像」カードは廃止したので、保存ボタンは無い版がある。
+// 中継サーバー（同梱の既定URL）経由の自動取得はそのまま動く。
+if ($('btnSaveImageSettings')) {
+  $('btnSaveImageSettings').addEventListener('click', () => {
+    const appId = $('fRakuten')?.value.trim().replace(/\s+/g, '') || '';
+    const rakutenAccessKey = $('fAccessKey')?.value.trim().replace(/\s+/g, '') || '';
+    const rawProxy = $('fProxyUrl')?.value.trim() || '';
+    const imageProxyUrl = normalizeProxyUrl(rawProxy);
+    if (rawProxy && !imageProxyUrl) { toast('中継サーバーURLは https:// から始まる形で入れてください'); return; }
+    state = { ...state, settings: { ...state.settings, rakutenAppId: appId, rakutenAccessKey, imageProxyUrl } };
+    save();
+    render();
+    toast('画像取得の設定を保存しました');
+  });
+}
 
 /** JANコードから商品画像を取得して「画像URL」に入れる（中継サーバー経由。楽天・Yahoo!どちらでも） */
 $('btnFetchImage').addEventListener('click', async () => {
@@ -1044,8 +1015,6 @@ $('tabbar').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-tab]');
   if (!b) return;
   const tab = b.dataset.tab;
-  // 色見本アルバムはPro（無料では案内を出して、いまのタブに留まる）
-  if (tab === 'swatch' && !requirePro('swatch')) return;
   ui.tab = tab;
   if (tab !== 'stock') exitSelect();
   stopScanner();
@@ -1493,18 +1462,185 @@ $('btnSaveFolder').addEventListener('click', () => {
     toast('フォルダを更新しました');
   } catch (err) { toast(err.message); }
 });
-$('btnDeleteFolder').addEventListener('click', () => {
-  if (!ui.folderEditId) return;
-  const f = folderOf(ui.folderEditId);
-  const fallback = state.folders.find((x) => x.id !== ui.folderEditId);
-  if (!fallback) { toast('フォルダは最低1つ必要です'); return; }
-  const kids = folderChildren(state.folders, ui.folderEditId).length;
+/**
+ * フォルダを確認のうえ削除する（編集シート・長押しメニューの共通処理）。
+ * 中の画材は残る別のフォルダ（ふつうは「家」）へ、子フォルダは親の位置へ移す。
+ * @returns {{ok:boolean, movedTo?:string}}
+ */
+function removeFolder(id) {
+  const f = state.folders.find((x) => x.id === id);
+  if (!f) return { ok: false };
+  const fallback = state.folders.find((x) => x.id !== id);
+  if (!fallback) { toast('フォルダは最低1つ必要です'); return { ok: false }; }
+  const kids = folderChildren(state.folders, id).length;
   const upName = folderParentId(f) ? folderOf(folderParentId(f)).name : 'トップ';
   const note = kids ? `子フォルダ${kids}つは「${upName}」へ移します。` : '';
-  if (!confirm(`「${f.name}」を削除します。中の画材は「${fallback.name}」へ移動します。${note}よろしいですか？`)) return;
-  state = deleteFolder(state, ui.folderEditId, fallback.id);
-  save(); closeSheet('sheetFolder'); render();
-  toast(`「${fallback.name}」へ中身を移動しました`);
+  if (!confirm(`「${f.name}」を削除します。中の画材は「${fallback.name}」へ移動します。${note}よろしいですか？`)) return { ok: false };
+  const parent = folderParentId(f);
+  state = deleteFolder(state, id, fallback.id);
+  save();
+  // いま開いていたフォルダを消したら、親（無ければ保管場所）へ戻す
+  if (ui.folderId === id) {
+    ui.folderId = parent || 'all';
+    ui.mode = parent ? 'items' : 'folders';
+  }
+  return { ok: true, movedTo: fallback.name };
+}
+
+$('btnDeleteFolder').addEventListener('click', () => {
+  if (!ui.folderEditId) return;
+  const id = ui.folderEditId;
+  const res = removeFolder(id);
+  if (!res.ok) return;
+  closeSheet('sheetFolder'); render();
+  toast(`「${res.movedTo}」へ中身を移動しました`);
+});
+
+/* ---------------- フォルダの長押しメニュー（編集 / 移動 / 削除） ---------------- */
+const LONG_PRESS_MS = 480;       // 長押しとみなす時間
+const LONG_PRESS_MOVE_PX = 10;   // これ以上動いたらスクロール扱い（メニューは出さない）
+let folderMenuId = '';           // 長押しで選んだフォルダ
+let pressTimer = 0;
+let pressStart = null;
+let pressEl = null;
+let suppressClickUntil = 0;      // 長押し直後の「タップ」を1回だけ打ち消す
+let suppressClickEl = null;      // 打ち消す相手（長押しした要素。別のフォルダのタップは通す）
+
+/** 長押し対象の要素からフォルダIDを読む（グリッド・子フォルダ・場所一覧・フォルダ別見出し） */
+function folderIdFromPress(el) {
+  if (!el || !el.closest) return '';
+  const tile = el.closest('#folderGrid [data-folder]');
+  if (tile) return tile.dataset.folder === 'all' ? '' : tile.dataset.folder; // 「すべて」はフォルダではない
+  const chip = el.closest('[data-goto-folder]');
+  if (chip) return chip.dataset.gotoFolder;
+  const row = el.closest('#folderList [data-fid]');
+  if (row) return row.dataset.fid;
+  const head = el.closest('[data-folder-head]');
+  if (head) return head.dataset.folderHead;
+  return '';
+}
+
+function endPress() {
+  if (pressTimer) { clearTimeout(pressTimer); pressTimer = 0; }
+  pressEl?.classList?.remove('pressing');
+  pressEl = null;
+  pressStart = null;
+}
+
+function startPress(e) {
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  // 行の中の小さなボタン（並べ替え・編集）は普通のタップに任せる
+  if (e.target.closest('[data-up], [data-down], [data-fedit]')) return;
+  const id = folderIdFromPress(e.target);
+  if (!id) return;
+  endPress();
+  pressStart = { x: e.clientX, y: e.clientY };
+  pressEl = e.target.closest('[data-folder], [data-goto-folder], [data-fid], [data-folder-head]');
+  pressEl?.classList?.add('pressing');
+  pressTimer = setTimeout(() => {
+    pressTimer = 0;
+    const pressedEl = pressEl;
+    pressedEl?.classList?.remove('pressing');
+    pressEl = null;
+    pressStart = null;
+    // 指を離したあとに続く「タップ」でフォルダを開かないよう、同じ要素の1回だけ打ち消す
+    suppressClickUntil = Date.now() + 600;
+    suppressClickEl = pressedEl;
+    openFolderMenu(id);
+  }, LONG_PRESS_MS);
+}
+
+function movePress(e) {
+  if (!pressStart) return;
+  const dx = Math.abs(e.clientX - pressStart.x);
+  const dy = Math.abs(e.clientY - pressStart.y);
+  if (dx > LONG_PRESS_MOVE_PX || dy > LONG_PRESS_MOVE_PX) endPress(); // 指を動かした＝スクロール
+}
+
+document.addEventListener('pointerdown', startPress, { passive: true });
+document.addEventListener('pointermove', movePress, { passive: true });
+document.addEventListener('pointerup', endPress, { passive: true });
+document.addEventListener('pointercancel', endPress, { passive: true });
+// iOS の長押しメニュー・文字選択は出さない（CSSの touch-callout と両方で抑える）
+document.addEventListener('contextmenu', (e) => {
+  if (folderIdFromPress(e.target)) e.preventDefault();
+});
+
+// 長押しで開いた直後のタップでフォルダを開いたり編集シートを出したりしない
+// （打ち消すのは長押しした要素の1回だけ。別のフォルダのタップはそのまま通す）
+document.addEventListener('click', (e) => {
+  if (Date.now() >= suppressClickUntil) { suppressClickEl = null; return; }
+  if (!suppressClickEl || !suppressClickEl.contains(e.target)) return;
+  suppressClickEl = null;
+  e.preventDefault();
+  e.stopPropagation();
+}, true);
+
+/** フォルダの長押しメニューを開く */
+function openFolderMenu(id) {
+  const f = state.folders.find((x) => x.id === id);
+  if (!f) return;
+  folderMenuId = id;
+  $('folderMenuTitle').firstChild.textContent = f.name;
+  // 今の場所（トップ階層なら「最上位」と書く）
+  const parent = folderParentId(f);
+  $('folderMenuPath').textContent = parent
+    ? `${folderPathLabel(state.folders, parent, ' › ')} の中`
+    : '最上位のフォルダ';
+  openSheet('sheetFolderMenu');
+}
+
+$('btnFolderRename').addEventListener('click', () => {
+  if (!folderMenuId) return;
+  const id = folderMenuId;
+  closeSheet('sheetFolderMenu');
+  openFolderSheet(id);
+});
+
+$('btnFolderReparent').addEventListener('click', () => {
+  if (!folderMenuId) return;
+  openFolderMoveSheet(folderMenuId);
+});
+
+$('btnFolderRemove').addEventListener('click', () => {
+  if (!folderMenuId) return;
+  const id = folderMenuId;
+  closeSheet('sheetFolderMenu');
+  const res = removeFolder(id);
+  if (!res.ok) return;
+  render();
+  toast(`「${res.movedTo}」へ中身を移動しました`);
+});
+
+/** フォルダの移動先（最上位＋各フォルダ。自分と自分の配下は選べない） */
+function openFolderMoveSheet(id) {
+  const f = state.folders.find((x) => x.id === id);
+  if (!f) return;
+  folderMenuId = id;
+  const exclude = folderSubtreeIds(state.folders, id); // 循環を防ぐ
+  const cur = folderParentId(f);
+  $('folderMoveNote').textContent = `「${f.name}」の移動先を選んでください（自分の中には移せません）`;
+  $('folderMoveOptions').innerHTML = folderOptions(state.folders, { exclude, noneLabel: '最上位（トップ）' })
+    .map((o) => {
+      const on = String(o.id) === cur;
+      return `<button class="pill move" data-folder-parent="${esc(o.id)}" style="--d:${o.depth}" aria-pressed="${on}">${esc(o.label)}${on ? '・いまここ' : ''}</button>`;
+    }).join('');
+  closeSheet('sheetFolderMenu');
+  openSheet('sheetFolderMove');
+}
+
+$('folderMoveOptions').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-folder-parent]');
+  if (!b || !folderMenuId) return;
+  const id = folderMenuId;
+  try {
+    state = updateFolder(state, id, { parentId: b.dataset.folderParent || null });
+    save();
+    closeSheet('sheetFolderMove');
+    render();
+    const parent = folderParentId(folderOf(id));
+    toast(parent ? `「${folderOf(parent).name}」の中へ移動しました` : '最上位へ移動しました');
+  } catch (err) { toast(err.message); }
 });
 
 /* ---------------- 移動（1件・複数選択とも同じシート） ---------------- */
@@ -1648,6 +1784,7 @@ $('btnScanDone').addEventListener('click', () => {
 function showScanMsg(msg) {
   $('scanMsg').hidden = false;
   $('scanMsg').textContent = msg;
+  $('scanReticle').hidden = true; // 映像が無いときは枠も出さない
 }
 
 /**
@@ -1748,14 +1885,16 @@ async function startScanner() {
     $('scanMsg').hidden = true;
     const holder = document.createElement('div');
     holder.id = 'qrReader';
-    holder.style.cssText = 'width:100%;height:100%';
     $('scanBox').appendChild(holder);
     const inst = new Html5Qrcode('qrReader', { verbose: false });
     scanner = inst;
-    await inst.start(scannerFacingConfig(scanFacing), { fps: 10, qrbox: { width: 240, height: 140 } },
+    // qrbox（ライブラリが描く枠）は使わない。映像を切り取らずに枠の中央へ収めるため、
+    // ガイド枠は自前の .reticle（.scan-box の中央）で出す。
+    await inst.start(scannerFacingConfig(scanFacing), { fps: 10 },
       (text) => { onScan(text); }, () => {});
     if (token !== scanStartToken) return;
     scannerLive = true;
+    $('scanReticle').hidden = false;
     hideScanStatus();
   } catch (e) {
     console.warn('html5-qrcode失敗', e);
@@ -1975,12 +2114,8 @@ $('btnWipe').addEventListener('click', async () => {
   render();
   toast('全データを削除しました');
 });
-$('btnDict').addEventListener('click', () => {
-  $('dictQ').value = '';
-  openSheet('sheetDict');
-  renderDictList('');
-});
-$('btnDictSync').addEventListener('click', () => syncDictionary({ announce: true }));
+// 辞書の一覧・更新ボタンは設定から外した（起動時の自動同期はそのまま続く）。
+// 辞書シートは編集シートの「辞書から探す」から開く。
 
 /* ---------------- 通販で探す（アフィリエイト土台） ---------------- */
 function openShopSheet(item) {

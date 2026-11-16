@@ -537,40 +537,6 @@ export function groupByFolder(items = [], folders = []) {
   });
 }
 
-/* ---------------- 色見本のシリーズ（メーカー＋ブランド） ---------------- */
-
-/** 色見本の見出しに使うシリーズ名（ブランド優先。無ければ「メーカー名（その他）」） */
-export function seriesLabel(item = {}) {
-  const brand = String(item?.brand || '').trim();
-  if (brand) {
-    const maker = itemMaker(item);
-    return maker && !brand.startsWith(maker) ? `${maker} ${brand}` : brand;
-  }
-  const maker = itemMaker(item);
-  return maker ? `${maker}（その他）` : '未設定';
-}
-
-/** 色見本をシリーズ（メーカー＋ブランド）ごとにまとめる */
-export function groupBySeries(items = []) {
-  const groups = [];
-  const index = new Map();
-  for (const it of Array.isArray(items) ? items : []) {
-    const maker = itemMaker(it);
-    const brand = String(it?.brand || '').trim();
-    const key = `${maker}|${brand}`;
-    if (!index.has(key)) {
-      index.set(key, groups.length);
-      groups.push({ key, label: seriesLabel(it), maker, brand, items: [] });
-    }
-    groups[index.get(key)].items.push(it);
-  }
-  // メーカー順 → ブランドがあるものを先、ブランド未設定（その他）は後ろ
-  return groups.sort((a, bk) => (a.maker ? 0 : 1) - (bk.maker ? 0 : 1)
-    || a.maker.localeCompare(bk.maker, 'ja')
-    || (a.brand ? 0 : 1) - (bk.brand ? 0 : 1)
-    || a.brand.localeCompare(bk.brand, 'ja'));
-}
-
 export function countByFolder(items) {
   const out = { all_total: items.length };
   for (const it of items) out[it.folderId] = (out[it.folderId] || 0) + 1;

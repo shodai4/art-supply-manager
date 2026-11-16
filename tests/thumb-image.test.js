@@ -13,19 +13,19 @@ test('実画像が読み込めたら枠に hasimg を付ける（読み込み失
   const app = read('app.js');
   assert.match(app, /document\.addEventListener\('load', \(e\) => \{/);
   assert.match(app, /if \(img\.classList\.contains\('imgfail'\)\) return;[\s\S]{0,200}img\.parentElement\?\.classList\.add\('hasimg'\);/);
-  // 画像の種類は棚（shelfimg）と色見本（swimg）の両方
-  assert.match(app, /img\.classList\.contains\('shelfimg'\) && !img\.classList\.contains\('swimg'\)/);
+  // 画像の種類は棚（shelfimg）だけ（色見本タブは廃止）
+  assert.match(app, /if \(!img\.classList\.contains\('shelfimg'\)\) return;/);
 });
 
-test('グリッドの棚・リストのサムネイル・色見本の下地は、画像があるとき全部隠れる', () => {
+test('グリッドの棚・リストのサムネイルの下地は、画像があるとき全部隠れる', () => {
   const css = read('styles.css');
   // グリッド: チューブ形のSVG・棚板の線・接地の影
   assert.match(css, /\.tile \.sw\.hasimg \.inh,\s*\.tile \.sw\.hasimg::before,\s*\.tile \.sw\.hasimg::after \{ display: none; \}/);
   assert.match(css, /\.tile \.sw\.hasimg \{ background: var\(--img-pad\); \}/);
   // リスト: カテゴリアイコン
   assert.match(css, /\.item \.thumb\.hasimg \.ic \{ display: none; \}/);
-  // 色見本: 色名から作った下地の色
-  assert.match(css, /\.swt \.swc\.hasimg \.swfill \{ display: none; \}/);
+  // 色見本タブは廃止したので、その下地のCSSも残っていない
+  assert.equal(/\.swt\b|\.sgrid\b/.test(css), false, '色見本のCSSが残っている');
 });
 
 test('在庫切れのグレー表示でも写真が白飛びしない（画像があると分かる）', () => {

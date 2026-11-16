@@ -118,7 +118,8 @@ test('ダークの配色は変数をまとめて切り替える（面・線・�
     assert.ok(DARK[key], `ダークの --${key} がありません`);
     assert.notEqual(LIGHT[key], DARK[key], `--${key} がダークで変わっていない`);
   }
-  assert.equal(LIGHT.bg, '#f4f6f9');
+  assert.equal(LIGHT.bg, '#f1efe9');
+  assert.equal(LIGHT.accent, '#2b66c4');
   assert.equal(DARK.bg, '#0f141a');
   // ネイティブの select・入力欄もダークに合わせる
   assert.match(css, /:root\s*\{[^}]*color-scheme:\s*light/);
@@ -171,7 +172,6 @@ test('在庫0のグレー表示もダークで沈む（面と文字を変数に�
   assert.match(css, /\.tile\.item-card--empty \.tname\s*\{[^}]*color:\s*var\(--ink-3\)/);
   assert.match(css, /\.item\.item-card--empty\s*\{[^}]*background:\s*var\(--surface-2\)/);
   assert.match(css, /\.item\.item-card--empty \.it-name\s*\{[^}]*color:\s*var\(--ink-3\)/);
-  assert.match(css, /\.swt\.item-card--empty \.swn\s*\{[^}]*color:\s*var\(--ink-3\)/);
   // 棒グラフの下地とバー
   assert.match(css, /\.bar \.bt\s*\{[^}]*background:\s*var\(--surface-3\)/);
   assert.match(css, /\.bar \.bf\s*\{[^}]*var\(--bar-a\)/);
@@ -204,7 +204,7 @@ test('画面: 設定にテーマ切替、描画前のテーマ適用、theme-col
 test('theme.js は配信・iOSビルド・Service Worker に入っている', async () => {
   const sw = read('sw.js');
   assert.match(sw, /'\.\/theme\.js'/);
-  assert.match(sw, /art-supply-manager-v28/);
+  assert.match(sw, /art-supply-manager-v29/);
   const { WEB_ASSETS } = await import('../scripts/build.mjs');
   assert.ok(WEB_ASSETS.includes('theme.js'), 'theme.js が WEB_ASSETS にありません');
   // iOSビルドの起動条件は app.js / index.html / styles.css の変更で走る（theme.js は build.mjs 経由で www/ へ入る）

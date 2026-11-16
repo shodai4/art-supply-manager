@@ -1,6 +1,6 @@
 {
   "name": "art-supply-manager",
-  "version": "1.9.1",
+  "version": "1.10.0",
   "private": true,
   "type": "module",
   "description": "アトリコ（画材の在庫を管理するアプリ。保管場所フォルダ分け・在庫管理・バーコード/JAN読み取り）",

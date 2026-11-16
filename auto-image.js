@@ -10,7 +10,7 @@ export function autoImageJan(value) {
   return /^\d{13}$/.test(jan) ? jan : '';
 }
 
-/** そのアイテムに手元の写真（色見本メモ）があるか（Map・Set・配列のどれでも受ける） */
+/** そのアイテムに手元の写真（写真メモ）があるか（Map・Set・配列のどれでも受ける） */
 export function hasLocalPhoto(photoIds, id) {
   if (!id) return false;
   if (typeof photoIds?.has === 'function') return Boolean(photoIds.has(id));

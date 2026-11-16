@@ -95,7 +95,7 @@ test('画面: 複数選択の入口・選択マーク・操作バーがある', 
   assert.ok(body.indexOf('if (ui.selectMode)') < body.indexOf("closest('[data-edit]')"));
   // 操作バーは下タブバーの上に固定し、チェックの見た目がある
   assert.match(css, /\.selbar\s*\{[^}]*position:\s*fixed/);
-  assert.match(css, /\.selbar\s*\{[^}]*bottom:\s*calc\(56px/);
+  assert.match(css, /\.selbar\s*\{[^}]*bottom:\s*calc\(var\(--tabbar-h\)/);
   assert.match(css, /\.selmark\s*\{/);
   assert.match(css, /\.tile\.sel \.sw|\.tile\.sel \.selmark/);
 });

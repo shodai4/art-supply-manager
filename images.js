@@ -6,7 +6,7 @@
 export const IMAGE_DB_NAME = 'art-supply-images';
 export const IMAGE_DB_VERSION = 1;
 export const IMAGE_STORE = 'photos';
-export const MAX_EDGE = 480;      // 長辺の上限(px)。色見本として色が判別できる大きさ
+export const MAX_EDGE = 480;      // 長辺の上限(px)。色名や色番号が判別できる大きさ
 export const JPEG_QUALITY = 0.75; // 1枚 30〜60KB 前後になる設定（IndexedDBなのでlocalStorageは圧迫しない）
 
 /** 長辺 maxEdge に収まるよう縦横比を保って縮小した大きさ（拡大はしない） */
