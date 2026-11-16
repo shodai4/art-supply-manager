@@ -11,6 +11,9 @@ import {
   FREE_ITEM_LIMIT, FREE_FOLDER_LIMIT, PRO_BENEFITS, isPro, itemQuota, folderQuota,
   canAddItem, canAddFolder, canUseFeature, describeQuota, isQuotaTight,
 } from './pro.js';
+import {
+  sampleItems, mergeSampleItems, shouldSeedSamples, readSampleSeeded, writeSampleSeeded,
+} from './samples.js';
 import { JAN_DICTIONARY } from './jan-database.js';
 import {
   resolveDictionaryUrl, mergeDictionaries, syncExtraDictionary, describeCounts, describeSyncState,
@@ -222,6 +225,32 @@ async function preloadPhotos() {
   } catch (e) {
     console.warn('写真の読み込みに失敗', e);
   }
+}
+
+/* ---------------- サンプル（お試し用） ---------------- */
+/** 0件のときに入れるサンプルの導線（初回起動・空の一覧・設定）。残り枠を超えるぶんは入れない */
+function addSamples() {
+  const q = itemQuota(state, state.settings);
+  const remaining = q.unlimited ? Number.POSITIVE_INFINITY : Math.max(0, q.limit - q.used);
+  if (remaining <= 0) { openProSheet('item'); return; }
+  const { state: next, added } = mergeSampleItems(state, sampleItems(), { limit: remaining });
+  if (!added) { toast('サンプルはもう入っています'); return; }
+  state = next;
+  writeSampleSeeded(safeStorage(), true);
+  save();
+  render();
+  toast(`サンプルを${added}点入れました`);
+}
+
+/** 初回起動（0件・まだ入れたことがない）ときだけ、最初からサンプルが入った状態にする */
+function seedSamplesOnFirstRun() {
+  if (!shouldSeedSamples({ items: state.items, seeded: readSampleSeeded(safeStorage()) })) return;
+  const { state: next, added } = mergeSampleItems(state, sampleItems());
+  if (!added) return;
+  state = next;
+  writeSampleSeeded(safeStorage(), true);
+  save();
+  toast('サンプルを入れました（設定からも入れられます）');
 }
 
 /* ---------------- storage ---------------- */
@@ -520,7 +549,7 @@ function renderTilesInto(el, items, opts = {}) {
       ? '<div class="empty"><b>補充はありません</b>残りわずか・使い切りがここに集まります</div>'
       : (state.items.length
         ? '<div class="empty"><b>見つかりません</b>検索や絞込を変えてみてください</div>'
-        : '<div class="empty"><b>まだ画材がありません</b>右下の＋ か 読取 から登録できます</div>');
+        : '<div class="empty"><b>まだ画材がありません</b>右下の＋ か 読取 から登録できます<button class="btn mini wide" data-add-samples>サンプルを入れる</button></div>');
     return;
   }
   const blocks = opts.group ? groupByMaker(items) : [{ maker: '', items }];
@@ -1084,6 +1113,11 @@ $('btnDeleteItem').addEventListener('click', async () => {
 
 $('btnAdd').addEventListener('click', () => openItemSheet(null));
 
+// 空の一覧・設定の「サンプルを入れる」（ボタンは描き直されるので文書全体で受ける）
+document.addEventListener('click', (e) => {
+  if (e.target.closest('[data-add-samples]')) addSamples();
+});
+
 /* ---------------- シート開閉 ---------------- */
 const openSheets = new Set();
 function openSheet(id) {
@@ -1479,6 +1513,7 @@ if ('serviceWorker' in navigator && !isNativeShell(window)) {
   });
 }
 
+seedSamplesOnFirstRun();
 render();
 preloadPhotos();
 renderDictionaryState();

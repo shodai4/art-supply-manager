@@ -7,7 +7,7 @@
 <meta name="description" content="画材の在庫をフォルダ（家・アトリエ・持ち出し・ストック）で管理。JANバーコード読み取り対応の画材管理アプリ。">
 <title>画材管理 ｜ Art Supply Manager</title>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="styles.css?v=1.4.0">
+<link rel="stylesheet" href="styles.css?v=1.4.1">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
 </head>
@@ -196,6 +196,13 @@
         <button class="btn" id="btnImport">復元</button>
       </div>
       <input type="file" id="fileImport" accept="application/json,.json" class="sr">
+    </div>
+    <div class="card" id="sampleCard">
+      <h2 class="card-t">お試し</h2>
+      <p class="hint">サンプルの画材を入れます（あとで削除できます）</p>
+      <div class="actions">
+        <button class="btn" id="btnAddSamples" data-add-samples>サンプルを入れる</button>
+      </div>
     </div>
     <div class="card">
       <h2 class="card-t">商品画像</h2>
@@ -430,6 +437,6 @@
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<script type="module" src="app.js?v=1.4.0"></script>
+<script type="module" src="app.js?v=1.4.1"></script>
 </body>
 </html>

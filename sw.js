@@ -1,8 +1,8 @@
 // 画材管理アプリ Service Worker（オフライン用キャッシュ）
-const CACHE = 'art-supply-manager-v19';
+const CACHE = 'art-supply-manager-v20';
 const ASSETS = [
   './', './index.html', './privacy.html', './support.html',
-  './styles.css', './app.js', './core.js', './links.js', './images.js', './pro.js', './jan-database.js', './jan-extra.js',
+  './styles.css', './app.js', './core.js', './links.js', './images.js', './pro.js', './samples.js', './jan-database.js', './jan-extra.js',
   './jan-extra.json', './shops.js', './scanner.js',
   './manifest.webmanifest', './icon.svg',
 ];

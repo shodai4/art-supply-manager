@@ -106,7 +106,10 @@ test('www/ に links.js が入り、Service Worker のキャッシュにも含�
   const sw = read('sw.js');
   assert.match(sw, /'\.\/links\.js'/);
   // キャッシュ名は更新のたびに上げる（古いJSが残ると画面が壊れる）
-  assert.match(sw, /art-supply-manager-v19/);
+  assert.match(sw, /art-supply-manager-v20/);
+  // サンプルデータは別ファイル（Service Worker と www/ の両方に入れる）
+  assert.match(sw, /'\.\/samples\.js'/);
+  assert.ok(WEB_ASSETS.includes('samples.js'), 'samples.js が WEB_ASSETS にありません');
 });
 
 test('index.html のキャッシュバスティングは package.json の版と一致する', () => {
