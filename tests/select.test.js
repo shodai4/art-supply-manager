@@ -100,6 +100,14 @@ test('画面: 複数選択の入口・選択マーク・操作バーがある', 
   assert.match(css, /\.tile\.sel \.sw|\.tile\.sel \.selmark/);
 });
 
+test('シートは開くたび先頭から・移動先は親までの経路だけを添える', () => {
+  const app = read('app.js');
+  // 前回のスクロール位置が残ると、開いた瞬間に中ほどが見えてしまう
+  assert.match(app, /openSheet\('sheetItem'\);\n\s*\$\('sheetItem'\)\.scrollTop = 0;/);
+  // 「机まわり 家 / 机まわり」ではなく「机まわり 家」
+  assert.match(app, /folderChain\(state\.folders, o\.id\)\.slice\(0, -1\)/);
+});
+
 test('選択モードのときに増減・編集のボタンを塞がない（pointer-events を殺さない）', () => {
   const css = read('styles.css');
   const blocks = [...css.matchAll(/[^{}]*\.sel(?:bar|mark|ecting)?[^{}]*\{[^}]*\}/g)].map((m) => m[0]);

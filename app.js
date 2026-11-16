@@ -1120,6 +1120,7 @@ function openItemSheet(id, preset = {}) {
   updateJanHint();
   refreshFormShopLinks();
   openSheet('sheetItem');
+  $('sheetItem').scrollTop = 0;
   setTimeout(() => $('fName').focus({ preventScroll: true }), 120);
 }
 
@@ -1400,7 +1401,10 @@ function openMoveSheet(ids) {
   ui.moveIds = [...ids];
   $('moveTitle').firstChild.textContent = ui.moveIds.length > 1 ? `${ui.moveIds.length}件を移動` : 'フォルダへ移動';
   $('moveOptions').innerHTML = folderOptions(state.folders, { noneLabel: null })
-    .map((o) => `<button class="pill move" data-tomove="${esc(o.id)}" style="--d:${o.depth}">${esc(o.label)}${o.depth ? ` <span class="mpath">${esc(folderPathLabel(state.folders, o.id, ' / '))}</span>` : ''}</button>`).join('');
+    .map((o) => {
+      const parents = folderChain(state.folders, o.id).slice(0, -1).map((f) => f.name).join(' / ');
+      return `<button class="pill move" data-tomove="${esc(o.id)}" style="--d:${o.depth}">${esc(o.label)}${parents ? ` <span class="mpath">${esc(parents)}</span>` : ''}</button>`;
+    }).join('');
   openSheet('sheetMove');
 }
 $('moveOptions').addEventListener('click', (e) => {
