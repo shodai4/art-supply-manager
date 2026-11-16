@@ -2,10 +2,13 @@
 import {
   STORAGE_KEY, CATEGORIES, STATUSES, DEFAULT_FOLDERS, SORT_MODES, MAKER_NONE,
   createItem, adjustStock, computeShoppingList, filterItems, moveItems, sortItems, countByFolder,
-  addFolder, updateFolder, reorderFolders, deleteFolder, upsertItem, deleteItems,
+  addFolder, updateFolder, moveFolder, reorderFolders, deleteFolder, upsertItem, deleteItems,
   exportState, importState, summarize, blankState, isEmptyStock,
   isValidJAN, normalizeJAN, detectMaker, lookupJAN, itemMaker, listMakers, groupByMaker,
   normalizeImageUrl, recordPurchase, costSummary, costRows, buildItemsCsvText, mergeStates,
+  folderParentId, folderChildren, folderChain, folderDepth, folderPathLabel, folderSubtreeIds,
+  folderTree, folderOptions, countByFolderDeep,
+  toggleSelection, isSelected, selectAllIds, pruneSelection, searchDictionary, dictionaryHaystack,
 } from './core.js';
 import {
   FREE_ITEM_LIMIT, FREE_FOLDER_LIMIT, PRO_BENEFITS, isPro, itemQuota, folderQuota,
@@ -30,6 +33,10 @@ import {
   compressImageFile, listPhotos, putPhoto, deletePhoto, clearPhotos, fetchProductImageInfo,
   resolveImageProxyUrl, normalizeProxyUrl, canUseImageProxy, sourceLabel,
 } from './images.js';
+import {
+  THEME_MODES, normalizeTheme, resolveTheme, themeColor, themeLabel, readStoredTheme,
+  writeStoredTheme, prefersDark,
+} from './theme.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -48,6 +55,9 @@ let ui = {
   moveIds: [],
   folderEditId: null,
   costKey: 'category',   // 画材費の内訳（カテゴリ / メーカー）
+  selectMode: false,     // 複数選択モード
+  selected: [],          // 選択中の画材ID
+  formBrand: '',         // 辞書から入れたブランド（フォームに欄は出さない）
 };
 let pendingRestore = null; // 復元シートで待っている読み込み内容
 let scanner = null; // html5-qrcode instance
@@ -71,6 +81,49 @@ function safeStorage() {
   } catch {
     return null;
   }
+}
+
+/* ---------------- テーマ（自動 / ライト / ダーク） ---------------- */
+let themeMediaBound = false;
+
+/** 設定値（無ければ保存値）からテーマを決めて画面へ適用する */
+function applyTheme() {
+  const mode = normalizeTheme(state.settings.theme ?? readStoredTheme(safeStorage()));
+  const resolved = resolveTheme(mode, prefersDark(window));
+  document.documentElement.setAttribute('data-theme', resolved);
+  // 描画前に読む値（別キー）も設定に合わせる（バックアップ復元後もずれない）
+  writeStoredTheme(safeStorage(), mode);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', themeColor(resolved));
+  const chips = $('themeChips');
+  if (chips) {
+    if (!chips.children.length) {
+      chips.innerHTML = THEME_MODES.map((m) =>
+        `<button class="fchip" data-theme-mode="${esc(m.id)}" aria-pressed="false">${esc(m.label)}</button>`).join('');
+    }
+    chips.querySelectorAll('[data-theme-mode]').forEach((b) => {
+      b.setAttribute('aria-pressed', String(b.dataset.themeMode === mode));
+    });
+  }
+  // 端末の設定が変わったとき（自動のときだけ見た目が変わる）
+  if (!themeMediaBound) {
+    themeMediaBound = true;
+    try {
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => applyTheme());
+    } catch { /* 古いブラウザでは追従しない */ }
+  }
+  return resolved;
+}
+
+/** テーマを選んで保存する（再起動しても残る） */
+function setTheme(mode) {
+  const next = normalizeTheme(mode);
+  state = { ...state, settings: { ...state.settings, theme: next } };
+  writeStoredTheme(safeStorage(), next);
+  save();
+  applyTheme();
+  render();
+  toast(`表示：${themeLabel(next)}`);
 }
 
 /** 同期結果を辞書と画面に反映する */
@@ -259,6 +312,8 @@ function loadState() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return blankState();
     const next = importState(raw);
+    // テーマは設定に無ければ端末の保存値（テーマだけ別キーにも持つ）
+    if (!next.settings.theme) next.settings.theme = readStoredTheme(safeStorage());
     // 旧バージョンの絵文字入りデータを読み込み時に文字だけへ整え、そのまま保存し直す
     try { localStorage.setItem(STORAGE_KEY, exportState(next)); } catch { /* 容量不足等は無視 */ }
     return next;
@@ -366,19 +421,25 @@ function displayName(item) {
 
 /* ---------------- rendering ---------------- */
 function render() {
+  applyTheme();
   renderHeader();
   renderTools();
   renderCrumb();
   const folderMode = isFolderMode();
   $('folderGrid').hidden = !folderMode;
+  $('subFolderRow').hidden = folderMode;
   $('itemList').hidden = folderMode;
-  if (folderMode) renderFolderGrid();
-  else renderTilesInto($('itemList'), currentList(), { group: state.settings.sort === 'maker', emptyKey: 'items' });
+  if (folderMode) { renderFolderGrid(); $('subFolderRow').innerHTML = ''; }
+  else {
+    renderSubFolders();
+    renderTilesInto($('itemList'), currentList(), { group: state.settings.sort === 'maker', emptyKey: 'items' });
+  }
   if (ui.tab === 'swatch') renderSwatches();
   renderShopping();
   renderFolders();
   renderSettings();
   renderFilterSheet();
+  renderSelectBar();
   document.querySelectorAll('#tabbar button').forEach((b) => {
     b.setAttribute('aria-selected', String(b.dataset.tab === ui.tab));
   });
@@ -408,13 +469,19 @@ function renderTools() {
   $('layoutIcon').querySelector('use').setAttribute('href', listMode ? '#i-grid' : '#i-list');
   $('btnLayout').setAttribute('aria-label', listMode ? 'グリッド表示に切り替え' : 'リスト表示に切り替え');
   $('btnLayout').hidden = isFolderMode();
+  // 複数選択は一覧（画材）でだけ使う
+  $('btnSelect').hidden = isFolderMode();
+  $('btnSelect').setAttribute('aria-pressed', String(ui.selectMode));
+  $('btnSelect').setAttribute('aria-label', ui.selectMode ? '選択をやめる' : '複数選択');
 }
 
 function renderCrumb() {
   const folderMode = isFolderMode();
   const crumb = $('crumb');
   crumb.classList.toggle('root', folderMode);
-  $('crumbName').textContent = folderMode ? '' : (ui.folderId === 'all' ? 'すべて' : folderOf(ui.folderId).name);
+  $('crumbName').textContent = folderMode
+    ? ''
+    : (ui.folderId === 'all' ? 'すべて' : folderPathLabel(state.folders, ui.folderId, ' › '));
   $('btnUp').disabled = folderMode;
   // 残り枠は数字だけ（例: 12 / 100点）
   const q = itemQuota(state, state.settings);
@@ -422,11 +489,30 @@ function renderCrumb() {
   $('quotaNote').classList.toggle('tight', isQuotaTight(q));
 }
 
-/** 保管場所フォルダのグリッド（＋すべて） */
+/** 上へ: 子フォルダなら親へ、トップのフォルダなら保管場所へ */
+function goUp() {
+  if (isFolderMode()) return;
+  const parent = ui.folderId === 'all' ? '' : folderParentId(folderOf(ui.folderId));
+  if (parent) {
+    ui.folderId = parent;
+    ui.mode = 'items';
+  } else {
+    ui.mode = 'folders';
+    ui.folderId = 'all';
+  }
+  render();
+}
+
+/** 保管場所フォルダのグリッド（＋すべて）。トップのフォルダだけを並べ、中は子フォルダの行で辿る */
 function renderFolderGrid() {
-  const counts = countByFolder(state.items);
+  const counts = countByFolderDeep(state.folders, state.items);
+  const roots = folderChildren(state.folders, '');
   const tiles = [{ id: 'all', name: 'すべて', all: true, count: counts.all_total || 0 }]
-    .concat(state.folders.map((f) => ({ ...f, count: counts[f.id] || 0 })));
+    .concat(roots.map((f) => ({
+      ...f,
+      count: counts[f.id] || 0,
+      children: folderChildren(state.folders, f.id).length,
+    })));
   $('folderGrid').innerHTML = tiles.map((t) => {
     const color = t.all ? '#2f6fd0' : (t.color || '#5b6b7c');
     return `
@@ -434,10 +520,27 @@ function renderFolderGrid() {
       <span class="fico">
         <svg class="ic" aria-hidden="true"><use href="#${t.all ? 'i-grid' : 'i-folder-solid'}"/></svg>
         <span class="fcnt">${t.count}</span>
+        ${t.children ? `<span class="fsub">子${t.children}</span>` : ''}
       </span>
       <span class="fname">${esc(t.name)}</span>
     </button>`;
   }).join('');
+}
+
+/** いま開いているフォルダの子フォルダ（タップで中へ、末尾の＋で作成） */
+function renderSubFolders() {
+  const row = $('subFolderRow');
+  if (ui.tab !== 'stock' || ui.mode !== 'items' || ui.folderId === 'all') {
+    row.hidden = true;
+    row.innerHTML = '';
+    return;
+  }
+  const kids = folderChildren(state.folders, ui.folderId);
+  const counts = countByFolderDeep(state.folders, state.items);
+  const chips = kids.map((f) =>
+    `<button class="pill sub" data-goto-folder="${esc(f.id)}">${esc(f.name)}<b>${counts[f.id] || 0}</b></button>`).join('');
+  row.innerHTML = chips + `<button class="pill sub add" data-add-child="${esc(ui.folderId)}" aria-label="子フォルダを追加">＋</button>`;
+  row.hidden = false;
 }
 
 /** 色見本アルバムに並べる画材（色名か写真があるもの） */
@@ -499,12 +602,17 @@ function itemTile(it) {
   const f = folderOf(it.folderId);
   const dot = ui.folderId === 'all' ? `<span class="fdot" style="background:${esc(f.color)}"></span>` : '';
   const label = `${displayName(it)} ${Number(it.qty) || 0}点${out ? ' 要補充' : low ? ' 少なめ' : ''}`;
+  const selected = ui.selectMode && isSelected(ui.selected, it.id);
+  const selectAttrs = ui.selectMode
+    ? ` data-select="${esc(it.id)}" aria-pressed="${selected ? 'true' : 'false'}"`
+    : ` data-edit="${esc(it.id)}"`;
   return `
-  <button class="tile${low ? ' low' : ''}${out ? ' out' : ''}${isEmpty ? ' item-card--empty' : ''}" data-empty="${isEmpty ? '1' : '0'}" data-edit="${esc(it.id)}" aria-label="${esc(label)}" style="--c:${esc(base)};--c2:${esc(shade(base))};--cs:${rgba(base, 0.1)}">
+  <button class="tile${low ? ' low' : ''}${out ? ' out' : ''}${isEmpty ? ' item-card--empty' : ''}${ui.selectMode ? ' selecting' : ''}${selected ? ' sel' : ''}" data-empty="${isEmpty ? '1' : '0'}"${selectAttrs} aria-label="${esc(label)}" style="--c:${esc(base)};--c2:${esc(shade(base))};--cs:${rgba(base, 0.1)}">
     <span class="sw">
       ${dot}<span class="qbadge">${Number(it.qty) || 0}</span>
       <svg class="inh" aria-hidden="true"><use href="#${icon}"/></svg>
       ${shelfImage(it)}
+      ${ui.selectMode ? '<span class="selmark" aria-hidden="true"></span>' : ''}
     </span>
     <span class="tname">${esc(displayName(it))}</span>
   </button>`;
@@ -522,9 +630,11 @@ function itemRow(it, opts = {}) {
   const first = opts.shopChip
     ? `<button class="folder-tag shop-chip" data-shop-for="${esc(it.id)}">通販</button>`
     : `<button class="folder-tag" data-move="${esc(it.id)}">${esc(f.name)} ▾</button>`;
+  const selected = ui.selectMode && isSelected(ui.selected, it.id);
+  const selectAttrs = ui.selectMode ? ` data-select="${esc(it.id)}" aria-pressed="${selected ? 'true' : 'false'}"` : '';
   return `
-  <article class="item${isEmpty ? ' item-card--empty' : ''}" data-empty="${isEmpty ? '1' : '0'}" data-id="${esc(it.id)}">
-    <span class="thumb"><svg class="ic" aria-hidden="true" style="color:${esc(thumbColor)}"><use href="#${thumbIcon}"/></svg>${shelfImage(it)}</span>
+  <article class="item${isEmpty ? ' item-card--empty' : ''}${ui.selectMode ? ' selecting' : ''}${selected ? ' sel' : ''}" data-empty="${isEmpty ? '1' : '0'}" data-id="${esc(it.id)}"${selectAttrs}>
+    <span class="thumb"><svg class="ic" aria-hidden="true" style="color:${esc(thumbColor)}"><use href="#${thumbIcon}"/></svg>${shelfImage(it)}${ui.selectMode ? '<span class="selmark" aria-hidden="true"></span>' : ''}</span>
     <div class="it-main">
       <h3 class="it-name" data-edit="${esc(it.id)}" title="タップで編集">${esc(displayName(it))}</h3>
       <div class="it-sub">
@@ -571,21 +681,43 @@ function renderShopping() {
 }
 
 function currentList() {
+  // 親フォルダを開くと、配下のフォルダの画材もまとめて見る（直感的な挙動）
+  const scope = ui.folderId && ui.folderId !== 'all' ? folderSubtreeIds(state.folders, ui.folderId) : null;
   return sortItems(filterItems(state.items, {
-    query: ui.query, folderId: ui.folderId, category: ui.category, status: ui.status, maker: ui.maker,
+    query: ui.query, folderId: ui.folderId, folderIds: scope,
+    category: ui.category, status: ui.status, maker: ui.maker,
   }), state.settings.sort);
 }
 
 function renderFolders() {
-  const counts = countByFolder(state.items);
-  $('folderList').innerHTML = state.folders.map((f, i) => `
-    <div class="folder-row" data-fid="${esc(f.id)}">
+  const counts = countByFolderDeep(state.folders, state.items);
+  $('folderList').innerHTML = folderTree(state.folders).map(({ folder: f, depth }) => {
+    const siblings = folderChildren(state.folders, folderParentId(f));
+    const i = siblings.findIndex((x) => x.id === f.id);
+    return `
+    <div class="folder-row" data-fid="${esc(f.id)}" style="--d:${depth}">
       <span class="folder-dot" style="background:${esc(f.color)}"></span>
       <span class="name">${esc(f.name)}<span class="cnt"> ・${counts[f.id] || 0}件</span></span>
       <button data-up="${esc(f.id)}" ${i === 0 ? 'disabled' : ''} aria-label="上へ">↑</button>
-      <button data-down="${esc(f.id)}" ${i === state.folders.length - 1 ? 'disabled' : ''} aria-label="下へ">↓</button>
+      <button data-down="${esc(f.id)}" ${i === siblings.length - 1 ? 'disabled' : ''} aria-label="下へ">↓</button>
       <button data-fedit="${esc(f.id)}" aria-label="編集"><svg class="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4l5 5-9.5 9.5L4 20l1.5-6.5z"/><path d="M13 6l5 5"/></svg></button>
-    </div>`).join('');
+    </div>`;
+  }).join('');
+}
+
+/** 複数選択の操作バー（件数・全選択・移動・やめる） */
+function renderSelectBar() {
+  const bar = $('selBar');
+  const on = ui.selectMode && ui.tab === 'stock';
+  bar.hidden = !on;
+  document.body.classList.toggle('selecting', on);
+  if (!on) return;
+  ui.selected = pruneSelection(ui.selected, state.items);
+  const list = currentList();
+  const allSelected = list.length > 0 && list.every((it) => isSelected(ui.selected, it.id));
+  $('selCount').textContent = `${ui.selected.length}件`;
+  $('btnSelAll').textContent = allSelected ? '解除' : '全選択';
+  $('btnSelMove').disabled = ui.selected.length === 0;
 }
 
 function renderSettings() {
@@ -814,19 +946,17 @@ $('btnFolders').addEventListener('click', () => {
   ui.mode = 'folders';
   ui.folderId = 'all';
   ui.tab = 'stock';
+  exitSelect();
   render();
 });
 $('btnHome').addEventListener('click', () => {
   ui.mode = 'folders';
   ui.folderId = 'all';
   ui.tab = 'stock';
+  exitSelect();
   render();
 });
-$('btnUp').addEventListener('click', () => {
-  ui.mode = 'folders';
-  ui.folderId = 'all';
-  render();
-});
+$('btnUp').addEventListener('click', () => goUp());
 $('btnSearch').addEventListener('click', () => {
   ui.searchOpen = !ui.searchOpen;
   render();
@@ -859,6 +989,7 @@ $('tabbar').addEventListener('click', (e) => {
   // 色見本アルバムはPro（無料では案内を出して、いまのタブに留まる）
   if (tab === 'swatch' && !requirePro('swatch')) return;
   ui.tab = tab;
+  if (tab !== 'stock') exitSelect();
   stopScanner();
   render();
   window.scrollTo({ top: 0 });
@@ -870,12 +1001,60 @@ $('folderGrid').addEventListener('click', (e) => {
   ui.folderId = b.dataset.folder;
   ui.mode = 'items';
   ui.tab = 'stock';
+  exitSelect();
   render();
   window.scrollTo({ top: 0 });
 });
 
+/* ---------------- 複数選択（一括移動） ---------------- */
+function exitSelect() {
+  ui.selectMode = false;
+  ui.selected = [];
+}
+$('btnSelect').addEventListener('click', () => {
+  if (ui.selectMode) { exitSelect(); render(); return; }
+  if (isFolderMode()) { ui.mode = 'items'; ui.folderId = 'all'; }
+  ui.selectMode = true;
+  ui.selected = [];
+  render();
+  toast('移動する画材を選んでください');
+});
+$('btnSelCancel').addEventListener('click', () => { exitSelect(); render(); });
+$('btnSelAll').addEventListener('click', () => {
+  const list = currentList();
+  const allSelected = list.length > 0 && list.every((it) => isSelected(ui.selected, it.id));
+  ui.selected = allSelected ? [] : selectAllIds(list);
+  render();
+});
+$('btnSelMove').addEventListener('click', () => {
+  if (!ui.selected.length) return;
+  openMoveSheet(ui.selected);
+});
+
+/* ---------------- テーマの切替 ---------------- */
+$('themeChips').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-theme-mode]');
+  if (!b) return;
+  setTheme(b.dataset.themeMode);
+});
+
 /* ---------------- アイテム操作 ---------------- */
 document.addEventListener('click', (e) => {
+  // 子フォルダのチップ（タップで中へ）
+  const goto = e.target.closest('[data-goto-folder]');
+  if (goto) { ui.folderId = goto.dataset.gotoFolder; ui.mode = 'items'; exitSelect(); render(); return; }
+  // 子フォルダを作る
+  const addChild = e.target.closest('[data-add-child]');
+  if (addChild) { addFolderAt(addChild.dataset.addChild); return; }
+  // 選択モード中は、タップで選択の切り替えだけ（編集・増減は開けない）
+  if (ui.selectMode) {
+    const sel = e.target.closest('[data-select]');
+    if (sel) {
+      ui.selected = toggleSelection(ui.selected, sel.dataset.select);
+      render();
+      return;
+    }
+  }
   const step = e.target.closest('[data-step]');
   if (step) {
     const it = state.items.find((i) => i.id === step.dataset.id);
@@ -917,9 +1096,12 @@ function openItemSheet(id, preset = {}) {
   $('fQty').value = data.qty ?? 1;
   $('fStatusInput').innerHTML = STATUSES.map((s) => `<option value="${s.id}">${s.label}</option>`).join('');
   $('fStatusInput').value = data.status;
-  $('fFolderInput').innerHTML = state.folders.map((f) => `<option value="${f.id}">${esc(f.name)}</option>`).join('');
+  // 保管場所は階層をインデントで見せる（値はIDのまま）
+  $('fFolderInput').innerHTML = folderOptions(state.folders, { noneLabel: null })
+    .map((o) => `<option value="${esc(o.id)}">${'　'.repeat(o.depth)}${esc(o.label)}</option>`).join('');
   $('fFolderInput').value = data.folderId;
   $('fJan').value = data.jan || '';
+  ui.formBrand = data.brand || '';
   $('fShop').value = data.shop || '';
   $('fPrice').value = data.price ?? '';
   $('fMemo').value = data.memo || '';
@@ -1044,6 +1226,8 @@ function updateJanHint() {
 }
 $('fJan').addEventListener('input', () => { updateJanHint(); refreshFormShopLinks(); });
 for (const id of ['fName', 'fMaker', 'fColorName']) $(id).addEventListener('input', refreshFormShopLinks);
+// メーカーを自分で書き換えたら、辞書から入れたブランドは使わない
+$('fMaker').addEventListener('input', () => { ui.formBrand = ''; });
 
 $('itemForm').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -1057,6 +1241,7 @@ $('itemForm').addEventListener('submit', async (e) => {
   const partial = {
     name: $('fName').value,
     maker: $('fMaker').value,
+    brand: ui.formBrand,
     category: $('fCategoryInput').value,
     colorName: $('fColorName').value,
     colorCode: $('fColorCode').value,
@@ -1144,36 +1329,49 @@ $('folderList').addEventListener('click', (e) => {
   const ed = e.target.closest('[data-fedit]');
   if (up || down) {
     const id = (up || down).dataset[up ? 'up' : 'down'];
-    const ids = state.folders.map((f) => f.id);
-    const i = ids.indexOf(id);
-    const j = up ? i - 1 : i + 1;
-    if (j < 0 || j >= ids.length) return;
-    [ids[i], ids[j]] = [ids[j], ids[i]];
-    state = reorderFolders(state, ids);
+    state = moveFolder(state, id, up ? 'up' : 'down');
     save(); render();
   } else if (ed) {
-    ui.folderEditId = ed.dataset.fedit;
-    const f = folderOf(ui.folderEditId);
-    $('fFolderName').value = f.name;
-    $('fFolderColor').value = /^#[0-9a-f]{6}$/i.test(f.color) ? f.color : '#2f6fd0';
-    openSheet('sheetFolder');
+    openFolderSheet(ed.dataset.fedit);
   }
 });
-$('btnAddFolder').addEventListener('click', () => {
+
+/** フォルダ編集シート（名前・色・親フォルダ） */
+function openFolderSheet(id) {
+  ui.folderEditId = id;
+  const f = folderOf(id);
+  $('fFolderName').value = f.name;
+  $('fFolderColor').value = /^#[0-9a-f]{6}$/i.test(f.color) ? f.color : '#2f6fd0';
+  // 自分自身と配下は親に選べない（循環を防ぐ）
+  const exclude = folderSubtreeIds(state.folders, id);
+  $('fFolderParent').innerHTML = folderOptions(state.folders, { exclude, noneLabel: 'なし（トップ）' })
+    .map((o) => `<option value="${esc(o.id)}">${'　'.repeat(o.depth)}${esc(o.label)}</option>`).join('');
+  $('fFolderParent').value = folderParentId(f);
+  openSheet('sheetFolder');
+}
+
+/** フォルダを作る（parentId を渡すと子フォルダ） */
+function addFolderAt(parentId = '') {
   if (!canAddFolder(state, state.settings).ok) { openProSheet('folder'); return; }
-  const name = prompt('新しいフォルダ名（例：スタジオ、実家、教室）');
+  const parent = parentId ? folderOf(parentId) : null;
+  const name = prompt(parent
+    ? `「${parent.name}」の中に作るフォルダ名（例：引き出し1）`
+    : '新しいフォルダ名（例：スタジオ、実家、教室）');
   if (!name) return;
   try {
-    state = addFolder(state, { name });
+    state = addFolder(state, { name, parentId: parentId || null });
     save(); render();
-    toast('フォルダを追加しました');
+    toast(parent ? `「${parent.name}」の中に追加しました` : 'フォルダを追加しました');
   } catch (err) { toast(err.message); }
-});
+}
+
+$('btnAddFolder').addEventListener('click', () => addFolderAt(''));
 $('btnSaveFolder').addEventListener('click', () => {
   if (!ui.folderEditId) return;
   try {
     state = updateFolder(state, ui.folderEditId, {
       name: $('fFolderName').value, color: $('fFolderColor').value,
+      parentId: $('fFolderParent').value || null,
     });
     save(); closeSheet('sheetFolder'); render();
     toast('フォルダを更新しました');
@@ -1184,25 +1382,37 @@ $('btnDeleteFolder').addEventListener('click', () => {
   const f = folderOf(ui.folderEditId);
   const fallback = state.folders.find((x) => x.id !== ui.folderEditId);
   if (!fallback) { toast('フォルダは最低1つ必要です'); return; }
-  if (!confirm(`「${f.name}」を削除します。中の画材は「${fallback.name}」へ移動します。よろしいですか？`)) return;
+  const kids = folderChildren(state.folders, ui.folderEditId).length;
+  const upName = folderParentId(f) ? folderOf(folderParentId(f)).name : 'トップ';
+  const note = kids ? `子フォルダ${kids}つは「${upName}」へ移します。` : '';
+  if (!confirm(`「${f.name}」を削除します。中の画材は「${fallback.name}」へ移動します。${note}よろしいですか？`)) return;
   state = deleteFolder(state, ui.folderEditId, fallback.id);
   save(); closeSheet('sheetFolder'); render();
   toast(`「${fallback.name}」へ中身を移動しました`);
 });
 
-/* ---------------- 移動 ---------------- */
+/* ---------------- 移動（1件・複数選択とも同じシート） ---------------- */
 function openMoveSheet(ids) {
-  ui.moveIds = ids;
-  $('moveOptions').innerHTML = state.folders.map((f) => `<button class="pill" data-tomove="${esc(f.id)}">${esc(f.name)}</button>`).join('');
+  ui.moveIds = [...ids];
+  $('moveTitle').firstChild.textContent = ui.moveIds.length > 1 ? `${ui.moveIds.length}件を移動` : 'フォルダへ移動';
+  $('moveOptions').innerHTML = folderOptions(state.folders, { noneLabel: null })
+    .map((o) => `<button class="pill move" data-tomove="${esc(o.id)}" style="--d:${o.depth}">${esc(o.label)}${o.depth ? ` <span class="mpath">${esc(folderPathLabel(state.folders, o.id, ' / '))}</span>` : ''}</button>`).join('');
   openSheet('sheetMove');
 }
 $('moveOptions').addEventListener('click', (e) => {
   const b = e.target.closest('[data-tomove]');
   if (!b) return;
   try {
+    const count = ui.moveIds.length;
+    const fromSelect = ui.selectMode;
     state = { ...state, items: moveItems(state.items, ui.moveIds, b.dataset.tomove, state.folders) };
-    save(); closeSheet('sheetMove'); render();
-    toast(`${folderOf(b.dataset.tomove).name} へ移動しました`);
+    save();
+    closeSheet('sheetMove');
+    const name = folderOf(b.dataset.tomove).name;
+    ui.moveIds = [];
+    if (fromSelect) { exitSelect(); toast(`${count}件を${name}へ移動しました`); }
+    else toast(`${name} へ移動しました`);
+    render();
   } catch (err) { toast(err.message); }
 });
 
@@ -1300,7 +1510,7 @@ async function startScanner() {
 }
 
 function stopScanner() {
-  cancelAnimationFrame(rafId);
+  if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(rafId);
   rafId = 0;
   const video = $('scanVideo');
   if (video?.srcObject) {
@@ -1476,35 +1686,82 @@ document.addEventListener('click', (e) => {
 }, true);
 
 const DICT_RENDER_LIMIT = 300;
-// 絞り込み用の検索文字列は辞書が変わったときだけ作り直す（2万件超を毎打鍵で連結しない）
-let dictHayCache = { dict: null, hay: [] };
-function dictHaystack(dict) {
-  if (dictHayCache.dict !== dict || dictHayCache.hay.length !== dict.length) {
-    dictHayCache = {
-      dict,
-      hay: dict.map((d) => `${d.name} ${d.colorName} ${d.maker} ${d.size} ${d.code} ${d.jan}`.toLowerCase()),
-    };
-  }
-  return dictHayCache.hay;
-}
+/** 「辞書から探す」シートに出す件数（34,365件でも軽いよう、描画はこの数だけ） */
+const DICT_FIND_LIMIT = 40;
+
 function renderDictList(query) {
-  const q = String(query || '').trim().toLowerCase();
   const merged = mergeDictionaries(JAN_DICTIONARY, extraEntries);
   $('dictNote').textContent = describeCounts(merged);
-  const hay = dictHaystack(mergedDict);
-  const hit = q ? mergedDict.filter((d, i) => hay[i].includes(q)) : mergedDict;
-  const shown = hit.slice(0, DICT_RENDER_LIMIT);
-  $('dictList').innerHTML = shown.map((d) => `
-    <div style="padding:8px 0;border-bottom:1px solid #eef2f7">
-      <b>${esc(d.colorName || d.name)}</b> <span style="color:#5b6b7c">${esc(d.maker)} ${esc(d.size)}</span>
+  const { items: hit, total } = searchDictionary(mergedDict, query, {
+    limit: DICT_RENDER_LIMIT, hay: dictionaryHaystack(mergedDict),
+  });
+  $('dictList').innerHTML = hit.map((d) => `
+    <div style="padding:8px 0;border-bottom:1px solid var(--line)">
+      <b>${esc(d.colorName || d.name)}</b> <span class="dic-meta">${esc(d.maker)} ${esc(d.size)}</span>
       ${extraJanSet.has(d.jan) ? '<span class="dict-badge">追加</span>' : ''}<br>
-      <span style="font-family:ui-monospace,monospace">${esc(d.jan)}</span>
-      <a href="${esc(d.source)}" target="_blank" rel="noopener noreferrer" style="font-size:11px">出典</a>
-    </div>`).join('') + (hit.length > shown.length
-      ? `<p class="hint" style="margin:10px 0 0">ほか ${hit.length - shown.length}件</p>`
-      : '');
+      <span class="dic-jan">${esc(d.jan)}</span>
+      <a href="${esc(d.source)}" target="_blank" rel="noopener noreferrer" class="dic-src">出典</a>
+    </div>`).join('') + (total > hit.length
+    ? `<p class="hint" style="margin:10px 0 0">ほか ${total - hit.length}件</p>`
+    : '');
 }
 $('dictQ').addEventListener('input', (e) => renderDictList(e.target.value));
+
+/* ---------------- 辞書から探す（登録フォームへ自動入力） ---------------- */
+/** 辞書の検索結果（タップでフォームに入る） */
+function renderDictFind(query) {
+  const q = String(query || '').trim();
+  if (!q) {
+    $('dictFindList').innerHTML = `<p class="hint" style="margin:8px 0 0">色名・メーカー・品番・JANで探せます（内蔵${mergedDict.length}件）</p>`;
+    return;
+  }
+  const { items: hit, total } = searchDictionary(mergedDict, q, {
+    limit: DICT_FIND_LIMIT, hay: dictionaryHaystack(mergedDict),
+  });
+  const rows = hit.map((d) => {
+    const sub = [d.maker, d.colorName && d.colorName !== d.name ? d.colorName : '', d.size, d.code].filter(Boolean).join(' ');
+    return `
+    <button type="button" class="dfind" data-dict-jan="${esc(d.jan)}">
+      <span class="dfind-name">${esc(d.name || d.colorName)}</span>
+      <span class="dfind-sub">${esc(sub)}</span>
+      <span class="dfind-jan">${esc(d.jan)}</span>
+    </button>`;
+  }).join('');
+  $('dictFindList').innerHTML = rows
+    ? rows + (total > hit.length ? `<p class="hint" style="margin:10px 0 0">ほか ${total - hit.length}件（言葉を足すと絞れます）</p>` : '')
+    : '<p class="hint" style="margin:8px 0 0">見つかりません。別の言葉かJANで探してください</p>';
+}
+
+/** 辞書の1件を登録フォームへ入れる（商品名・メーカー・カテゴリ・色名・色番号・JAN・号数） */
+function applyDictEntry(d) {
+  if (!d) return;
+  $('fName').value = d.name || d.colorName || '';
+  $('fMaker').value = d.maker || '';
+  $('fCategoryInput').value = CATEGORIES.some((c) => c.id === d.category) ? d.category : 'other';
+  $('fColorName').value = d.colorName || '';
+  $('fColorCode').value = d.code || '';
+  $('fSize').value = d.size || '';
+  $('fJan').value = d.jan || '';
+  ui.formBrand = d.brand || '';
+  updateJanHint();
+  refreshFormShopLinks();
+  closeSheet('sheetDictFind');
+  toast('辞書の商品を入れました');
+}
+
+$('btnDictFind').addEventListener('click', () => {
+  $('dictFindQ').value = '';
+  renderDictFind('');
+  openSheet('sheetDictFind');
+  setTimeout(() => $('dictFindQ').focus({ preventScroll: true }), 120);
+});
+$('dictFindQ').addEventListener('input', (e) => renderDictFind(e.target.value));
+$('dictFindList').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-dict-jan]');
+  if (!b) return;
+  const d = mergedDict.find((x) => x.jan === b.dataset.dictJan);
+  applyDictEntry(d);
+});
 
 /* ---------------- PWA（アプリ内では Service Worker を使わない） ---------------- */
 if ('serviceWorker' in navigator && !isNativeShell(window)) {

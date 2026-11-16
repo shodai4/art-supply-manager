@@ -40,6 +40,137 @@ export const DEFAULT_FOLDERS = [
   { id: 'stock', name: 'ストック・予備', color: '#7b61c9' },
 ];
 
+/* ---------------- フォルダの階層 ---------------- */
+
+/**
+ * フォルダの親ID。旧バージョンのデータは parentId を持たない（＝トップ階層）。
+ * 空文字はトップ階層を表す（null / undefined と同じ扱い）。
+ */
+export function folderParentId(folder) {
+  const p = folder?.parentId;
+  return p === null || p === undefined || p === '' ? '' : String(p);
+}
+
+/** 指定した親の直下の子フォルダ（並び順は state.folders の順） */
+export function folderChildren(folders = [], parentId = '') {
+  const p = parentId === null || parentId === undefined ? '' : String(parentId);
+  return folders.filter((f) => folderParentId(f) === p);
+}
+
+/** 祖先から自分までの並び（壊れた親ID・循環はそこで打ち切る） */
+export function folderChain(folders = [], id) {
+  const byId = new Map(folders.map((f) => [String(f.id), f]));
+  const chain = [];
+  const seen = new Set();
+  let cur = byId.get(String(id));
+  while (cur && !seen.has(String(cur.id))) {
+    seen.add(String(cur.id));
+    chain.unshift(cur);
+    const p = folderParentId(cur);
+    cur = p ? byId.get(p) : null;
+  }
+  return chain;
+}
+
+/** 階層の深さ（トップは0） */
+export function folderDepth(folders, id) {
+  return Math.max(0, folderChain(folders, id).length - 1);
+}
+
+/** 「アトリエ / 引き出し1」のような表示用の名前（区切りは変更可） */
+export function folderPathLabel(folders, id, sep = ' / ') {
+  return folderChain(folders, id).map((f) => f.name).join(sep);
+}
+
+/** id が ancestorId の子孫か（自分自身は含めない） */
+export function isFolderDescendant(folders, ancestorId, id) {
+  const a = String(ancestorId ?? '');
+  const t = String(id ?? '');
+  if (!a || !t || a === t) return false;
+  return folderChain(folders, t).slice(0, -1).some((f) => String(f.id) === a);
+}
+
+/** 自分と配下すべてのフォルダID（表示・集計の範囲） */
+export function folderSubtreeIds(folders = [], id) {
+  const root = String(id ?? '');
+  if (!root) return [];
+  if (!folders.some((f) => String(f.id) === root)) return [];
+  const out = [];
+  const walk = (parentId) => {
+    for (const f of folderChildren(folders, parentId)) {
+      const fid = String(f.id);
+      if (out.includes(fid)) continue; // 循環していても止まる
+      out.push(fid);
+      walk(fid);
+    }
+  };
+  out.push(root);
+  walk(root);
+  return out;
+}
+
+/** 親に設定してよいか（存在・自分自身・自分の配下は不可） */
+export function canSetFolderParent(folders = [], id, parentId) {
+  const p = parentId === null || parentId === undefined || parentId === '' ? '' : String(parentId);
+  if (!p) return { ok: true, reason: '' };
+  if (!folders.some((f) => String(f.id) === p)) return { ok: false, reason: '親フォルダがありません' };
+  if (String(id ?? '') === p) return { ok: false, reason: '自分自身は親にできません' };
+  if (isFolderDescendant(folders, id, p)) return { ok: false, reason: '配下のフォルダは親にできません' };
+  return { ok: true, reason: '' };
+}
+
+/**
+ * 表示順（親のすぐ下に子）に depth 付きで並べる。
+ * 壊れた親ID・循環しているフォルダも落とさず、末尾へトップとして付ける。
+ */
+export function folderTree(folders = []) {
+  const out = [];
+  const seen = new Set();
+  const walk = (parentId, depth) => {
+    for (const f of folderChildren(folders, parentId)) {
+      const id = String(f.id);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push({ folder: f, depth });
+      walk(id, depth + 1);
+    }
+  };
+  walk('', 0);
+  for (const f of folders) {
+    const id = String(f.id);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push({ folder: f, depth: 0 });
+  }
+  return out;
+}
+
+/**
+ * 選択肢（セレクト・移動シート用）。
+ * parentId を持つフォルダは階層順に並べ、depth でインデントできるようにする。
+ * exclude には「選ばせたくないID」（自分自身と配下）を渡す。
+ */
+export function folderOptions(folders = [], { exclude = [], noneLabel = 'なし（トップ）' } = {}) {
+  const skip = new Set([...exclude].map((id) => String(id)));
+  const opts = [];
+  if (noneLabel !== null) opts.push({ id: '', label: noneLabel, depth: 0 });
+  for (const { folder, depth } of folderTree(folders)) {
+    if (skip.has(String(folder.id))) continue;
+    opts.push({ id: String(folder.id), label: folder.name, depth });
+  }
+  return opts;
+}
+
+/** 子フォルダも含めた件数（フォルダのタイル・一覧に出す数） */
+export function countByFolderDeep(folders = [], items = []) {
+  const direct = countByFolder(items);
+  const out = { all_total: items.length };
+  for (const f of folders) {
+    out[f.id] = folderSubtreeIds(folders, f.id).reduce((sum, id) => sum + (direct[id] || 0), 0);
+  }
+  return out;
+}
+
 /**
  * 文字列から絵文字（絵文字記号・異体字セレクタ・ZWJ結合・肌色・地域指示子）を取り除く。
  * UI から絵文字を撤去したので、旧バージョンが保存した絵文字入りの
@@ -177,12 +308,18 @@ export function computeShoppingList(items) {
     });
 }
 
-/** 検索・絞り込み */
+/**
+ * 検索・絞り込み。
+ * folderIds（配列）を渡すと、その範囲（親フォルダ＋配下など）で絞る。
+ * folderId だけのときは、そのフォルダの画材だけ（従来どおり）。
+ */
 export function filterItems(items, filter = {}) {
   const q = String(filter.query || '').trim().toLowerCase();
   const qn = normalizeJAN(filter.query || '');
+  const scope = Array.isArray(filter.folderIds) ? new Set(filter.folderIds) : null;
   return items.filter((it) => {
-    if (filter.folderId && filter.folderId !== 'all' && it.folderId !== filter.folderId) return false;
+    if (scope) { if (!scope.has(it.folderId)) return false; }
+    else if (filter.folderId && filter.folderId !== 'all' && it.folderId !== filter.folderId) return false;
     if (filter.category && filter.category !== 'all' && it.category !== filter.category) return false;
     if (filter.status && filter.status !== 'all' && it.status !== filter.status) return false;
     if (filter.maker && filter.maker !== 'all') {
@@ -208,6 +345,72 @@ export function moveItems(items, ids, folderId, folders) {
 /** 表示・並び替えに使うメーカー名（maker が無ければ brand） */
 export function itemMaker(item) {
   return String(item?.maker || item?.brand || '').trim();
+}
+
+/* ---------------- 複数選択（一括移動） ---------------- */
+
+/** 選択の切り替え（IDの配列で持つ。画面のSetからも呼べる形） */
+export function toggleSelection(ids = [], id) {
+  const list = Array.isArray(ids) ? ids : [...ids];
+  const key = String(id ?? '');
+  if (!key) return list;
+  return list.includes(key) ? list.filter((x) => x !== key) : [...list, key];
+}
+
+/** 選択済みか */
+export function isSelected(ids = [], id) {
+  return (Array.isArray(ids) ? ids : [...ids]).includes(String(id ?? ''));
+}
+
+/** いま見えている画材をすべて選ぶ */
+export function selectAllIds(items = []) {
+  return items.map((i) => String(i.id));
+}
+
+/** 消えた画材のIDを選択から落とす（削除・復元のあと） */
+export function pruneSelection(ids = [], items = []) {
+  const alive = new Set(items.map((i) => String(i.id)));
+  return (Array.isArray(ids) ? ids : [...ids]).filter((id) => alive.has(String(id)));
+}
+
+/* ---------------- 辞書の手動検索 ---------------- */
+
+const DICT_HAY_CACHE = new WeakMap();
+
+/**
+ * 検索用の文字列（商品名・色名・メーカー・ブランド・サイズ・品番・JAN）。
+ * 辞書の配列が変わったときだけ作り直す（毎打鍵で数万件を連結しない）。
+ */
+export function dictionaryHaystack(dict = []) {
+  if (!Array.isArray(dict)) return [];
+  const cached = DICT_HAY_CACHE.get(dict);
+  if (cached && cached.length === dict.length) return cached;
+  const hay = dict.map((d) => `${d.name || ''} ${d.colorName || ''} ${d.maker || ''} ${d.brand || ''} ${d.size || ''} ${d.code || ''} ${d.jan || ''}`.toLowerCase());
+  DICT_HAY_CACHE.set(dict, hay);
+  return hay;
+}
+
+/**
+ * 辞書を手動で検索する。描画する分だけ返し、全体の件数は total で返す。
+ * 数字だけの入力はJANの部分一致としても探す（4桁以上）。
+ */
+export function searchDictionary(dict = [], query = '', { limit = 40, hay } = {}) {
+  const q = String(query ?? '').trim().toLowerCase();
+  const qJan = normalizeJAN(query ?? '');
+  const janQuery = /^\d{4,13}$/.test(qJan);
+  const stack = Array.isArray(hay) && hay.length === dict.length ? hay : dictionaryHaystack(dict);
+  const max = Math.max(0, Math.trunc(Number(limit) || 0));
+  const items = [];
+  let total = 0;
+  for (let i = 0; i < dict.length; i += 1) {
+    const d = dict[i];
+    if (!d) continue;
+    const hit = !q || stack[i].includes(q) || (janQuery && String(d.jan || '').includes(qJan));
+    if (!hit) continue;
+    total += 1;
+    if (items.length < max) items.push(d);
+  }
+  return { items, total, limit: max };
 }
 
 /** 絞り込み用のメーカー一覧（登録済みアイテムから・あいうえお順） */
@@ -258,10 +461,10 @@ export function countByFolder(items) {
 export function blankState() {
   return {
     version: APP_VERSION,
-    folders: DEFAULT_FOLDERS.map((f) => ({ ...f })),
+    folders: DEFAULT_FOLDERS.map((f) => ({ ...f, parentId: null })),
     items: [],
     settings: {
-      sort: 'updated', layout: 'grid', askBeforeDelete: true,
+      sort: 'updated', layout: 'grid', askBeforeDelete: true, theme: 'auto',
       rakutenAppId: '', rakutenAccessKey: '', imageProxyUrl: '',
       pro: false, proPreview: false,
     },
@@ -280,11 +483,17 @@ function slugId(name, folders) {
 export function addFolder(state, folder = {}) {
   const name = String(folder.name || '').trim();
   if (!name) throw new Error('フォルダ名を入力してください');
+  const rawParent = folder.parentId;
+  const parentId = rawParent === null || rawParent === undefined || rawParent === '' ? null : String(rawParent);
+  if (parentId && !state.folders.some((f) => String(f.id) === parentId)) {
+    throw new Error('親フォルダがありません');
+  }
   const f = {
     id: slugId(name, state.folders),
     name,
     icon: folder.icon || '',
     color: folder.color || '#5b6b7c',
+    parentId,
   };
   return { ...state, folders: [...state.folders, f] };
 }
@@ -296,14 +505,46 @@ export function renameFolder(state, id, name) {
 }
 
 export function updateFolder(state, id, patch = {}) {
+  const cur = state.folders.find((f) => f.id === id);
+  if (!cur) return state;
+  let parentId = cur.parentId ?? null;
+  if (Object.prototype.hasOwnProperty.call(patch, 'parentId')) {
+    const raw = patch.parentId;
+    const next = raw === null || raw === undefined || raw === '' ? '' : String(raw);
+    const check = canSetFolderParent(state.folders, id, next);
+    if (!check.ok) throw new Error(check.reason);
+    parentId = next || null;
+  }
   return {
     ...state,
     folders: state.folders.map((f) =>
       f.id === id
-        ? { ...f, name: (patch.name ?? f.name).trim() || f.name, icon: patch.icon ?? f.icon, color: patch.color ?? f.color }
+        ? {
+          ...f,
+          name: (patch.name ?? f.name).trim() || f.name,
+          icon: patch.icon ?? f.icon,
+          color: patch.color ?? f.color,
+          parentId,
+        }
         : f,
     ),
   };
+}
+
+/** 同じ親の中で上下に入れ替える（子フォルダは付いたまま動く） */
+export function moveFolder(state, id, dir = 'up') {
+  const f = state.folders.find((x) => x.id === id);
+  if (!f) return state;
+  const siblings = folderChildren(state.folders, folderParentId(f));
+  const i = siblings.findIndex((x) => x.id === id);
+  const j = dir === 'up' ? i - 1 : i + 1;
+  if (i < 0 || j < 0 || j >= siblings.length) return state;
+  const other = siblings[j];
+  const arr = [...state.folders];
+  const a = arr.findIndex((x) => x.id === f.id);
+  const b = arr.findIndex((x) => x.id === other.id);
+  [arr[a], arr[b]] = [arr[b], arr[a]];
+  return { ...state, folders: arr };
 }
 
 /** 並び替え（ids の順に並べ、含まれないフォルダは後ろへ） */
@@ -314,14 +555,22 @@ export function reorderFolders(state, ids) {
   return { ...state, folders: [...ordered, ...rest] };
 }
 
-/** フォルダ削除（中身は moveToId へ移動。最後の1個は削除不可） */
+/**
+ * フォルダ削除（中身は moveToId へ移動。最後の1個は削除不可）。
+ * 子フォルダは消さず、削除したフォルダの1つ上へ移す（画材が行き場を失わない）。
+ */
 export function deleteFolder(state, id, moveToId) {
   if (state.folders.length <= 1) throw new Error('フォルダは最低1つ必要です');
+  const victim = state.folders.find((f) => f.id === id);
+  if (!victim) throw new Error('フォルダがありません');
   const target = moveToId || state.folders.find((f) => f.id !== id)?.id;
-  if (!state.folders.some((f) => f.id === target)) throw new Error('移動先フォルダがありません');
+  if (target === id || !state.folders.some((f) => f.id === target)) throw new Error('移動先フォルダがありません');
+  const nextParent = folderParentId(victim) || null;
   return {
     ...state,
-    folders: state.folders.filter((f) => f.id !== id),
+    folders: state.folders
+      .filter((f) => f.id !== id)
+      .map((f) => (folderParentId(f) === String(id) ? { ...f, parentId: nextParent } : f)),
     items: state.items.map((it) => (it.folderId === id ? { ...it, folderId: target, updatedAt: new Date().toISOString() } : it)),
   };
 }
@@ -370,8 +619,22 @@ export function importState(text) {
       name: stripEmoji(f.name) || 'フォルダ',
       icon: stripEmoji(f.icon),
       color: f.color || '#5b6b7c',
+      parentId: f.parentId === null || f.parentId === undefined || f.parentId === '' ? null : String(f.parentId),
     }));
   if (folders.length === 0) throw new Error('フォルダが1つも含まれていません');
+  // 存在しない親・自分自身・循環はトップへ逃がす（読み込みでデータを壊さない）
+  const folderIdSet = new Set(folders.map((f) => f.id));
+  const byId = new Map(folders.map((f) => [f.id, f]));
+  for (const f of folders) {
+    let p = f.parentId;
+    if (p && (p === f.id || !folderIdSet.has(p))) { f.parentId = null; continue; }
+    const seen = new Set([f.id]);
+    while (p) {
+      if (seen.has(p)) { f.parentId = null; break; }
+      seen.add(p);
+      p = byId.get(p)?.parentId || null;
+    }
+  }
   const ids = new Set(folders.map((f) => f.id));
   const items = data.items.map((raw) => {
     const it = createItem(raw);
