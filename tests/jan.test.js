@@ -4,10 +4,11 @@ import { JAN_DICTIONARY, JAN_PREFIXES, VERIFIED_AT } from '../jan-database.js';
 import { isValidJAN, detectMaker, CATEGORIES } from '../core.js';
 
 test('辞書は十分な件数を持ち、各項目が13桁JANとして妥当', () => {
-  assert.ok(JAN_DICTIONARY.length >= 20000, `収録件数: ${JAN_DICTIONARY.length}`);
+  assert.ok(JAN_DICTIONARY.length >= 34000, `収録件数: ${JAN_DICTIONARY.length}`);
   for (const e of JAN_DICTIONARY) {
     assert.match(e.jan, /^\d{13}$/, `${e.jan} ${e.name}`);
     assert.ok(isValidJAN(e.jan), `チェックディジット不正: ${e.jan} ${e.name}`);
+    assert.notEqual(e.jan, '0000000000000', `JAN未設定のプレースホルダー: ${e.name}`);
   }
 });
 
@@ -45,9 +46,9 @@ test('必須項目と出典URLが揃っている', () => {
   }
 });
 
-test('出典は実在ページ（まつえだ・世界堂・ステッドラー公式）に限られ、商品名に実体参照が残らない', () => {
+test('出典は実在ページ（まつえだ・世界堂・ステッドラー公式・たのめーる）に限られ、商品名に実体参照が残らない', () => {
   for (const e of JAN_DICTIONARY) {
-    assert.match(e.source, /^https:\/\/(www\.matueda\.com\/\?pid=\d+|webshop\.sekaido\.co\.jp\/product\/[A-Z0-9]+|www\.staedtler\.jp\/|www\.askul\.co\.jp\/)/, `出典が不正: ${e.jan} ${e.source}`);
+    assert.match(e.source, /^https:\/\/(www\.matueda\.com\/\?pid=\d+|webshop\.sekaido\.co\.jp\/product\/[A-Z0-9]+|www\.staedtler\.jp\/|www\.askul\.co\.jp\/|www\.tanomail\.com\/product\/\d+\/)/, `出典が不正: ${e.jan} ${e.source}`);
     assert.equal(/&(amp|lt|gt|quot|#\d+);/.test(e.name), false, `実体参照が残る: ${e.jan} ${e.name}`);
     assert.equal(/^[★☆※]/.test(e.name), false, `販売店の装飾が残る: ${e.jan} ${e.name}`);
   }
@@ -94,6 +95,36 @@ test('代表的な実在JANが引ける', () => {
   const pigma = JAN_DICTIONARY.find((e) => e.jan === '4901881812965');
   assert.equal(pigma.maker, 'サクラクレパス');
   assert.match(pigma.name, /ピグマ/);
+});
+
+test('一般文具（ノート・筆記具・ファイル・カッター）の実在JANが辞書で引ける', () => {
+  const campus = JAN_DICTIONARY.find((e) => e.jan === '4901480070001');
+  assert.equal(campus.maker, 'コクヨ');
+  assert.equal(campus.category, 'paper');
+  assert.match(campus.name, /キャンパスノート/);
+  assert.match(campus.source, /^https:\/\/www\.tanomail\.com\/product\/\d+\/$/);
+
+  const jetstream = JAN_DICTIONARY.find((e) => e.jan === '4902778040744');
+  assert.equal(jetstream.maker, '三菱鉛筆');
+  assert.match(jetstream.name, /ジェットストリーム/);
+
+  const kingjim = JAN_DICTIONARY.find((e) => e.jan === '4971660002054');
+  assert.equal(kingjim.maker, 'キングジム');
+
+  const olfa = JAN_DICTIONARY.find((e) => e.jan === '4901165100467');
+  assert.equal(olfa.maker, 'オルファ');
+});
+
+test('文具メーカーの収録件数が実用レベルにある', () => {
+  const count = (m) => JAN_DICTIONARY.filter((e) => e.maker === m).length;
+  assert.ok(count('コクヨ') >= 1000, `コクヨ ${count('コクヨ')}`);
+  assert.ok(count('キングジム') >= 50, `キングジム ${count('キングジム')}`);
+  assert.ok(count('オルファ') >= 100, `オルファ ${count('オルファ')}`);
+  assert.ok(count('プラス') >= 50, `プラス ${count('プラス')}`);
+  assert.ok(count('パイロット') >= 300, `パイロット ${count('パイロット')}`);
+  assert.ok(count('ゼブラ') >= 150, `ゼブラ ${count('ゼブラ')}`);
+  assert.ok(count('三菱鉛筆') >= 400, `三菱鉛筆 ${count('三菱鉛筆')}`);
+  assert.ok(count('トンボ') >= 250, `トンボ ${count('トンボ')}`);
 });
 
 test('主要メーカーの収録件数が実用レベルにある', () => {
