@@ -452,7 +452,7 @@ main { padding: 0; }
 .scan-box .reticle {
   position: absolute; left: 7%; right: 7%; top: 31%; bottom: 31%; z-index: 2;
   border: 2px solid #6fe3b0; border-radius: 10px;
-  box-shadow: 0 0 0 100vmax rgba(6, 12, 20, .34);
+  box-shadow: 0 0 0 160px rgba(6, 12, 20, .34); /* 枠の外をうっすら暗くする（箱の外へは overflow で切る） */
 }
 .scan-box .reticle[hidden] { display: none; }
 
