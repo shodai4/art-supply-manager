@@ -92,8 +92,8 @@ node scripts/add-jan-extra.mjs \
 export const SHOP_AFFILIATE_CONFIG = {
   amazonTag: 'shodai4-22', // AmazonアソシエイトのトラッキングID
   rakutenAffiliateId: '598e3f74.c89b09de.598e3f75.325c6ad1',
-  yahooSid: '',             // バリューコマース
-  yahooPid: '',
+  yahooSid: '3788358',      // バリューコマース（サイトID「画材管理」）
+  yahooPid: '892749794',    // Yahoo!ショッピング提携のpid
 };
 ```
 

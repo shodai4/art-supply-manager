@@ -63,7 +63,7 @@ test('検索語が作れないときはリンクを出さない', () => {
   assert.match(describeSearchQuery('', {}), /検索語がありません/);
 });
 
-test('帰属表示とデフォルト設定は絵文字なし・Amazonタグと楽天IDを設定', () => {
+test('帰属表示とデフォルト設定は絵文字なし・Amazonタグと楽天IDとYahoo!のsid/pidを設定', () => {
   const re = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/u;
   assert.equal(re.test(AFFILIATE_NOTE), false);
   assert.match(AFFILIATE_NOTE, /アフィリエイト|アソシエイト/);
@@ -72,12 +72,12 @@ test('帰属表示とデフォルト設定は絵文字なし・Amazonタグと�
   assert.deepEqual(SHOP_AFFILIATE_CONFIG, {
     amazonTag: 'shodai4-22',
     rakutenAffiliateId: '598e3f74.c89b09de.598e3f75.325c6ad1',
-    yahooSid: '',
-    yahooPid: '',
+    yahooSid: '3788358',
+    yahooPid: '892749794',
   });
 });
 
-test('実際の設定でAmazonタグが付き、楽天IDも維持される', () => {
+test('実際の設定でAmazonタグ・楽天ID・Yahoo!のバリューコマースIDが付く', () => {
   const amazonPlain = plainSearchUrl('amazon', '4900669001911');
   const amazon = applyAffiliate('amazon', amazonPlain);
   assert.equal(amazon, `${amazonPlain}&tag=shodai4-22`);
@@ -93,10 +93,17 @@ test('実際の設定でAmazonタグが付き、楽天IDも維持される', () 
   assert.ok(url.endsWith('&link_type=hybrid_url'));
   assert.equal(decodeURIComponent(url.split('pc=')[1].split('&')[0]), plain);
 
-  // 実設定の全リンク：Amazonだけタグ付き、楽天はハイブリッドURL、Yahoo!は素のまま
+  // Yahoo!はバリューコマース（サイトID 3788358・Yahoo!ショッピング提携のpid）で包み、
+  // 復号すると元の検索URLに戻る
+  const yahooPlain = plainSearchUrl('yahoo', '4900669001911');
+  const yahoo = applyAffiliate('yahoo', yahooPlain);
+  assert.ok(yahoo.startsWith('https://ck.jp.ap.valuecommerce.com/servlet/referral?sid=3788358&pid=892749794&vc_url='));
+  assert.equal(decodeURIComponent(yahoo.split('vc_url=')[1]), yahooPlain);
+
+  // 実設定の全リンク：Amazonはタグ付き、楽天はハイブリッドURL、Yahoo!はバリューコマース経由
   const links = shopSearchLinks(item);
   assert.equal(links.length, 3);
   assert.equal(links.find((l) => l.id === 'amazon').url, `${amazonPlain}&tag=shodai4-22`);
   assert.ok(links.find((l) => l.id === 'rakuten').url.startsWith('https://hb.afl.rakuten.co.jp/hgc/598e3f74.c89b09de.598e3f75.325c6ad1/?pc='));
-  assert.equal(links.find((l) => l.id === 'yahoo').url, plainSearchUrl('yahoo', '4900669001911'));
+  assert.ok(links.find((l) => l.id === 'yahoo').url.startsWith('https://ck.jp.ap.valuecommerce.com/servlet/referral?sid=3788358&pid=892749794&vc_url='));
 });

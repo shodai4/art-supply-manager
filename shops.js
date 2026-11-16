@@ -17,8 +17,9 @@ import { normalizeJAN } from './core.js';
 export const SHOP_AFFILIATE_CONFIG = {
   amazonTag: 'shodai4-22',
   rakutenAffiliateId: '598e3f74.c89b09de.598e3f75.325c6ad1',
-  yahooSid: '',
-  yahooPid: '',
+  // バリューコマース「画材管理」（サイトID 3788358）× Yahoo!ショッピング提携の sid / pid
+  yahooSid: '3788358',
+  yahooPid: '892749794',
 };
 
 /** Amazonアフィリエイトのリンクをまとめるためのホスト（日本） */
