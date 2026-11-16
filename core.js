@@ -269,6 +269,7 @@ export function createItem(partial = {}) {
     folderId: String(partial.folderId || DEFAULT_FOLDERS[0].id),
     qty: Number.isFinite(+partial.qty) ? Math.max(0, Math.floor(+partial.qty)) : 1,
     status,
+    favorite: partial.favorite === true,
     jan: normalizeJAN(partial.jan || ''),
     shop: String(partial.shop || '').trim(),
     price: Number.isFinite(+partial.price) && partial.price !== '' ? Math.max(0, Math.round(+partial.price)) : null,
@@ -278,6 +279,26 @@ export function createItem(partial = {}) {
     createdAt: partial.createdAt || new Date().toISOString(),
     updatedAt: partial.updatedAt || new Date().toISOString(),
   };
+}
+
+/**
+ * お気に入り（星）の切り替え。true/false を渡すとその値にそろえる。
+ * 一覧の並びが勝手に動かないよう updatedAt は変えない（お気に入りは別枠で先頭に出す）。
+ */
+export function toggleFavorite(item, value) {
+  const next = typeof value === 'boolean' ? value : item?.favorite !== true;
+  return { ...item, favorite: next };
+}
+
+/** お気に入りの件数 */
+export function countFavorites(items = []) {
+  return (Array.isArray(items) ? items : []).filter((it) => it?.favorite === true).length;
+}
+
+/** お気に入りを先頭に集める（それぞれの中の並びは渡された順のまま） */
+export function favoritesFirst(items = []) {
+  const list = Array.isArray(items) ? items : [];
+  return [...list.filter((it) => it?.favorite === true), ...list.filter((it) => it?.favorite !== true)];
 }
 
 /** 在庫数の増減（0未満にしない）。使い切り判定はステータスで保持 */
@@ -327,6 +348,7 @@ export function filterItems(items, filter = {}) {
       if (filter.maker === MAKER_NONE ? m !== '' : m !== filter.maker) return false;
     }
     if (filter.shortageOnly && !(it.status === 'low' || it.status === 'empty' || Number(it.qty) === 0)) return false;
+    if (filter.favoriteOnly && it.favorite !== true) return false;
     if (!q) return true;
     const hay = [it.name, it.maker, it.brand, it.colorName, it.colorCode, it.size, it.jan, it.shop, it.memo]
       .join(' ')

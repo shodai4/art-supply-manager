@@ -70,16 +70,17 @@ test('移動先の選択肢は階層順（子フォルダも選べる）', () =>
   assert.equal(opts.some((o) => o.id === ''), false);
 });
 
-test('画面: 複数選択の入口・選択マーク・操作バーがある', () => {
+test('画面: 複数選択の入口（⋯メニュー）・選択マーク・操作バーがある', () => {
   const html = read('index.html');
   const app = read('app.js');
   const css = read('styles.css');
-  for (const id of ['btnSelect', 'selBar', 'selCount', 'btnSelAll', 'btnSelMove', 'btnSelCancel']) {
+  for (const id of ['btnMoreSelect', 'selBar', 'selCount', 'btnSelAll', 'btnSelMove', 'btnSelCancel']) {
     assert.ok(html.includes(`id="${id}"`), `#${id} がありません`);
   }
-  // ツールバーが狭いので選択はアイコンだけ（aria-label で説明）
-  assert.match(html, /id="btnSelect"[^>]*aria-label="複数選択"/);
-  assert.match(html, /class="tool icon" id="btnSelect"/);
+  // 普段の画面には出さず、右上の⋯メニューから入る
+  const more = html.slice(html.indexOf('id="sheetMore"'), html.indexOf('id="sheetFolderOrder"'));
+  assert.ok(more.includes('id="btnMoreSelect"'), '⋯メニューに複数選択がありません');
+  assert.ok(more.includes('id="moreSelectLabel"'));
   assert.match(html, />全選択</);
   assert.match(html, />移動</);
   assert.match(html, />やめる</);
@@ -90,6 +91,7 @@ test('画面: 複数選択の入口・選択マーク・操作バーがある', 
   assert.match(app, /selectAllIds\(/);
   assert.match(app, /pruneSelection\(/);
   assert.match(app, /exitSelect\(\)/);
+  assert.match(app, /function toggleSelectMode\(\)/);
   // 選択中は編集を開かない（選択の切り替えを先に見る）
   const body = app.slice(app.indexOf("document.addEventListener('click', (e) => {\n  // 子フォルダのチップ"));
   assert.ok(body.indexOf('if (ui.selectMode)') < body.indexOf("closest('[data-edit]')"));

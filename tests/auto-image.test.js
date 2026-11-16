@@ -233,10 +233,10 @@ test('3つの導線（単発の読取・連続スキャン・辞書から）か�
 
 test('サンプルへの画像補完は、写真の読み込みが済んでから静かに行う', () => {
   const app = read('app.js');
-  assert.match(app, /preloadPhotos\(\)\.then\(\(ok\) => \{\s*if \(ok\) backfillSampleImagesInState\(\);/);
+  assert.match(app, /preloadPhotos\(\)\.then\(\(ok\) => \{\s*if \(!ok\) return;\s*backfillSampleImagesInState\(\);/);
   assert.match(app, /function backfillSampleImagesInState\(\) \{[\s\S]{0,400}backfillSampleImages\(state, \{ photoIds: photoUrls \}\)/);
   // 補完は通知しない（静かに）
-  const block = app.slice(app.indexOf('function backfillSampleImagesInState'), app.indexOf('/* ---------------- storage'));
+  const block = app.slice(app.indexOf('function backfillSampleImagesInState'), app.indexOf('/* ---------------- 画像の後補完'));
   assert.equal(/toast\(/.test(block), false);
 });
 

@@ -3,13 +3,13 @@ import {
   STORAGE_KEY, CATEGORIES, STATUSES, DEFAULT_FOLDERS, SORT_MODES, MAKER_NONE,
   createItem, adjustStock, computeShoppingList, filterItems, moveItems, sortItems, countByFolder,
   addFolder, updateFolder, moveFolder, reorderFolders, deleteFolder, upsertItem, deleteItems,
-  exportState, importState, summarize, blankState, isEmptyStock,
+  exportState, importState, summarize, blankState, isEmptyStock, toggleFavorite, favoritesFirst,
   isValidJAN, normalizeJAN, detectMaker, lookupJAN, itemMaker, listMakers, groupByMaker,
   normalizeImageUrl, recordPurchase, costSummary, costRows, buildItemsCsvText, mergeStates,
   folderParentId, folderChildren, folderChain, folderDepth, folderPathLabel, folderSubtreeIds,
   folderTree, folderOptions, countByFolderDeep,
   toggleSelection, isSelected, selectAllIds, pruneSelection, searchDictionary, dictionaryHaystack,
-  isMakerGroupOn, withSortMode, withViewGroup, viewGroupOf, VIEW_GROUPS,
+  isMakerGroupOn, withSortMode,
   groupByFolder,
 } from './core.js';
 import {
@@ -43,8 +43,10 @@ import {
 } from './images.js';
 import {
   autoImageJan, needsAutoImage, applyFetchedImage, shouldApplyFormImage, fetchAutoImage,
-  describeFetchedImage,
+  describeFetchedImage, pendingAutoImages, shouldRunAutoFill,
+  AUTO_IMAGE_FILL_GAP_MS, AUTO_IMAGE_FILL_ROUNDS,
 } from './auto-image.js';
+import { setupAdBanner } from './admob.js';
 import {
   THEME_MODES, normalizeTheme, resolveTheme, themeColor, themeLabel, readStoredTheme,
   writeStoredTheme, prefersDark,
@@ -55,14 +57,15 @@ const $ = (id) => document.getElementById(id);
 let state = loadState();
 let ui = {
   tab: 'stock',
-  mode: 'folders',       // 'folders' = 保管場所グリッド / 'items' = 画材グリッド
-  folderId: 'all',
+  folderId: 'all',       // 'all' = トップ（すべて） / それ以外 = 開いているフォルダ
   query: '',
   category: 'all',
   status: 'all',
   maker: 'all',
   layout: state.settings.layout === 'list' ? 'list' : 'grid',
   searchOpen: false,
+  favoriteOnly: false,   // 絞込：お気に入りだけを出す
+  openMakers: new Set(), // メーカー別タブで開いているまとまり
   editingId: null,
   moveIds: [],
   folderEditId: null,
@@ -263,6 +266,7 @@ function updateProposeBox() {
 /* ---------------- 写真（IndexedDBのBlobを表示用URLに） ---------------- */
 const photoUrls = new Map(); // itemId -> objectURL
 let photoCount = 0;
+let photosReady = false;     // 手元写真を読めたか（読めていないうちは画像の後補完をしない）
 let pendingPhoto = null;     // { kind:'set', blob, url, width, height, bytes } | { kind:'delete' }
 
 function setPhotoUrl(id, blob) {
@@ -281,10 +285,12 @@ async function preloadPhotos() {
     const rows = await listPhotos();
     for (const row of rows) if (row && row.id && row.blob) setPhotoUrl(row.id, row.blob);
     photoCount = rows.length;
+    photosReady = true;
     render();
     return true;
   } catch (e) {
     console.warn('写真の読み込みに失敗', e);
+    photosReady = false;
     return false; // 写真が読めないときはサンプルの画像補完をしない（写真を上書きしないため）
   }
 }
@@ -429,20 +435,17 @@ function displayName(item) {
 }
 
 /* ---------------- rendering ---------------- */
+// 在庫タブは「お気に入り → フォルダ → 画材」を上から1つの流れで並べる（ファイル／メモ型）。
+// 下部の2段ドックは無くし、操作は右上の検索と「⋯」メニューにまとめている。
 function render() {
   applyTheme();
   renderHeader();
-  renderTools();
+  renderHeaderActions();
   renderCrumb();
-  const folderMode = isFolderMode();
-  $('folderGrid').hidden = !folderMode;
-  $('subFolderRow').hidden = folderMode;
-  $('itemList').hidden = folderMode;
-  if (folderMode) { renderFolderGrid(); $('subFolderRow').innerHTML = ''; }
-  else {
-    renderSubFolders();
-    renderTilesInto($('itemList'), currentList(), { group: viewGroupOf(state.settings), emptyKey: 'items' });
-  }
+  renderFavorites();
+  renderFolderGrid();
+  renderItemSection();
+  renderMakerView();
   renderShopping();
   renderFolders();
   renderSettings();
@@ -451,135 +454,148 @@ function render() {
   document.querySelectorAll('#tabbar button').forEach((b) => {
     b.setAttribute('aria-selected', String(b.dataset.tab === ui.tab));
   });
-  for (const t of ['stock', 'shopping', 'folders', 'settings']) $(`view-${t}`).hidden = t !== ui.tab;
-  $('tools').hidden = ui.tab !== 'stock';
-  $('crumb').hidden = ui.tab !== 'stock';
-  $('viewRow').hidden = ui.tab !== 'stock' || isFolderMode();
-  $('searchRow').hidden = !ui.searchOpen || ui.tab !== 'stock';
-  // 操作系は下のドックにまとめた（在庫タブだけ出す）
-  $('dock').hidden = ui.tab !== 'stock';
-  const fabVisible = ui.tab === 'stock' || ui.tab === 'shopping';
+  for (const t of ['stock', 'maker', 'shopping', 'settings']) $(`view-${t}`).hidden = t !== ui.tab;
+  const fabVisible = (ui.tab === 'stock' || ui.tab === 'maker' || ui.tab === 'shopping') && !ui.selectMode;
   $('btnAdd').style.visibility = fabVisible ? 'visible' : 'hidden';
   $('btnScan').style.visibility = fabVisible ? 'visible' : 'hidden'; // 右下の＋の上（読取）
   syncBottomMetrics();
 }
 
 /**
- * 下部UI（タブバー・操作ドック・FAB）の高さを実測してCSS変数に入れる。
- * ドックの有無や選択バーへの切り替えでFABの位置・本文の余白が重ならないようにする。
+ * 下部UI（タブバー・FAB）の高さを実測してCSS変数に入れる。
+ * AdMob バナーは --ad-h（ネイティブで出ている間だけJSが入れる）で、FABはその上に乗る。
+ * ドックは無くなったので --dock-h は常に0（既定値のまま）。
  */
 function syncBottomMetrics() {
-  const dock = $('dock');
-  if (!dock) return;
-  const selecting = ui.selectMode && ui.tab === 'stock';
-  const selBar = $('selBar');
-  // 選択中は操作ドックの代わりに選択バーが同じ位置に出る（高さを入れ替えて測る）
-  const h = selecting
-    ? (selBar && !selBar.hidden ? Math.round(selBar.getBoundingClientRect().height) : 0)
-    : (dock.hidden ? 0 : Math.round(dock.getBoundingClientRect().height));
-  document.documentElement.style.setProperty('--dock-h', `${h}px`);
-  // FABは「＋」とその上の「読取」の2段分（52 + 8 + 44）＋余白
-  const fabH = ui.tab === 'stock' || ui.tab === 'shopping' ? 118 : 0;
+  document.documentElement.style.setProperty('--dock-h', '0px');
+  // FABは「＋」とその上の「読取」の2段分（52 + 8 + 44）＋余白。選択中は隠すので0
+  const fabH = (ui.tab === 'stock' || ui.tab === 'maker' || ui.tab === 'shopping') && !ui.selectMode ? 118 : 0;
   document.documentElement.style.setProperty('--fab-h', `${fabH}px`);
 }
 window.addEventListener('resize', syncBottomMetrics);
-
-function isFolderMode() {
-  return ui.tab === 'stock' && ui.mode === 'folders';
-}
 
 function renderHeader() {
   const s = summarize(state.items);
   $('hdrTotal').textContent = `全${s.kinds}種`;
 }
 
-function renderTools() {
-  const searchOpen = ui.searchOpen && ui.tab === 'stock';
+/** 右上の検索と⋯（絞込・並替・表示・選択・フォルダの並びをここに集約） */
+function renderHeaderActions() {
+  const searchOpen = Boolean(ui.searchOpen);
   $('btnSearch').setAttribute('aria-pressed', String(searchOpen));
-  const filtering = ui.category !== 'all' || ui.status !== 'all' || ui.maker !== 'all';
-  $('btnFilter').setAttribute('aria-pressed', String(filtering));
-  const listMode = ui.layout === 'list';
-  $('layoutIcon').querySelector('use').setAttribute('href', listMode ? '#i-grid' : '#i-list');
-  $('btnLayout').setAttribute('aria-label', listMode ? 'グリッド表示に切り替え' : 'リスト表示に切り替え');
-  $('btnLayout').hidden = isFolderMode();
-  // 複数選択は一覧（画材）でだけ使う
-  $('btnSelect').hidden = isFolderMode();
-  $('btnSelect').setAttribute('aria-pressed', String(ui.selectMode));
-  $('btnSelect').setAttribute('aria-label', ui.selectMode ? '選択をやめる' : '複数選択');
-  // 一覧の分け方（すべて / フォルダ別 / メーカー別）は上部の3択で見た目に出す
-  const group = viewGroupOf(state.settings);
-  for (const g of VIEW_GROUPS) {
-    const btn = $(`btnView${g.id === 'all' ? 'All' : g.id === 'folder' ? 'Folder' : 'Maker'}`);
-    if (btn) btn.setAttribute('aria-pressed', String(group === g.id));
-  }
+  $('searchRow').hidden = !searchOpen;
+  const filtering = hasFilters();
+  const sorting = state.settings.sort !== 'updated';
+  // 絞込・並びが入っているときは、⋯に小さな点を出して気づけるようにする
+  $('btnMore').classList.toggle('has-dot', filtering || sorting);
+  $('moreFilterState').textContent = filtering ? 'あり' : '';
+  $('moreSortState').textContent = String(SORT_MODES.find((m) => m.id === state.settings.sort)?.label || '').replace(/^並び：/, '');
+  $('moreLayoutState').textContent = ui.layout === 'list' ? 'リスト' : 'グリッド';
+  $('moreSelectLabel').textContent = ui.selectMode ? '選択をやめる' : '複数選択';
 }
 
+/** 検索以外の絞り込みが入っているか */
+function hasFilters() {
+  return ui.category !== 'all' || ui.status !== 'all' || ui.maker !== 'all' || ui.favoriteOnly;
+}
+
+/** フォルダを開いているときだけ、ヘッダーの下に大きい現在地を出す */
 function renderCrumb() {
-  const folderMode = isFolderMode();
-  const crumb = $('crumb');
-  crumb.classList.toggle('root', folderMode);
-  $('crumbName').textContent = folderMode
-    ? ''
-    : (ui.folderId === 'all' ? 'すべて' : folderPathLabel(state.folders, ui.folderId, ' › '));
-  $('btnUp').disabled = folderMode;
+  const open = ui.folderId !== 'all';
+  $('crumb').hidden = !open || ui.tab !== 'stock';
+  $('crumbName').textContent = open ? folderOf(ui.folderId).name : '';
   // 残り枠は数字だけ（例: 12 / 100点）
   const q = itemQuota(state, state.settings);
   $('quotaNote').textContent = describeQuota(q);
   $('quotaNote').classList.toggle('tight', isQuotaTight(q));
 }
 
-/** 上へ: 子フォルダなら親へ、トップのフォルダなら保管場所へ */
+/** 上へ: 親フォルダへ。最上位ならフォルダのトップ（すべて）へ戻る */
 function goUp() {
-  if (isFolderMode()) return;
-  const parent = ui.folderId === 'all' ? '' : folderParentId(folderOf(ui.folderId));
-  if (parent) {
-    ui.folderId = parent;
-    ui.mode = 'items';
-  } else {
-    ui.mode = 'folders';
-    ui.folderId = 'all';
-  }
+  if (ui.folderId === 'all') return;
+  const parent = folderParentId(folderOf(ui.folderId));
+  ui.folderId = parent || 'all';
   render();
+  window.scrollTo({ top: 0 });
 }
 
-/** 保管場所フォルダのグリッド（＋すべて）。トップのフォルダだけを並べ、中は子フォルダの行で辿る */
+/** 今いる場所のフォルダ（ルートなら最上位、フォルダの中ならその子フォルダ）＋「＋ フォルダ」 */
 function renderFolderGrid() {
+  const show = ui.tab === 'stock' && !ui.query && !hasFilters();
+  $('folderSec').hidden = !show;
+  if (!show) { $('folderGrid').innerHTML = ''; return; }
+  const parentId = ui.folderId === 'all' ? '' : ui.folderId;
+  const kids = folderChildren(state.folders, parentId);
   const counts = countByFolderDeep(state.folders, state.items);
-  const roots = folderChildren(state.folders, '');
-  const tiles = [{ id: 'all', name: 'すべて', all: true, count: counts.all_total || 0 }]
-    .concat(roots.map((f) => ({
-      ...f,
-      count: counts[f.id] || 0,
-      children: folderChildren(state.folders, f.id).length,
-    })));
-  $('folderGrid').innerHTML = tiles.map((t) => {
-    const color = t.all ? '#2f6fd0' : (t.color || '#5b6b7c');
+  $('folderSecTitle').textContent = parentId ? 'この中のフォルダ' : 'フォルダ';
+  const tiles = kids.map((f) => {
+    const color = f.color || '#5b6b7c';
+    const children = folderChildren(state.folders, f.id).length;
     return `
-    <button class="ftile${t.all ? ' is-all' : ''}" data-folder="${esc(t.id)}" style="--c:${esc(color)};--cs:${rgba(color, t.all ? 0.1 : 0.13)}">
+    <button class="ftile" data-folder="${esc(f.id)}" style="--c:${esc(color)};--cs:${rgba(color, 0.13)}">
       <span class="fico">
-        <svg class="ic" aria-hidden="true"><use href="#${t.all ? 'i-grid' : 'i-folder-solid'}"/></svg>
-        <span class="fcnt">${t.count}</span>
-        ${t.children ? `<span class="fsub">子${t.children}</span>` : ''}
+        <svg class="ic" aria-hidden="true"><use href="#i-folder-solid"/></svg>
+        <span class="fcnt">${counts[f.id] || 0}</span>
+        ${children ? `<span class="fsub">子${children}</span>` : ''}
       </span>
-      <span class="fname">${esc(t.name)}</span>
+      <span class="fname">${esc(f.name)}</span>
     </button>`;
-  }).join('');
+  });
+  // フォルダが無くても「＋ フォルダ」だけは出す（作り始められるように）
+  tiles.push(`
+    <button class="ftile add" data-add-folder="1" aria-label="フォルダを作る">
+      <span class="fico"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></span>
+      <span class="fname">フォルダ</span>
+    </button>`);
+  $('folderGrid').innerHTML = tiles.join('');
 }
 
-/** いま開いているフォルダの子フォルダ（タップで中へ、末尾の＋で作成） */
-function renderSubFolders() {
-  const row = $('subFolderRow');
-  if (ui.tab !== 'stock' || ui.mode !== 'items' || ui.folderId === 'all') {
-    row.hidden = true;
-    row.innerHTML = '';
+/** お気に入り（星を付けた画材）を上にまとめる。無いときは出さない */
+function renderFavorites() {
+  const favs = state.items.filter((it) => it.favorite === true);
+  const show = favs.length > 0 && ui.tab === 'stock' && !ui.query && !hasFilters();
+  $('favSec').hidden = !show;
+  if (!show) { $('favStrip').innerHTML = ''; return; }
+  $('favCount').textContent = String(favs.length);
+  const list = favoritesFirst(sortItems(favs, state.settings.sort));
+  $('favStrip').innerHTML = list.map((it) => itemTile(it, { showFolder: true })).join('');
+}
+
+/** 画材一覧（今いる場所のすべて。検索中は全体から探す） */
+function renderItemSection() {
+  const list = currentList();
+  $('itemSecTitle').textContent = ui.query ? '検索結果' : (ui.folderId === 'all' ? 'すべての画材' : folderOf(ui.folderId).name);
+  $('itemCount').textContent = String(list.length);
+  renderTilesInto($('itemList'), list, { emptyKey: 'items', showFolder: ui.folderId === 'all' });
+}
+
+/** メーカー別タブ: メーカーごとに開いて中を見る（見出しに件数） */
+function renderMakerView() {
+  if (!$('makerGroups')) return;
+  const items = state.items;
+  const makers = listMakers(items);
+  const groups = makers.map((m) => ({ key: m, label: m, items: items.filter((it) => itemMaker(it) === m) }));
+  const unfiled = items.filter((it) => !itemMaker(it));
+  if (unfiled.length) groups.push({ key: MAKER_NONE, label: '未設定', items: unfiled });
+  if (!groups.length) {
+    $('makerGroups').innerHTML = '<div class="empty"><b>まだ画材がありません</b>右下の＋ か 読取 から登録できます</div>';
     return;
   }
-  const kids = folderChildren(state.folders, ui.folderId);
-  const counts = countByFolderDeep(state.folders, state.items);
-  const chips = kids.map((f) =>
-    `<button class="pill sub" data-goto-folder="${esc(f.id)}">${esc(f.name)}<b>${counts[f.id] || 0}</b></button>`).join('');
-  row.innerHTML = chips + `<button class="pill sub add" data-add-child="${esc(ui.folderId)}" aria-label="この中のフォルダを作る">＋ 子フォルダ</button>`;
-  row.hidden = false;
+  $('makerGroups').innerHTML = groups.map((g) => {
+    const open = ui.openMakers.has(g.key);
+    const sorted = favoritesFirst(sortItems(g.items, state.settings.sort));
+    const body = !open ? '' : (ui.layout === 'list'
+      ? `<div class="mlist">${sorted.map((it) => itemRow(it)).join('')}</div>`
+      : `<div class="tgrid">${sorted.map((it) => itemTile(it, { showFolder: true })).join('')}</div>`);
+    return `<section class="mg${open ? ' open' : ''}">
+      <button type="button" class="mghead" data-maker-group="${esc(g.key)}" aria-expanded="${open ? 'true' : 'false'}">
+        <svg class="ic chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+        <span class="mgname">${esc(g.label)}</span>
+        <b>${g.items.length}</b>
+      </button>
+      ${body}
+    </section>`;
+  }).join('');
 }
 
 /** アイテムの実物画像（手元写真 → 画像URL の順。無ければ空文字でアイコン表示） */
@@ -608,8 +624,13 @@ document.addEventListener('load', (e) => {
   img.parentElement?.classList.add('hasimg');
 }, true);
 
-/** 画材タイル1枚（在庫切れはグレー表示。操作は通常どおり） */
-function itemTile(it) {
+/**
+ * 画材タイル1枚（在庫切れはグレー表示。操作は通常どおり）。
+ * カードの中に「− 数 ＋」とお気に入りの星を置く（編集シートを開かずにその場で増減できる）。
+ * HTML のボタンは入れ子にできないので、カード（編集を開くボタン）と星・ステッパーは
+ * 同じ枠（.tilewrap）の中できょうだいとして並べる。
+ */
+function itemTile(it, opts = {}) {
   const st = statusMeta(it.status);
   const isEmpty = isEmptyStock(it);
   const out = isEmpty;
@@ -618,22 +639,36 @@ function itemTile(it) {
   const base = glyph ? glyph.color : guessColor(it);
   const icon = glyph ? glyph.icon : 'i-tube';
   const f = folderOf(it.folderId);
-  const dot = ui.folderId === 'all' ? `<span class="fdot" style="background:${esc(f.color)}"></span>` : '';
-  const label = `${displayName(it)} ${Number(it.qty) || 0}点${out ? ' 要補充' : low ? ' 少なめ' : ''}`;
+  // フォルダの色の点は、全体をまとめて見ているとき（または指定されたとき）だけ出す
+  const showFolder = opts.showFolder ?? (ui.folderId === 'all');
+  const dot = showFolder ? `<span class="fdot" style="background:${esc(f.color)}"></span>` : '';
+  const qty = Number(it.qty) || 0;
+  const fav = it.favorite === true;
+  const label = `${displayName(it)} ${qty}点${out ? ' 要補充' : low ? ' 少なめ' : ''}${fav ? ' お気に入り' : ''}`;
   const selected = ui.selectMode && isSelected(ui.selected, it.id);
   const selectAttrs = ui.selectMode
     ? ` data-select="${esc(it.id)}" aria-pressed="${selected ? 'true' : 'false'}"`
     : ` data-edit="${esc(it.id)}"`;
+  const star = `<button type="button" class="fav${fav ? ' on' : ''}" data-fav="${esc(it.id)}" aria-pressed="${fav ? 'true' : 'false'}" aria-label="${fav ? 'お気に入りをはずす' : 'お気に入りにする'}"><svg class="ic" aria-hidden="true"><use href="#${fav ? 'i-star-solid' : 'i-star'}"/></svg></button>`;
+  const stepper = `<span class="tstep" role="group" aria-label="在庫数">
+      <button type="button" class="step" data-step="-1" data-id="${esc(it.id)}" aria-label="1減らす"><svg class="ic" aria-hidden="true"><use href="#i-minus"/></svg></button>
+      <b class="n">${qty}</b>
+      <button type="button" class="step" data-step="1" data-id="${esc(it.id)}" aria-label="1増やす"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></button>
+    </span>`;
   return `
-  <button class="tile${low ? ' low' : ''}${out ? ' out' : ''}${isEmpty ? ' item-card--empty' : ''}${ui.selectMode ? ' selecting' : ''}${selected ? ' sel' : ''}" data-empty="${isEmpty ? '1' : '0'}"${selectAttrs} aria-label="${esc(label)}" style="--c:${esc(base)};--c2:${esc(shade(base))};--cs:${rgba(base, 0.1)}">
-    <span class="sw">
-      ${dot}<span class="qbadge">${Number(it.qty) || 0}</span>
-      <svg class="inh" aria-hidden="true"><use href="#${icon}"/></svg>
-      ${shelfImage(it)}
-      ${ui.selectMode ? '<span class="selmark" aria-hidden="true"></span>' : ''}
-    </span>
-    <span class="tname">${esc(displayName(it))}</span>
-  </button>`;
+  <div class="tilewrap${low ? ' low' : ''}${out ? ' out' : ''}${ui.selectMode ? ' selecting' : ''}" style="--c:${esc(base)};--c2:${esc(shade(base))};--cs:${rgba(base, 0.1)}">
+    <button class="tile${low ? ' low' : ''}${out ? ' out' : ''}${isEmpty ? ' item-card--empty' : ''}${ui.selectMode ? ' selecting' : ''}${selected ? ' sel' : ''}" data-empty="${isEmpty ? '1' : '0'}"${selectAttrs} aria-label="${esc(label)}">
+      <span class="sw">
+        ${dot}
+        <svg class="inh" aria-hidden="true"><use href="#${icon}"/></svg>
+        ${shelfImage(it)}
+        ${ui.selectMode ? '<span class="selmark" aria-hidden="true"></span>' : ''}
+      </span>
+      <span class="tname">${esc(displayName(it))}</span>
+    </button>
+    ${ui.selectMode ? '' : star}
+    ${ui.selectMode ? '' : stepper}
+  </div>`;
 }
 
 /** 1件＝2行の高密度リスト行（ステッパー付き） */
@@ -650,12 +685,16 @@ function itemRow(it, opts = {}) {
     : `<button class="folder-tag" data-move="${esc(it.id)}">${esc(f.name)} ▾</button>`;
   const selected = ui.selectMode && isSelected(ui.selected, it.id);
   const selectAttrs = ui.selectMode ? ` data-select="${esc(it.id)}" aria-pressed="${selected ? 'true' : 'false'}"` : '';
+  const fav = it.favorite === true;
+  // リストでも星はカード上（フォルダタグの隣）。サムネイルを隠さない場所に置く
+  const star = ui.selectMode ? '' : `<button type="button" class="fav sm${fav ? ' on' : ''}" data-fav="${esc(it.id)}" aria-pressed="${fav ? 'true' : 'false'}" aria-label="${fav ? 'お気に入りをはずす' : 'お気に入りにする'}"><svg class="ic" aria-hidden="true"><use href="#${fav ? 'i-star-solid' : 'i-star'}"/></svg></button>`;
   return `
   <article class="item${isEmpty ? ' item-card--empty' : ''}${ui.selectMode ? ' selecting' : ''}${selected ? ' sel' : ''}" data-empty="${isEmpty ? '1' : '0'}" data-id="${esc(it.id)}"${selectAttrs}>
     <span class="thumb"><svg class="ic" aria-hidden="true" style="color:${esc(thumbColor)}"><use href="#${thumbIcon}"/></svg>${shelfImage(it)}${ui.selectMode ? '<span class="selmark" aria-hidden="true"></span>' : ''}</span>
     <div class="it-main">
       <h3 class="it-name" data-edit="${esc(it.id)}" title="タップで編集">${esc(displayName(it))}</h3>
       <div class="it-sub">
+        ${star}
         ${first}
         <span class="badge ${st.tone}" title="${esc(st.label)}">${esc(st.short || st.label)}</span>
         ${meta ? `<span class="it-meta">${meta}</span>` : ''}
@@ -703,7 +742,7 @@ function renderTilesInto(el, items, opts = {}) {
       : '';
     const body = (opts.forceList || ui.layout === 'list')
       ? g.items.map((it) => itemRow(it, opts)).join('')
-      : `<div class="tgrid">${g.items.map(itemTile).join('')}</div>`;
+      : `<div class="tgrid">${g.items.map((it) => itemTile(it, opts)).join('')}</div>`;
     return head + body;
   }).join('');
 }
@@ -716,11 +755,12 @@ function renderShopping() {
 
 function currentList() {
   // 親フォルダを開くと、配下のフォルダの画材もまとめて見る（直感的な挙動）
-  const scope = ui.folderId && ui.folderId !== 'all' ? folderSubtreeIds(state.folders, ui.folderId) : null;
-  return sortItems(filterItems(state.items, {
-    query: ui.query, folderId: ui.folderId, folderIds: scope,
-    category: ui.category, status: ui.status, maker: ui.maker,
-  }), state.settings.sort);
+  // 検索のときは場所をまたいで全体から探す
+  const scope = ui.query || ui.folderId === 'all' ? null : folderSubtreeIds(state.folders, ui.folderId);
+  return favoritesFirst(sortItems(filterItems(state.items, {
+    query: ui.query, folderId: ui.query ? 'all' : ui.folderId, folderIds: scope,
+    category: ui.category, status: ui.status, maker: ui.maker, favoriteOnly: ui.favoriteOnly,
+  }), state.settings.sort));
 }
 
 function renderFolders() {
@@ -941,42 +981,48 @@ function renderFilterSheet() {
     + CATEGORIES.map((c) => chip('cat', c.id, c.label, ui.category === c.id)).join('');
   $('statusChips').innerHTML = chip('status', 'all', 'すべて', ui.status === 'all')
     + STATUSES.map((s) => chip('status', s.id, s.short || s.label, ui.status === s.id)).join('');
+  // お気に入りだけを出す（星の付いた画材を探しやすくする）
+  $('favChips').innerHTML = chip('favonly', 'all', 'すべて', !ui.favoriteOnly)
+    + chip('favonly', 'fav', 'お気に入り', ui.favoriteOnly);
 
   $('sortChips').innerHTML = SORT_MODES.map((m) =>
     `<button class="fchip" data-sort="${esc(m.id)}" aria-pressed="${state.settings.sort === m.id ? 'true' : 'false'}">${esc(m.label.replace(/^並び：/, ''))}</button>`).join('');
 }
 
 $('sheetFilter').addEventListener('click', (e) => {
-  const b = e.target.closest('[data-maker],[data-cat],[data-status]');
+  const b = e.target.closest('[data-maker],[data-cat],[data-status],[data-favonly]');
   if (!b) return;
   if (b.dataset.maker !== undefined) ui.maker = b.dataset.maker;
   if (b.dataset.cat !== undefined) ui.category = b.dataset.cat;
   if (b.dataset.status !== undefined) ui.status = b.dataset.status;
-  if (ui.mode === 'folders') { ui.mode = 'items'; ui.folderId = 'all'; }
+  if (b.dataset.favonly !== undefined) ui.favoriteOnly = b.dataset.favonly === 'fav';
   render();
 });
 $('sheetSort').addEventListener('click', (e) => {
   const b = e.target.closest('[data-sort]');
   if (!b) return;
-  // メーカー順を選ぶと「メーカー別」もオンになる（上部のピルと連動）
+  // 並び順はここで決める（メーカー別は下の「メーカー」タブで見る）
   state = { ...state, settings: withSortMode(state.settings, b.dataset.sort) };
   save();
   closeSheet('sheetSort');
   render();
 });
 
-/* ---------------- ツールバー・ナビ ---------------- */
-// 保管場所のグリッドへは、一覧の「戻る」（家アイコン）と下の「場所」タブから入る
+/* ---------------- ナビゲーション・右上の操作 ---------------- */
+// 家アイコンはフォルダのトップ（すべて）へ戻る
 $('btnHome').addEventListener('click', () => {
-  ui.mode = 'folders';
   ui.folderId = 'all';
   ui.tab = 'stock';
   exitSelect();
   render();
+  window.scrollTo({ top: 0 });
 });
 $('btnUp').addEventListener('click', () => goUp());
 $('btnSearch').addEventListener('click', () => {
   ui.searchOpen = !ui.searchOpen;
+  // 検索は在庫から探す（他のタブで押したら在庫へ）
+  if (ui.searchOpen && ui.tab !== 'stock') ui.tab = 'stock';
+  if (!ui.searchOpen) { ui.query = ''; $('q').value = ''; }
   render();
   if (ui.searchOpen) setTimeout(() => $('q').focus({ preventScroll: true }), 30);
 });
@@ -988,26 +1034,54 @@ $('btnSearchClear').addEventListener('click', () => {
 });
 $('q').addEventListener('input', (e) => {
   ui.query = e.target.value;
-  if (ui.query && ui.mode === 'folders') { ui.mode = 'items'; ui.folderId = 'all'; }
-  render();
-});
-$('btnFilter').addEventListener('click', () => { renderFilterSheet(); openSheet('sheetFilter'); });
-$('btnSort').addEventListener('click', () => { renderFilterSheet(); openSheet('sheetSort'); });
-$('btnLayout').addEventListener('click', () => {
-  ui.layout = ui.layout === 'list' ? 'grid' : 'list';
-  state = { ...state, settings: { ...state.settings, layout: ui.layout } };
-  save();
+  if (ui.query && ui.folderId !== 'all') ui.folderId = 'all'; // 検索は全体から
   render();
 });
 
-/** 一覧上部の3択（すべて / フォルダ別 / メーカー別。ワンタップで見出しを切り替える） */
-$('viewRow').addEventListener('click', (e) => {
-  const b = e.target.closest('[data-view-group]');
-  if (!b) return;
-  const next = withViewGroup(state.settings, b.dataset.viewGroup);
-  if (viewGroupOf(next) === viewGroupOf(state.settings) && next.sort === state.settings.sort) return;
-  state = { ...state, settings: next };
+/* ---------------- ⋯メニュー（絞込・並替・表示・複数選択・フォルダの並び） ---------------- */
+$('btnMore').addEventListener('click', () => {
+  renderHeaderActions();
+  openSheet('sheetMore');
+});
+$('btnMoreFilter').addEventListener('click', () => {
+  closeSheet('sheetMore');
+  renderFilterSheet();
+  openSheet('sheetFilter');
+});
+$('btnMoreSort').addEventListener('click', () => {
+  closeSheet('sheetMore');
+  renderFilterSheet();
+  openSheet('sheetSort');
+});
+$('btnMoreLayout').addEventListener('click', () => {
+  setLayout(ui.layout === 'list' ? 'grid' : 'list');
+  closeSheet('sheetMore');
+});
+$('btnMoreSelect').addEventListener('click', () => {
+  closeSheet('sheetMore');
+  toggleSelectMode();
+});
+$('btnMoreFolders').addEventListener('click', () => {
+  closeSheet('sheetMore');
+  renderFolders();
+  openSheet('sheetFolderOrder');
+});
+
+/** グリッド／リストの切替（設定に保存する） */
+function setLayout(layout) {
+  ui.layout = layout === 'list' ? 'list' : 'grid';
+  state = { ...state, settings: { ...state.settings, layout: ui.layout } };
   save();
+  render();
+}
+
+/** メーカー別タブ: 見出しをタップして開け閉める */
+document.addEventListener('click', (e) => {
+  const head = e.target.closest('[data-maker-group]');
+  if (!head) return;
+  const key = head.dataset.makerGroup;
+  if (ui.openMakers.has(key)) ui.openMakers.delete(key);
+  else ui.openMakers.add(key);
   render();
 });
 
@@ -1016,17 +1090,19 @@ $('tabbar').addEventListener('click', (e) => {
   if (!b) return;
   const tab = b.dataset.tab;
   ui.tab = tab;
-  if (tab !== 'stock') exitSelect();
+  if (tab !== 'stock') { exitSelect(); ui.searchOpen = false; ui.query = ''; $('q').value = ''; }
   stopScanner();
   render();
   window.scrollTo({ top: 0 });
 });
 
+// フォルダをタップして中へ／「＋ フォルダ」で作る
 $('folderGrid').addEventListener('click', (e) => {
+  const add = e.target.closest('[data-add-folder]');
+  if (add) { addFolderAt(ui.folderId === 'all' ? '' : ui.folderId); return; }
   const b = e.target.closest('[data-folder]');
   if (!b) return;
   ui.folderId = b.dataset.folder;
-  ui.mode = 'items';
   ui.tab = 'stock';
   exitSelect();
   render();
@@ -1038,14 +1114,15 @@ function exitSelect() {
   ui.selectMode = false;
   ui.selected = [];
 }
-$('btnSelect').addEventListener('click', () => {
+/** 選択モードの入/切（⋯メニューから） */
+function toggleSelectMode() {
   if (ui.selectMode) { exitSelect(); render(); return; }
-  if (isFolderMode()) { ui.mode = 'items'; ui.folderId = 'all'; }
+  ui.tab = 'stock';
   ui.selectMode = true;
   ui.selected = [];
   render();
   toast('移動する画材を選んでください');
-});
+}
 $('btnSelCancel').addEventListener('click', () => { exitSelect(); render(); });
 $('btnSelAll').addEventListener('click', () => {
   const list = currentList();
@@ -1069,10 +1146,24 @@ $('themeChips').addEventListener('click', (e) => {
 document.addEventListener('click', (e) => {
   // 子フォルダのチップ（タップで中へ）
   const goto = e.target.closest('[data-goto-folder]');
-  if (goto) { ui.folderId = goto.dataset.gotoFolder; ui.mode = 'items'; exitSelect(); render(); return; }
+  if (goto) { ui.folderId = goto.dataset.gotoFolder; exitSelect(); render(); return; }
   // 子フォルダを作る
   const addChild = e.target.closest('[data-add-child]');
   if (addChild) { addFolderAt(addChild.dataset.addChild); return; }
+  // お気に入り（星）の切り替え。カードのタップ（編集シート）へは伝えない
+  const favBtn = e.target.closest('[data-fav]');
+  if (favBtn) {
+    e.preventDefault();
+    e.stopPropagation();
+    const target = state.items.find((i) => i.id === favBtn.dataset.fav);
+    if (!target) return;
+    const next = toggleFavorite(target);
+    state = upsertItem(state, next);
+    save();
+    render();
+    toast(next.favorite ? 'お気に入りにしました（一覧の上に出ます）' : 'お気に入りをはずしました');
+    return;
+  }
   // 選択モード中は、タップで選択の切り替えだけ（編集・増減は開けない）
   if (ui.selectMode) {
     const sel = e.target.closest('[data-select]');
@@ -1084,6 +1175,9 @@ document.addEventListener('click', (e) => {
   }
   const step = e.target.closest('[data-step]');
   if (step) {
+    // カード上の −/＋ は、カードのタップ（編集シート）に伝えない
+    e.preventDefault();
+    e.stopPropagation();
     const it = state.items.find((i) => i.id === step.dataset.id);
     if (!it) return;
     const delta = Number(step.dataset.step) || 0;
@@ -1256,6 +1350,62 @@ function backfillSampleImagesInState() {
   render();
 }
 
+/* ---------------- 画像の後補完（オフライン登録の画材・起動時と復帰時） ---------------- */
+// オフライン中にスキャン・辞書登録すると、商品画像の取得が見送られて画像なしのまま残る。
+// 起動時と online 復帰時に、JANがあって画像URLも手元写真も無い画材だけを、
+// 少し間をあけて（1まとまり AUTO_IMAGE_FILL_LIMIT 件ずつ）裏で静かに補う。
+let imageFillRunning = false; // 二重に走らせない
+
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
+
+/** オンラインか（判定できない環境では「オンライン」とみなす） */
+function isOnline() {
+  return !(typeof navigator !== 'undefined' && navigator.onLine === false);
+}
+
+/**
+ * 画像の後補完を1回ぶん走らせる（静かに。失敗は何も出さない）。
+ * すでにユーザーが設定した画像・写真は絶対に上書きしない（applyFetchedImage が判定する）。
+ * @returns {Promise<number>} 補えた件数
+ */
+async function fillMissingImages() {
+  if (!photosReady) return 0; // 写真の所在が分からないうちは触らない（写真を上書きしないため）
+  const first = pendingAutoImages(state.items, { photoIds: photoUrls });
+  if (!shouldRunAutoFill({ online: isOnline(), running: imageFillRunning, count: first.length })) return 0;
+  imageFillRunning = true;
+  let filled = 0;
+  const failed = new Set(); // 今回取れなかったJANは、この回ではもう狙わない
+  try {
+    for (let round = 0; round < AUTO_IMAGE_FILL_ROUNDS; round += 1) {
+      if (!isOnline()) break;
+      const targets = pendingAutoImages(state.items, { photoIds: photoUrls })
+        .filter((t) => !failed.has(t.jan));
+      if (!targets.length) break;
+      for (let i = 0; i < targets.length; i += 1) {
+        if (!isOnline()) break;
+        if (i > 0 || round > 0) await wait(AUTO_IMAGE_FILL_GAP_MS); // 短時間の連続リクエストを避ける
+        const t = targets[i];
+        const info = await fetchAutoImage(t.jan, { settings: state.settings, inFlight: autoImageInFlight });
+        if (!info || !info.imageUrl) { failed.add(t.jan); continue; }
+        const out = applyFetchedImage(state, {
+          itemId: t.id, jan: t.jan, imageUrl: info.imageUrl, photoIds: photoUrls,
+        });
+        if (!out.changed) { failed.add(t.jan); continue; } // 削除・別画像・写真の設定があったら触らない
+        state = out.state;
+        filled += 1;
+      }
+    }
+    if (filled) {
+      save();
+      render();
+      toast(`画像のなかった画材${filled}点に商品画像を入れました`);
+    }
+  } finally {
+    imageFillRunning = false;
+  }
+  return filled;
+}
+
 /** 読み込み後、存在しない画材の写真を端末内から片付ける */
 async function prunePhotos() {
   try {
@@ -1361,7 +1511,6 @@ $('itemForm').addEventListener('submit', async (e) => {
   await applyPendingPhoto(targetId);
   closeSheet('sheetItem');
   ui.tab = 'stock';
-  ui.mode = 'items';
   ui.folderId = savedFolder;
   render();
 });
@@ -1480,10 +1629,7 @@ function removeFolder(id) {
   state = deleteFolder(state, id, fallback.id);
   save();
   // いま開いていたフォルダを消したら、親（無ければ保管場所）へ戻す
-  if (ui.folderId === id) {
-    ui.folderId = parent || 'all';
-    ui.mode = parent ? 'items' : 'folders';
-  }
+  if (ui.folderId === id) ui.folderId = parent || 'all';
   return { ok: true, movedTo: fallback.name };
 }
 
@@ -2254,7 +2400,19 @@ for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
 seedSamplesOnFirstRun();
 render();
 preloadPhotos().then((ok) => {
-  if (ok) backfillSampleImagesInState();
+  if (!ok) return;
+  backfillSampleImagesInState();
+  // オフラインで登録して画像が入っていない画材を、起動時に裏で静かに補う
+  fillMissingImages();
 });
 renderDictionaryState();
 syncDictionary();
+
+// オンラインへ戻ったら（オフライン登録の画材の画像を、束にならないよう少しずつ補う）
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => { fillMissingImages(); });
+}
+
+// iOSアプリの最下部に AdMob バナー（テスト広告）。Webブラウザでは何もしない。
+// バナーの高さは CSS 変数 --ad-h に入り、タブバー・ドック・FAB・一覧の下端を押し上げる。
+const adBanner = setupAdBanner();

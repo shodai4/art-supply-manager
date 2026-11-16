@@ -106,3 +106,48 @@ export function describeFetchedImage(info, { sourceText } = {}) {
   if (!short) return '商品画像を入れました（保存で確定）';
   return `${short}${from ? `（${from}）` : ''}の画像を入れました`;
 }
+
+/* ---------------- オフライン登録の後補完（起動時・オンライン復帰時） ---------------- */
+// オフライン中にスキャン・辞書登録すると、画像の取得が見送られたまま残る。
+// 起動時と online 復帰時に、JANがあり画像も写真も無い画材だけを対象に、
+// 裏側で静かに取り直す（ユーザーが設定した画像・写真には触れない）。
+
+/** 1まとまりで見る件数。短時間に何十件も問い合わせないための上限 */
+export const AUTO_IMAGE_FILL_LIMIT = 8;
+
+/** 続けて問い合わせるときの間隔（ミリ秒）。中継サーバーを連打しない */
+export const AUTO_IMAGE_FILL_GAP_MS = 1200;
+
+/** 1回の起動・復帰で回すまとまりの数（残りは次の起動・復帰で補う） */
+export const AUTO_IMAGE_FILL_ROUNDS = 3;
+
+/**
+ * 後から画像を補う対象（JANがあり、画像URLも手元写真も無い画材）。
+ * 同じJANは1回だけ、件数は limit まで。並びは渡された順のまま。
+ * @returns {Array<{id:string, jan:string}>}
+ */
+export function pendingAutoImages(items, { photoIds, limit = AUTO_IMAGE_FILL_LIMIT } = {}) {
+  const out = [];
+  const max = Math.max(0, Math.trunc(Number(limit) || 0));
+  if (!max) return out;
+  const seen = new Set();
+  for (const it of Array.isArray(items) ? items : []) {
+    if (out.length >= max) break;
+    if (!needsAutoImage(it, { photoIds })) continue;
+    const jan = autoImageJan(it.jan);
+    if (seen.has(jan)) continue; // 同じ商品は1本で足りる
+    seen.add(jan);
+    out.push({ id: String(it.id), jan });
+  }
+  return out;
+}
+
+/**
+ * いま後補完を始めてよいか。
+ * オフライン・実行中・対象なしのときは始めない（二重の連続リクエストを避ける）。
+ */
+export function shouldRunAutoFill({ online = true, running = false, count = 0 } = {}) {
+  if (running) return false;
+  if (online === false) return false;
+  return Number(count) > 0;
+}

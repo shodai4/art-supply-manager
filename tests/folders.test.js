@@ -232,20 +232,20 @@ test('無料のフォルダ上限は子フォルダも1つとして数える（�
   assert.equal(FREE_FOLDER_LIMIT, 3);
 });
 
-test('画面: 階層フォルダの導線（子フォルダ行・親の選択・インデント）がある', () => {
+test('画面: 階層フォルダの導線（フォルダのタイル・親の選択・インデント）がある', () => {
   const html = read('index.html');
   const app = read('app.js');
   const css = read('styles.css');
-  for (const id of ['subFolderRow', 'fFolderParent', 'folderGrid', 'folderList']) {
+  for (const id of ['fFolderParent', 'folderGrid', 'folderList', 'crumb', 'btnUp', 'btnHome', 'folderSec']) {
     assert.ok(html.includes(`id="${id}"`), `#${id} がありません`);
   }
   assert.match(html, /id="fFolderParent"/);
   assert.match(app, /folderOptions\(state\.folders/);
-  assert.match(app, /data-add-child/);
-  assert.match(app, /data-goto-folder/);
-  assert.match(app, /folderPathLabel\(state\.folders/);
+  // フォルダを開いても、子フォルダは同じグリッドに並べて「＋ フォルダ」で作る
+  assert.match(app, /folderChildren\(state\.folders, parentId\)/);
+  assert.match(app, /data-add-folder/);
   assert.match(app, /folderSubtreeIds\(state\.folders/);
-  assert.match(app, /folderChildren\(state\.folders/);
+  assert.match(app, /folderPathLabel\(state\.folders/);
   // 深さでインデントする
   assert.match(css, /\.folder-row[^{]*\{[^}]*padding-left:\s*calc\(var\(--d/);
   assert.match(css, /\.pill\.move\s*\{[^}]*margin-left:\s*calc\(var\(--d/);

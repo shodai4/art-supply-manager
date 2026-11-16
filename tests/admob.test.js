@@ -1,0 +1,201 @@
+/**
+ * 最下部の AdMob バナー（テスト広告）と、バナー分の余白。
+ *
+ *   1) いまはテスト広告だけ（USE_TEST_ADS・Google公式テストID）。本番IDは使わない
+ *   2) iOSアプリのネイティブ起動時だけ出す（Webブラウザ／GitHub Pagesでは何もしない）
+ *   3) 読み込めた実測の高さを CSS 変数 --ad-h に入れ、タブバー・FAB・一覧の下端を押し上げる
+ *   4) Info.plist の GADApplicationIdentifier と admob.js のアプリIDが一致する
+ *   5) 配布物（www/・Service Worker）に admob.js が入る
+ */
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import {
+  USE_TEST_ADS, ADMOB_TEST_APP_ID, ADMOB_TEST_BANNER_ID, ADMOB_APP_ID, ADMOB_BANNER_ID,
+  ADMOB_BANNER_FALLBACK_HEIGHT, AD_HEIGHT_VAR, adMobPlugin, shouldShowAdBanner, bannerLiftHeight,
+  bannerShowOptions, bannerInitializeOptions, applyBannerLift, clearBannerLift, AdBanner, setupAdBanner,
+} from '../admob.js';
+import { CONFIG_ENTRIES, ADMOB_APP_ID as PLIST_APP_ID, configureContent, verifyContent } from '../scripts/configure-ios.mjs';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const read = (name) => fs.readFileSync(path.join(ROOT, name), 'utf8');
+const EMOJI = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/u;
+
+/* ---------------- テスト広告の設定 ---------------- */
+
+test('いまはGoogle公式のテスト広告だけを使う（本番ID・収益はまだ無し）', () => {
+  assert.equal(USE_TEST_ADS, true);
+  assert.equal(ADMOB_TEST_APP_ID, 'ca-app-pub-3940256099942544~1458002511');
+  assert.equal(ADMOB_TEST_BANNER_ID, 'ca-app-pub-3940256099942544/2934735716');
+  assert.equal(ADMOB_APP_ID, ADMOB_TEST_APP_ID);
+  assert.equal(ADMOB_BANNER_ID, ADMOB_TEST_BANNER_ID);
+  // テスト中は isTesting を必ず添える（実機の誤クリックを無効トラフィックにしない）
+  const show = bannerShowOptions();
+  assert.equal(show.isTesting, true);
+  assert.equal(show.adId, ADMOB_TEST_BANNER_ID);
+  assert.equal(show.position, 'BOTTOM_CENTER');
+  assert.equal(show.margin, 0);
+  assert.equal(show.adSize, 'ADAPTIVE_BANNER');
+  assert.equal(bannerInitializeOptions().initializeForTesting, true);
+});
+
+test('出すのはiOSアプリのネイティブ起動時だけ（Webでは広告枠も余白も出さない）', () => {
+  assert.equal(shouldShowAdBanner({ native: true, hasPlugin: true }), true);
+  assert.equal(shouldShowAdBanner({ native: false, hasPlugin: true }), false);
+  assert.equal(shouldShowAdBanner({ native: true, hasPlugin: false }), false);
+  const plugin = { showBanner() {} };
+  assert.equal(adMobPlugin({ Capacitor: { Plugins: { AdMob: plugin } } }), plugin);
+  assert.equal(adMobPlugin({}), null);
+  assert.equal(adMobPlugin(undefined), null);
+});
+
+test('余白の高さは実測値を使い、おかしな値は予備値・上下限に倒す', () => {
+  assert.equal(bannerLiftHeight(50), 50);
+  assert.equal(bannerLiftHeight(60), 60);
+  assert.equal(bannerLiftHeight(0), ADMOB_BANNER_FALLBACK_HEIGHT);
+  assert.equal(bannerLiftHeight(-10), ADMOB_BANNER_FALLBACK_HEIGHT);
+  assert.equal(bannerLiftHeight('abc'), ADMOB_BANNER_FALLBACK_HEIGHT);
+  assert.equal(bannerLiftHeight(undefined), ADMOB_BANNER_FALLBACK_HEIGHT);
+  assert.equal(bannerLiftHeight(1000), 120, '上限を超えない');
+  assert.equal(bannerLiftHeight(2), 32, '下限より小さくしない');
+});
+
+/* ---------------- 余白（CSS変数） ---------------- */
+
+function fakeEnv({ native = true, withPlugin = true } = {}) {
+  const calls = { initialize: [], showBanner: [], hideBanner: 0 };
+  const listeners = new Map();
+  const plugin = {
+    async initialize(options) { calls.initialize.push(options); },
+    async showBanner(options) { calls.showBanner.push(options); },
+    async hideBanner() { calls.hideBanner += 1; },
+    addListener(name, handler) {
+      listeners.set(name, handler);
+      return Promise.resolve({ remove() {} });
+    },
+  };
+  const style = new Map();
+  const attributes = new Map();
+  const doc = {
+    documentElement: { style: { setProperty: (k, v) => style.set(k, v) } },
+    body: {
+      setAttribute: (k, v) => attributes.set(k, v),
+      removeAttribute: (k) => attributes.delete(k),
+    },
+  };
+  const win = {
+    Capacitor: {
+      isNativePlatform: () => native,
+      Plugins: withPlugin ? { AdMob: plugin } : {},
+    },
+  };
+  return { plugin, calls, listeners, style, attributes, doc, win };
+}
+
+test('余白はCSS変数 --ad-h で入れ、解除すると0に戻る', () => {
+  const env = fakeEnv();
+  const h = applyBannerLift(env.doc, 50);
+  assert.equal(h, 50);
+  assert.equal(env.style.get(AD_HEIGHT_VAR), '50px');
+  assert.equal(env.attributes.get('data-ad-banner'), 'true');
+  clearBannerLift(env.doc);
+  assert.equal(env.style.get(AD_HEIGHT_VAR), '0px');
+  assert.equal(env.attributes.has('data-ad-banner'), false);
+});
+
+test('ネイティブでは初期化→バナー表示。読み込めた大きさに合わせて余白が決まる', async () => {
+  const env = fakeEnv();
+  const banner = new AdBanner({ win: env.win, doc: env.doc, log() {} });
+  assert.equal(banner.enabled, true);
+  assert.equal(await banner.init(), true);
+  assert.equal(env.calls.initialize.length, 1);
+  assert.equal(env.calls.initialize[0].initializeForTesting, true);
+  assert.equal(env.calls.showBanner.length, 1);
+  assert.equal(env.calls.showBanner[0].isTesting, true);
+
+  // 読み込めたら予備の高さで先に余白を確保し、実測が来たら合わせる
+  env.listeners.get('bannerAdLoaded')();
+  assert.equal(env.style.get(AD_HEIGHT_VAR), `${ADMOB_BANNER_FALLBACK_HEIGHT}px`);
+  env.listeners.get('bannerAdSizeChanged')({ width: 375, height: 50 });
+  assert.equal(env.style.get(AD_HEIGHT_VAR), '50px');
+  // 出せなかったら余白を残さない（下に空白を作らない）
+  env.listeners.get('bannerAdFailedToLoad')();
+  assert.equal(env.style.get(AD_HEIGHT_VAR), '0px');
+  assert.equal(env.attributes.has('data-ad-banner'), false);
+
+  // 二重初期化しない
+  await banner.init();
+  assert.equal(env.calls.initialize.length, 1);
+});
+
+test('Webブラウザでは初期化も表示もせず、余白も入れない', async () => {
+  const env = fakeEnv({ native: false });
+  const banner = new AdBanner({ win: env.win, doc: env.doc, log() {} });
+  assert.equal(banner.enabled, false);
+  assert.equal(await banner.init(), false);
+  assert.equal(env.calls.initialize.length, 0);
+  assert.equal(env.calls.showBanner.length, 0);
+  assert.equal(env.attributes.has('data-ad-banner'), false);
+  // プラグインが入っていてもネイティブでなければ出さない
+  const noPlugin = fakeEnv({ native: true, withPlugin: false });
+  const other = setupAdBanner({ win: noPlugin.win, doc: noPlugin.doc, log() {} });
+  assert.equal(other.enabled, false);
+  assert.equal(noPlugin.attributes.has('data-ad-banner'), false);
+});
+
+/* ---------------- 画面の配線と余白（CSS） ---------------- */
+
+test('アプリは起動時にバナーを用意し、CSSはバナー分だけ下を持ち上げる', () => {
+  const app = read('app.js');
+  assert.match(app, /import \{ setupAdBanner \} from '\.\/admob\.js';/);
+  assert.match(app, /const adBanner = setupAdBanner\(\);/);
+
+  const css = read('styles.css');
+  // 既定は0（Web・広告が出ていないときは何も変わらない）
+  assert.match(css, /:root\s*\{[^}]*--ad-h:\s*0px/);
+  // 本文の下余白
+  assert.match(css, /body\s*\{[^}]*padding-bottom:\s*calc\(var\(--tabbar-h\)[^;]*var\(--ad-h\)[^;]*env\(safe-area-inset-bottom\)/);
+  // タブバーはバナーの上
+  assert.match(css, /\.tabbar\s*\{[^}]*bottom:\s*calc\(var\(--ad-h\) \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(css, /body\[data-ad-banner="true"\] \.tabbar\s*\{[^}]*height:\s*var\(--tabbar-h\)[^}]*padding-bottom:\s*0/);
+  // 下部操作ドックは廃止（タブバー＋バナーだけ）
+  assert.equal(/\.dock\s*\{/.test(css), false);
+  // 選択バー・FAB・トースト・シートも同じだけ持ち上げる
+  assert.match(css, /\.selbar\s*\{[^}]*bottom:\s*calc\(var\(--tabbar-h\) \+ var\(--ad-h\)/);
+  assert.match(css, /\.fab\s*\{[^}]*bottom:\s*calc\(var\(--tabbar-h\)[^;]*var\(--ad-h\)/);
+  assert.match(css, /\.fab\.scan\s*\{[^}]*bottom:\s*calc\(var\(--tabbar-h\)[^;]*var\(--ad-h\)/);
+  assert.match(css, /\.toast\s*\{[^}]*bottom:\s*calc\(var\(--tabbar-h\)[^;]*var\(--ad-h\)/);
+  assert.match(css, /\.sheet\s*\{[^}]*padding:\s*14px 14px calc\(18px \+ var\(--ad-h\)/);
+});
+
+/* ---------------- Info.plist・配布物 ---------------- */
+
+test('Info.plist に AdMob のアプリID・SKAdNetwork・ATT の説明を入れる', () => {
+  assert.equal(PLIST_APP_ID, ADMOB_APP_ID, 'configure-ios と admob.js のアプリIDが揃っている');
+  const keys = CONFIG_ENTRIES.map((e) => e.key);
+  for (const key of ['GADApplicationIdentifier', 'SKAdNetworkItems', 'NSUserTrackingUsageDescription']) {
+    assert.ok(keys.includes(key), `${key} がありません`);
+  }
+  const base = '<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0">\n<dict>\n\t<key>CFBundleDisplayName</key>\n\t<string>App</string>\n</dict>\n</plist>\n';
+  const { content } = configureContent(base);
+  assert.match(content, new RegExp(`<key>GADApplicationIdentifier</key>\\s*<string>${ADMOB_APP_ID.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}</string>`));
+  assert.match(content, /<key>SKAdNetworkItems<\/key>\s*<array>[\s\S]*SKAdNetworkIdentifier/);
+  assert.match(content, /NSUserTrackingUsageDescription/);
+  assert.deepEqual(verifyContent(content), []);
+});
+
+test('admob.js は配布物（www/・Service Worker）に入り、絵文字を使わない', () => {
+  const sw = read('sw.js');
+  const build = read('scripts/build.mjs');
+  const pkg = JSON.parse(read('package.json'));
+  assert.match(sw, /'\.\/admob\.js'/);
+  assert.match(build, /'admob\.js'/);
+  assert.ok(pkg.dependencies['@capacitor-community/admob'], 'プラグインが依存に入っていません');
+  assert.match(pkg.dependencies['@capacitor-community/admob'], /^\^6\./);
+  assert.equal(EMOJI.test(read('admob.js')), false, 'admob.js に絵文字があります');
+  // バージョン（キャッシュの更新）
+  assert.match(sw, /art-supply-manager-v30/);
+  assert.equal(pkg.version, '1.11.0');
+});

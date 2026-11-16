@@ -103,7 +103,7 @@ test('第2弾の導線（Pro案内・画材費・復元）がHTMLとapp.jsにあ
   assert.match(html, /id="btnImport">復元</);
   // 新しい画面のスタイルがある
   const css = read('styles.css');
-  for (const sel of ['.bar .bf', '.pro-chip', '.quota', '.menubtn', '.dock']) {
+  for (const sel of ['.bar .bf', '.pro-chip', '.quota', '.menubtn', '.hbtn']) {
     assert.ok(css.includes(sel), `${sel} のスタイルがありません`);
   }
 });
@@ -177,45 +177,50 @@ test('Yahoo!のAPIを使うため、規定のHTMLでクレジットを最下部�
   assert.ok(snippetAt > html.indexOf('foot-note'), 'クレジットは注記より下（アプリの下部）に置く');
 });
 
-test('一覧の分け方の3択（すべて / フォルダ別 / メーカー別）でワンタップで切り替えられる', () => {
+test('一覧はメーカー別タブで見て、絞込・並替は右上の⋯にまとめる', () => {
   const html = read('index.html');
   const app = read('app.js');
   const css = read('styles.css');
 
-  // 下部の操作ドックに3択。ツールバーは狭いのでボタンを増やさない
-  const row = html.slice(html.indexOf('id="viewRow"'), html.indexOf('id="viewRow"') + 700);
-  assert.match(row, /<div class="seg" role="group" aria-label="一覧の分け方">/);
-  for (const [id, label] of [['btnViewAll', 'すべて'], ['btnViewFolder', 'フォルダ別'], ['btnViewMaker', 'メーカー別']]) {
-    assert.ok(row.includes(`id="${id}"`), `#${id} がありません`);
-    assert.ok(row.includes(`>${label}</button>`), `${label} のボタンがありません`);
-    assert.equal(new RegExp(`id="${id}"[^>]*>\\s*<svg`).test(row), false, 'アイコンだけにせず言葉で分かるようにする');
+  // 下部の2段ドックと3択は廃止（画面を広く使う）
+  assert.equal(html.includes('id="dock"'), false, '下部ドックが残っている');
+  assert.equal(html.includes('id="viewRow"'), false, '3択（viewRow）が残っている');
+  assert.equal(/withViewGroup|viewGroupOf|VIEW_GROUPS/.test(app), false, '3択の処理が残っている');
+
+  // メーカー別は独立したタブで、見出しをタップして開く（件数つき）
+  assert.match(html, /<button data-tab="maker" aria-selected="false">メーカー<\/button>/);
+  const view = html.slice(html.indexOf('id="view-maker"'), html.indexOf('id="view-shopping"'));
+  assert.ok(view.includes('id="makerGroups"'), 'メーカーの一覧がありません');
+  assert.match(app, /function renderMakerView\(\)/);
+  assert.match(app, /listMakers\(items\)/);
+  assert.match(app, /data-maker-group=/);
+  assert.match(app, /ui\.openMakers\.has\(g\.key\)/);
+  assert.match(app, /aria-expanded=/);
+  // 見出しを押すと開け閉めできる
+  assert.match(app, /closest\('\[data-maker-group\]'\)[\s\S]{0,200}ui\.openMakers\.(add|delete)/);
+  // 開いた中はグリッド／リストの設定に従う
+  assert.match(app, /ui\.layout === 'list'[\s\S]{0,160}itemRow\(it\)/);
+
+  // 絞込・並替・表示・複数選択・フォルダの並びは右上の⋯に集約
+  const more = html.slice(html.indexOf('id="sheetMore"'), html.indexOf('id="sheetFolderOrder"'));
+  for (const id of ['btnMoreFilter', 'btnMoreSort', 'btnMoreLayout', 'btnMoreSelect', 'btnMoreFolders']) {
+    assert.ok(more.includes(`id="${id}"`), `#${id} がありません`);
   }
-  assert.equal(row.includes('<svg'), false, '3択にアイコンを足さない');
-  assert.equal(EMOJI.test(row), false, '3択の導線に絵文字がある');
-
-  // 押すと分け方が変わる（既存のメーカー見出し・フォルダ見出しを使う）
-  assert.match(app, /\$\('viewRow'\)\.addEventListener\('click', \(e\) => \{[\s\S]{0,200}withViewGroup\(state\.settings, b\.dataset\.viewGroup\)/);
-  assert.match(app, /renderTilesInto\(\$\('itemList'\), currentList\(\), \{ group: viewGroupOf\(state\.settings\)/);
-  assert.match(app, /function viewBlocks\(items, group\) \{/);
-  assert.match(app, /groupByFolder\(items, state\.folders\)/);
-  assert.match(app, /groupByMaker\(items\)/);
-  // 押されている状態が見た目で分かる
-  assert.match(app, /btn\.setAttribute\('aria-pressed', String\(group === g\.id\)\)/);
-  // 並替の「メーカー順」と連動（どちらから変えても同じ状態になる）
+  assert.ok(html.includes('id="btnMore"'), '⋯ボタンがありません');
+  assert.match(html, /class="hbtn" id="btnMore"/);
+  assert.match(app, /\$\('btnMore'\)\.addEventListener\('click', \(\) => \{[\s\S]{0,120}openSheet\('sheetMore'\)/);
+  // 並替は⋯から開く（メーカー順と連動する設定はそのまま）
   assert.match(app, /withSortMode\(state\.settings, b\.dataset\.sort\)/);
+  // 絞込・並びが入っているときは⋯に点を出す
+  assert.match(app, /\$\('btnMore'\)\.classList\.toggle\('has-dot'/);
+  assert.match(css, /\.hbtn[^{]*\{[^}]*display:\s*grid/);
+  assert.match(css, /\.hbtn\.has-dot/);
 
-  // フォルダアイコンは「場所」タブと紛らわしいのでツールバーから外した
-  assert.equal(html.includes('id="btnFolders"'), false, 'ツールバーのフォルダボタンが残っている');
-  assert.equal(/btnFolders/.test(app), false, 'app.js に btnFolders が残っている');
-  assert.match(html, /data-tab="folders"[^>]*>場所</);
-
-  // 375pxではみ出さない（3等分・折り返さない）
-  assert.match(css, /\.viewrow\s*\{[^}]*display:\s*flex/);
-  assert.match(css, /\.viewrow\[hidden\]\s*\{\s*display:\s*none/);
-  assert.match(css, /\.seg\s*\{[^}]*display:\s*flex/);
-  assert.match(css, /\.vpill\s*\{[^}]*flex:\s*1 1 0/);
-  assert.match(css, /\.vpill\s*\{[^}]*white-space:\s*nowrap/);
-  assert.match(css, /\.vpill\[aria-pressed="true"\]\s*\{[^}]*background:\s*var\(--accent-soft\)/);
+  // 検索は右上の虫眼鏡＋1行の検索欄（下部ドックの検索ではない）
+  const header = html.slice(html.indexOf('<header class="app-header">'), html.indexOf('</header>'));
+  assert.ok(header.includes('id="btnSearch"'), '虫眼鏡がヘッダーにありません');
+  assert.ok(header.includes('id="searchRow"'), '検索欄がヘッダーにありません');
+  assert.match(app, /\$\('searchRow'\)\.hidden = !searchOpen;/);
 });
 
 test('右下の＋の上に、文字なしの読取ボタンがある（ツールバーの読取は無し）', () => {
@@ -307,46 +312,44 @@ test('画面サイズは固定（ダブルタップ・ピンチで拡大しな�
   assert.match(inputFont[1], /font-size:\s*1[6-9]px|font-size:\s*1[6-9]\./);
 });
 
-test('操作系は下部のドックにまとめ、上部はタイトルと現在地だけにする', () => {
+test('下部はタブバーと広告だけ。操作はヘッダーの検索と⋯に集約する', () => {
   const html = read('index.html');
   const app = read('app.js');
   const css = read('styles.css');
 
-  // 上部（ヘッダー）にはタイトル・件数・現在地（パンくず）だけ
+  // ヘッダーは「タイトル・件数・残り枠・虫眼鏡・⋯」の1行＋（開いたときだけ）検索欄
   const header = html.slice(html.indexOf('<header class="app-header">'), html.indexOf('</header>'));
-  assert.ok(header.includes('id="hdrTotal"'), '件数がありません');
-  assert.ok(header.includes('id="crumb"'), '現在地（パンくず）がありません');
+  for (const id of ['hdrTotal', 'quotaNote', 'btnSearch', 'btnMore', 'searchRow']) {
+    assert.ok(header.includes(`id="${id}"`), `ヘッダーに#${id}がありません`);
+  }
   assert.equal(header.includes('id="tools"'), false, 'ツールバーが上部に残っている');
   assert.equal(header.includes('id="viewRow"'), false, '3択が上部に残っている');
-  assert.equal(header.includes('id="searchRow"'), false, '検索欄が上部に残っている');
+  // 検索欄は開いたときだけ出す（常時は出さない）
+  assert.match(html, /<div class="search-row" id="searchRow" hidden>/);
+  assert.match(app, /\$\('searchRow'\)\.hidden = !searchOpen;/);
 
-  // 下部ドック（タブバーのすぐ上）に検索・絞込・並替・選択・表示切替と3択をまとめる
-  const dock = html.slice(html.indexOf('id="dock"') - 20, html.indexOf('<nav class="tabbar"'));
-  assert.ok(dock.includes('id="tools"'), 'ドックにツールバーがありません');
-  assert.ok(dock.includes('id="viewRow"'), 'ドックに3択がありません');
-  assert.ok(dock.includes('id="searchRow"'), 'ドックに検索欄がありません');
-  assert.ok(html.indexOf('id="dock"') < html.indexOf('id="tabbar"'), 'ドックはタブバーより前に置く');
+  // 下部はタブバーだけで、ドックは無い
+  const belowMain = html.slice(html.indexOf('</main>'), html.indexOf('<!-- 絞込シート -->'));
+  assert.ok(belowMain.includes('<nav class="tabbar"'), 'タブバーがありません');
+  assert.equal(belowMain.includes('id="dock"'), false, 'ドックが残っている');
+  assert.equal(belowMain.includes('class="tools"'), false, 'ツールバーが残っている');
 
-  // 画面の状態に合わせて出し入れする
-  assert.match(app, /\$\('dock'\)\.hidden = ui\.tab !== 'stock';/);
+  // FABはタブバーのすぐ上（ドックの高さは常に0）
   assert.match(app, /function syncBottomMetrics\(\)/);
-  assert.match(app, /setProperty\('--dock-h'/);
-
-  // CSS: ドックはタブバーの高さの上に固定、FABはその上、本文は下に余白をとる
-  assert.match(css, /\.dock\s*\{[^}]*position:\s*fixed/);
-  assert.match(css, /\.dock\s*\{[^}]*bottom:\s*calc\(var\(--tabbar-h\)/);
+  assert.match(app, /setProperty\('--dock-h', '0px'\)/);
+  assert.match(css, /\.fab\s*\{[^}]*bottom:\s*calc\(var\(--tabbar-h\) \+ var\(--dock-h\)/);
   assert.match(css, /body\s*\{[^}]*padding-bottom:\s*calc\(var\(--tabbar-h\) \+ var\(--dock-h\) \+ var\(--fab-h\)/);
-  // 選択中はドックを選択バーに置き換える（2段に重ねない）
-  assert.match(css, /body\.selecting \.dock\s*\{\s*display:\s*none/);
+  assert.equal(/\.dock\s*\{/.test(css), false, 'ドックのスタイルが残っている');
 });
 
-test('タブバーは4つ（在庫・補充・場所・設定）で均等に並ぶ', () => {
+test('タブバーは4つ（在庫・メーカー・補充・設定）で均等に並ぶ', () => {
   const html = read('index.html');
   const css = read('styles.css');
   const bar = html.slice(html.indexOf('<nav class="tabbar"'), html.indexOf('</nav>', html.indexOf('<nav class="tabbar"')));
   const tabs = [...bar.matchAll(/data-tab="([a-z]+)"/g)].map((m) => m[1]);
-  assert.deepEqual(tabs, ['stock', 'shopping', 'folders', 'settings']);
+  assert.deepEqual(tabs, ['stock', 'maker', 'shopping', 'settings']);
   assert.equal(bar.includes('色見本'), false, '色見本タブが残っている');
+  assert.equal(/data-tab="folders"/.test(bar), false, '「場所」タブが残っている');
   // 375pxで4等分（flex: 1 1 0 + min-width: 0）
   const btn = /^\.tabbar button\s*\{([^}]*)\}/m.exec(css);
   assert.ok(btn, '.tabbar button のスタイルがありません');

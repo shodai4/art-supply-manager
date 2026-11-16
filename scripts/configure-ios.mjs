@@ -28,6 +28,11 @@ export const APP_DISPLAY_NAME = 'アトリコ';
 export const APP_BUNDLE_NAME = '画材管理';
 export const MINIMUM_IOS_VERSION = '15.0';
 
+// AdMob のアプリID（Info.plist の GADApplicationIdentifier）。
+// いまはテスト広告の間なので、Google の公式テストアプリIDを使う（admob.js の USE_TEST_ADS と対）。
+// 本番IDを発行したら、admob.js とこの1行を同じ値に差し替える。
+export const ADMOB_APP_ID = 'ca-app-pub-3940256099942544~1458002511';
+
 const CAMERA_USAGE = 'バーコード（JANコード）を読み取るためにカメラを使用します。映像は端末内だけで処理し、外部へ送信しません。';
 const PHOTO_USAGE = '画材の実物写真を登録するために、写真を選択します。選んだ写真は端末内にのみ保存します。';
 
@@ -40,6 +45,23 @@ export const CONFIG_ENTRIES = [
   { key: 'ITSAppUsesNonExemptEncryption', value: '<false/>', mode: 'value' },
   // iPhone は縦固定（画面は縦前提で作っている）。iPad 用の ~ipad キーは Capacitor の既定（全向き）のまま
   { key: 'UISupportedInterfaceOrientations', value: '<array>\n\t\t<string>UIInterfaceOrientationPortrait</string>\n\t</array>', mode: 'value' },
+  // 最下部のバナー広告（AdMob）。広告SDKが起動時にアプリIDを読むため、キーが無いと起動時に落ちる
+  { key: 'GADApplicationIdentifier', value: `<string>${ADMOB_APP_ID}</string>`, mode: 'value' },
+  // 広告の配信元を測るためのネットワーク識別子（Apple が公開している AdMob の推奨リストから主要なものを入れる）
+  {
+    key: 'SKAdNetworkItems',
+    value: '<array>\n'
+      + '\t\t<dict><key>SKAdNetworkIdentifier</key><string>cstr6suwn9.skadnetwork</string></dict>\n'
+      + '\t\t<dict><key>SKAdNetworkIdentifier</key><string>4fzdc2evr5.skadnetwork</string></dict>\n'
+      + '\t\t<dict><key>SKAdNetworkIdentifier</key><string>2fnua5tdw4.skadnetwork</string></dict>\n'
+      + '\t\t<dict><key>SKAdNetworkIdentifier</key><string>ydx93a7ass.skadnetwork</string></dict>\n'
+      + '\t\t<dict><key>SKAdNetworkIdentifier</key><string>p78axxw29g.skadnetwork</string></dict>\n'
+      + '\t</array>',
+    mode: 'value',
+  },
+  // 広告識別子（IDFA）を使う場合の説明。いまは許可を求めていないので画面は出ないが、
+  // SDKが将来参照しても落ちないよう用意しておく（拒否しても全機能は同じように使える）。
+  { key: 'NSUserTrackingUsageDescription', value: '<string>利用者に合った広告を表示するために広告識別子を使う場合があります。許可しない場合も、画材の登録・読取・在庫管理などすべての機能を同じようにご利用いただけます。</string>', mode: 'value' },
 ];
 
 function countOccurrences(haystack, needle) {

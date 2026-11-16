@@ -132,9 +132,9 @@ test('refreshSampleItem はID・フォルダ・作成日を引き継ぎ、既知
 
 test('差し替えの呼び出しは画面の読み込み後（写真の準備ができてから）に1回だけ', () => {
   const app = read('app.js');
-  assert.match(app, /preloadPhotos\(\)\.then\(\(ok\) => \{\s*if \(ok\) backfillSampleImagesInState\(\);/);
+  assert.match(app, /preloadPhotos\(\)\.then\(\(ok\) => \{\s*if \(!ok\) return;\s*backfillSampleImagesInState\(\);/);
   assert.match(app, /const out = backfillSampleImages\(state, \{ photoIds: photoUrls \}\);\s*if \(!out\.filled && !out\.replaced\) return;/);
   // 差し替えは静かに（toast を出さない）
-  const block = app.slice(app.indexOf('function backfillSampleImagesInState'), app.indexOf('/* ---------------- storage'));
+  const block = app.slice(app.indexOf('function backfillSampleImagesInState'), app.indexOf('/* ---------------- 画像の後補完'));
   assert.equal(/toast\(/.test(block), false);
 });

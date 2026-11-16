@@ -42,8 +42,10 @@
   --radius: 14px;
   /* 下部UIの高さ（操作ドックはJSが実測して上書きする） */
   --tabbar-h: 56px;
-  --dock-h: 78px;
+  --dock-h: 0px;   /* 下部ドックは廃止（タブバー＋広告だけ）。FABの位置計算のために0で残す */
   --fab-h: 118px;
+  /* 最下部のAdMobバナーの高さ（ネイティブで広告が出ている間だけJSが入れる。Webでは0） */
+  --ad-h: 0px;
   color-scheme: light;
 }
 
@@ -96,7 +98,7 @@ html, body { margin: 0; padding: 0; }
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif;
   background: var(--bg); color: var(--ink); font-size: 15px; line-height: 1.5;
-  padding-bottom: calc(var(--tabbar-h) + var(--dock-h) + var(--fab-h) + env(safe-area-inset-bottom));
+  padding-bottom: calc(var(--tabbar-h) + var(--dock-h) + var(--fab-h) + var(--ad-h) + env(safe-area-inset-bottom));
   overflow-x: hidden;
 }
 button, input, select, textarea { font: inherit; color: inherit; }
@@ -104,34 +106,35 @@ button { cursor: pointer; }
 
 /* ダブルタップの拡大を止める（画面サイズは固定。スクロールと文字入力はそのまま使える） */
 html, body { touch-action: manipulation; }
-button, a, select, label, summary, .tool, .vpill, .fab, .tabbar button { touch-action: manipulation; }
+button, a, select, label, summary, .hbtn, .vpill, .fab, .tabbar button { touch-action: manipulation; }
 .sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
 .ic { width: 16px; height: 16px; display: block; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
-/* ---------- 上部バー（タイトル＋点数 / 短いツール / 階層ナビ） ---------- */
+/* ---------- 上部バー（タイトル・点数・残り枠・検索・⋯） ---------- */
 .app-header { position: sticky; top: 0; z-index: 20; background: var(--surface); border-bottom: 1px solid var(--line); padding-top: env(safe-area-inset-top); }
-.hrow { display: flex; align-items: baseline; gap: 8px; padding: 9px 14px 1px; }
+.hrow { display: flex; align-items: center; gap: 8px; padding: 8px 12px; }
 .hrow h1 { margin: 0; font-size: 17px; font-weight: 800; letter-spacing: .02em; line-height: 1.3; }
-.hrow .total { margin-left: auto; font-size: 12.5px; font-weight: 700; color: var(--ink-2); white-space: nowrap; }
-
-.tools[hidden] { display: none; }
-.tools { display: flex; gap: 3px; padding: 5px 10px 3px; overflow-x: auto; scrollbar-width: none; }
-.tools::-webkit-scrollbar { display: none; }
-.tool {
-  flex: 0 0 auto; height: 32px; display: inline-flex; align-items: center; gap: 3px;
-  border: 1px solid var(--line); background: var(--surface); border-radius: 999px;
-  padding: 0 7px; font-size: 11.5px; font-weight: 700; color: var(--soft-ink); line-height: 1;
-  box-shadow: var(--shadow-2);
+.hrow .total { font-size: 12.5px; font-weight: 700; color: var(--ink-2); white-space: nowrap; }
+.hrow .quota { margin-left: auto; font-size: 11px; font-weight: 700; color: var(--ink-3); white-space: nowrap; }
+.hrow .quota.tight { color: var(--warn); }
+.hrow .quota:empty { display: none; }
+/* 右上の虫眼鏡と⋯（絞込・並替・表示・複数選択・フォルダの並びをここに集約） */
+.hbtn {
+  position: relative; flex: 0 0 auto; width: 34px; height: 34px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--soft-ink);
+  display: grid; place-items: center; box-shadow: var(--shadow-2);
 }
-.tool .ic { width: 13px; height: 13px; color: var(--muted-ink); }
-.tool:active { background: var(--surface-2); }
-.tool[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--on-accent-soft); }
-.tool[aria-pressed="true"] .ic { color: var(--on-accent-soft); }
-.tool.icon { width: 30px; padding: 0; justify-content: center; }
-.tool[hidden] { display: none; }
+.hbtn .ic { width: 19px; height: 19px; }
+.hbtn:active { background: var(--surface-2); }
+.hbtn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--on-accent-soft); }
+/* 絞込・並びが入っているときの小さな点 */
+.hbtn.has-dot::after {
+  content: ''; position: absolute; top: 4px; right: 4px; width: 7px; height: 7px;
+  border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--surface);
+}
 
-.search-row { display: flex; gap: 6px; padding: 2px 12px 5px; }
+.search-row { display: flex; gap: 6px; padding: 0 12px 8px; }
 .search-row[hidden] { display: none; }
 .search-row input[type="search"] {
   flex: 1 1 auto; min-width: 0; border: 1px solid var(--line); background: var(--surface); border-radius: 10px;
@@ -144,43 +147,38 @@ button, a, select, label, summary, .tool, .vpill, .fab, .tabbar button { touch-a
   background: var(--surface); display: grid; place-items: center; color: var(--ink-2);
 }
 
-.crumb { display: flex; align-items: center; gap: 6px; padding: 4px 12px 8px; }
-/* 家（トップへ）・上へ戻る は親指で押しやすい大きさにする */
+/* フォルダを開いているときの現在地（家・フォルダ名・上へ） */
+.crumb { display: flex; align-items: center; gap: 8px; padding: 0 12px 10px; }
+.crumb[hidden] { display: none; }
 .crumb .cbtn {
-  flex: 0 0 auto; width: 42px; height: 40px; border-radius: 11px; border: 1px solid var(--line);
+  flex: 0 0 auto; width: 44px; height: 42px; border-radius: 12px; border: 1px solid var(--line);
   background: var(--surface); display: grid; place-items: center; color: var(--soft-ink);
 }
-.crumb .cbtn .ic { width: 20px; height: 20px; }
+.crumb .cbtn .ic { width: 21px; height: 21px; }
 .crumb .cbtn:active { background: var(--surface-2); }
-.crumb .cbtn:disabled { opacity: .3; }
-.crumb .cbtn:last-child { margin-left: auto; }
-.crumb .sep { font-size: 12px; color: var(--ink-3); }
+.crumb .sep { font-size: 13px; color: var(--ink-3); }
 .crumb .path {
-  font-size: 12.5px; font-weight: 700; color: var(--ink); max-width: 58%;
+  flex: 1 1 auto; min-width: 0; font-size: 15.5px; font-weight: 800; color: var(--ink);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.crumb[hidden] { display: none; }
-.crumb.root .sep, .crumb.root .path { display: none; }
-.crumb .quota { margin-left: auto; font-size: 11px; font-weight: 700; color: var(--ink-3); white-space: nowrap; }
-.crumb .quota.tight { color: var(--warn); }
-.crumb .quota:empty { display: none; }
-.crumb .quota + .cbtn { margin-left: 4px; }
+.crumb .cbtn.up { margin-left: auto; }
 
-/* ---------- 一覧の分け方（すべて / フォルダ別 / メーカー別・ワンタップ） ---------- */
-.viewrow { display: flex; align-items: center; padding: 0 12px 8px; }
-.viewrow[hidden] { display: none; }
-.seg {
-  display: flex; flex: 1 1 auto; min-width: 0; border: 1px solid var(--line);
-  border-radius: 999px; background: var(--surface); overflow: hidden;
+/* 在庫タブのまとまり（お気に入り・フォルダ・画材）の見出し */
+.fsec { margin: 0; }
+.sechead {
+  display: flex; align-items: center; gap: 6px; padding: 10px 12px 2px;
+  font-size: 11.5px; font-weight: 800; color: var(--soft-ink); letter-spacing: .02em;
 }
-.vpill {
-  flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; justify-content: center;
-  height: 28px; padding: 0 6px; border: none; background: transparent;
-  font-size: 11.5px; font-weight: 700; color: var(--soft-ink); line-height: 1; white-space: nowrap;
+.sechead .ic { width: 14px; height: 14px; color: var(--muted-ink); }
+.sechead b {
+  font-size: 10px; font-weight: 700; color: var(--muted-ink);
+  background: var(--surface-3); border-radius: 999px; padding: 0 6px; line-height: 15px;
 }
-.vpill + .vpill { border-left: 1px solid var(--line); }
-.vpill:active { background: var(--surface-2); }
-.vpill[aria-pressed="true"] { background: var(--accent-soft); color: var(--on-accent-soft); font-weight: 800; }
+.sechead .ic:first-child { flex: 0 0 auto; }
+/* お気に入りは横に並べて、よく使うものをすぐ押せるようにする */
+.favstrip { display: flex; gap: 8px; padding: 6px 12px 6px; overflow-x: auto; scrollbar-width: none; }
+.favstrip::-webkit-scrollbar { display: none; }
+.favstrip > .tilewrap { flex: 0 0 84px; }
 
 /* ---------- フォルダグリッド（保管場所） ---------- */
 .fgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px 8px; padding: 12px 12px 6px; }
@@ -209,17 +207,15 @@ button, a, select, label, summary, .tool, .vpill, .fab, .tabbar button { touch-a
 }
 .ftile:active .fico { filter: brightness(.96); }
 
-/* 子フォルダの行（フォルダを開くと上に出る） */
-.subrow { display: flex; gap: 6px; padding: 10px 12px 0; overflow-x: auto; scrollbar-width: none; }
-.subrow[hidden] { display: none; }
-.subrow::-webkit-scrollbar { display: none; }
-.pill.sub { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px; padding: 6px 11px; font-size: 12.5px; font-weight: 700; }
-.pill.sub b { font-size: 10px; font-weight: 700; color: var(--ink-3); }
-.pill.sub.add { font-weight: 800; color: var(--accent); }
-.pill.move { margin-left: calc(var(--d, 0) * 12px); }
+/* フォルダを作るタイル（グリッドの最後に置く） */
+.ftile.add .fico { background: var(--surface-3); color: var(--ink-3); box-shadow: inset 0 0 0 1.5px var(--line); }
+.ftile.add .fico .ic { width: 38%; height: auto; aspect-ratio: 1 / 1; }
+.ftile.add .fname { color: var(--ink-3); }
 
 /* ---------- 画材タイル（3〜4列グリッド） ---------- */
 .tgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px 8px; padding: 8px 12px 6px; }
+/* カード（画像＋名前のボタン）と、星・−/＋ を同じ枠に並べる */
+.tilewrap { position: relative; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .tile { display: flex; flex-direction: column; gap: 5px; border: none; background: none; padding: 0; min-width: 0; text-align: left; }
 .tile .sw {
   position: relative; display: block; width: 100%; aspect-ratio: 1 / 1; border-radius: 13px; overflow: hidden;
@@ -257,6 +253,40 @@ button, a, select, label, summary, .tool, .vpill, .fab, .tabbar button { touch-a
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word;
 }
 
+/* ---------- カード上のお気に入り（星）と在庫の −/＋ ---------- */
+/* 星は画像の右上。押すとお気に入りの入/切が入れ替わる（お気に入りは一覧の先頭にまとまる） */
+.fav {
+  position: absolute; top: 3px; right: 3px; z-index: 4;
+  width: 24px; height: 24px; padding: 0; border: none; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--badge-bg); color: var(--muted-ink);
+  box-shadow: 0 0 0 1px rgba(15, 25, 40, .09), var(--shadow-2);
+}
+.fav .ic { width: 15px; height: 15px; }
+.fav.on { color: #c98a12; }
+.fav:active { transform: scale(.94); }
+/* 在庫の −/＋（カードの名前の下）。幅を等分して375pxでもはみ出さない */
+.tstep { display: flex; align-items: center; gap: 2px; height: 22px; }
+.tstep .step {
+  flex: 1 1 0; min-width: 0; height: 22px; padding: 0; border-radius: 7px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink-2);
+  display: grid; place-items: center;
+}
+.tstep .step .ic { width: 11px; height: 11px; }
+.tstep .step:active { background: var(--accent-soft); color: var(--on-accent-soft); }
+.tstep .n {
+  flex: 0 0 auto; min-width: 15px; text-align: center; font-size: 11px; font-weight: 800;
+  color: var(--tile-ink); font-variant-numeric: tabular-nums;
+}
+.tilewrap.low .tstep .n { color: var(--warn); }
+.tilewrap.out .tstep .n { color: var(--bad); }
+/* リストの星はフォルダタグの左（サムネイルを隠さない）。名前の幅を圧迫しない大きさ */
+.it-sub .fav.sm {
+  position: static; flex: 0 0 auto; width: 20px; height: 20px;
+  background: none; box-shadow: none;
+}
+.it-sub .fav.sm .ic { width: 14px; height: 14px; }
+
 /* ---------- 複数選択（タイル・行のチェックと操作バー） ---------- */
 .selmark {
   position: absolute; top: 5px; left: 5px; z-index: 3; width: 17px; height: 17px; border-radius: 50%;
@@ -273,7 +303,7 @@ button, a, select, label, summary, .tool, .vpill, .fab, .tabbar button { touch-a
 .tile.selecting .it-side, .item.selecting .it-side { opacity: .55; }
 
 .selbar {
-  position: fixed; left: 0; right: 0; bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom)); z-index: 28;
+  position: fixed; left: 0; right: 0; bottom: calc(var(--tabbar-h) + var(--ad-h) + env(safe-area-inset-bottom)); z-index: 28;
   display: flex; align-items: center; gap: 6px; padding: 8px 12px;
   background: var(--surface); border-top: 1px solid var(--line); box-shadow: 0 -2px 10px rgba(16, 32, 56, .1);
 }
@@ -281,8 +311,27 @@ button, a, select, label, summary, .tool, .vpill, .fab, .tabbar button { touch-a
 .selbar .selcount { font-size: 13px; font-weight: 800; min-width: 44px; }
 .selbar .btn.mini { padding: 9px 12px; }
 .selbar .btn.mini:disabled { opacity: .45; }
-/* 選択中は操作ドックを選択バーに置き換える（下に2段重ならない） */
-body.selecting .dock { display: none; }
+/* 選択中は右下のFABを出さない（操作バーと重ねない。render() が visibility を切り替える） */
+
+/* ---------- メーカー別タブ（見出しをタップして開く） ---------- */
+.makers { margin: 0 12px; }
+.mg { border-top: 1px solid var(--line); }
+.mg:first-child { border-top: none; }
+.mghead {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 13px 0;
+  border: none; background: none; text-align: left; font-size: 14px; font-weight: 700; color: var(--ink);
+}
+.mghead .chev { flex: 0 0 auto; width: 14px; height: 14px; color: var(--muted-ink); transition: transform .15s ease; }
+.mg.open .mghead .chev { transform: rotate(90deg); }
+.mghead .mgname { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mghead b {
+  flex: 0 0 auto; font-size: 11px; font-weight: 700; color: var(--muted-ink);
+  background: var(--surface-3); border-radius: 999px; padding: 0 7px; line-height: 17px;
+}
+.mg .tgrid { padding: 2px 0 12px; }
+.mg .mlist { padding-bottom: 8px; }
+.mg .mlist .item { margin: 6px 0; }
+.mghead:active { opacity: .65; }
 
 /* メーカー見出し（メーカー順のとき） */
 .mhead { display: flex; align-items: center; gap: 6px; padding: 10px 12px 0; font-size: 11px; font-weight: 800; color: var(--soft-ink); letter-spacing: .02em; }
@@ -337,7 +386,7 @@ main { padding: 0; }
 
 .fab {
   position: fixed; right: 14px; z-index: 25;
-  bottom: calc(var(--tabbar-h) + var(--dock-h) + 14px + env(safe-area-inset-bottom));
+  bottom: calc(var(--tabbar-h) + var(--dock-h) + 14px + var(--ad-h) + env(safe-area-inset-bottom));
   width: 52px; height: 52px; border-radius: 50%; border: none; background: var(--accent); color: #fff;
   display: grid; place-items: center; box-shadow: 0 6px 18px rgba(47, 111, 208, .38);
   transition: bottom .16s ease;
@@ -345,33 +394,19 @@ main { padding: 0; }
 .fab .ic { width: 24px; height: 24px; }
 /* 右下の＋の上に置く読取ボタン（文字なしのアイコンだけ） */
 .fab.scan {
-  bottom: calc(var(--tabbar-h) + var(--dock-h) + 14px + 52px + 8px + env(safe-area-inset-bottom)); right: 18px;
+  bottom: calc(var(--tabbar-h) + var(--dock-h) + 14px + 52px + 8px + var(--ad-h) + env(safe-area-inset-bottom)); right: 18px;
   width: 44px; height: 44px; background: var(--surface); color: var(--accent);
   border: 1px solid var(--line); box-shadow: 0 4px 14px rgba(16, 24, 36, .18);
 }
 .fab.scan .ic { width: 21px; height: 21px; }
 
-/* ---------- 下部操作ドック（タブバーのすぐ上） ---------- */
-.dock {
-  position: fixed; left: 0; right: 0; z-index: 26;
-  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
-  background: var(--surface); border-top: 1px solid var(--line);
-  box-shadow: 0 -2px 10px rgba(46, 38, 24, .07);
-  padding: 5px 0 6px;
-}
-.dock[hidden] { display: none; }
-.dock .tools { padding: 0 8px; gap: 4px; }
-.dock .search-row { padding: 0 10px 6px; }
-.dock .viewrow { padding: 5px 10px 0; }
-.dock .tool { flex: 1 1 auto; justify-content: center; height: 34px; font-size: 12px; }
-.dock .tool.icon { flex: 0 0 34px; width: 34px; }
-.dock .seg { width: 100%; }
-.dock .vpill { height: 30px; font-size: 12px; }
 .tabbar {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: var(--surface); border-top: 1px solid var(--line);
+  position: fixed; left: 0; right: 0; bottom: calc(var(--ad-h) + env(safe-area-inset-bottom)); z-index: 30; background: var(--surface); border-top: 1px solid var(--line);
   display: flex; align-items: stretch; height: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
   padding-bottom: env(safe-area-inset-bottom);
 }
+/* バナーが出ている間は、タブバー自身のセーフエリア余白はバナー側が持つ（二重に空けない） */
+body[data-ad-banner="true"] .tabbar { height: var(--tabbar-h); padding-bottom: 0; }
 .tabbar button {
   flex: 1 1 0; min-width: 0; border: none; background: none; padding: 0 2px;
   font-size: 12.5px; font-weight: 700; color: var(--ink-2); letter-spacing: .02em;
@@ -385,7 +420,7 @@ main { padding: 0; }
 .sheet-mask.open { display: block; }
 .sheet {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 41; background: var(--surface); border-radius: 18px 18px 0 0;
-  max-height: 92vh; overflow-y: auto; padding: 14px 14px calc(18px + env(safe-area-inset-bottom)); display: none;
+  max-height: 92vh; overflow-y: auto; padding: 14px 14px calc(18px + var(--ad-h) + env(safe-area-inset-bottom)); display: none;
   width: 100%; max-width: 520px; margin: 0 auto;
 }
 .sheet.open { display: block; }
@@ -421,6 +456,8 @@ main { padding: 0; }
 .pill-row { display: flex; gap: 6px; flex-wrap: wrap; }
 .pill { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 8px 12px; font-size: 13px; }
 .pill[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--on-accent-soft); font-weight: 700; }
+/* 移動先は階層の深さでインデントする */
+.pill.move { margin-left: calc(var(--d, 0) * 12px); }
 
 /* 辞書から探す（検索結果の行） */
 .dict-list { font-size: 12px; }
@@ -518,7 +555,7 @@ main { padding: 0; }
 .section-title { font-size: 12.5px; font-weight: 700; color: var(--ink-2); margin: 18px 0 6px; }
 .toast {
   position: fixed; left: 50%; transform: translateX(-50%); z-index: 60;
-  bottom: calc(var(--tabbar-h) + var(--dock-h) + var(--fab-h) + 6px + env(safe-area-inset-bottom)); background: var(--toast-bg); color: var(--toast-ink);
+  bottom: calc(var(--tabbar-h) + var(--dock-h) + var(--fab-h) + var(--ad-h) + 6px + env(safe-area-inset-bottom)); background: var(--toast-bg); color: var(--toast-ink);
   font-size: 13px; padding: 10px 16px; border-radius: 999px; opacity: 0; transition: opacity .18s; pointer-events: none; max-width: 90vw; text-align: center;
 }
 .toast.show { opacity: 1; }

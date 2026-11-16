@@ -1,6 +1,6 @@
 {
   "name": "art-supply-manager",
-  "version": "1.10.0",
+  "version": "1.11.0",
   "private": true,
   "type": "module",
   "description": "アトリコ（画材の在庫を管理するアプリ。保管場所フォルダ分け・在庫管理・バーコード/JAN読み取り）",
@@ -15,6 +15,7 @@
     "dict:add": "node scripts/add-jan-extra.mjs"
   },
   "dependencies": {
+    "@capacitor-community/admob": "^6.2.0",
     "@capacitor/browser": "^6.0.6",
     "@capacitor/core": "^6.2.0",
     "@capacitor/ios": "^6.2.0"
