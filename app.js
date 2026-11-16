@@ -1,4 +1,4 @@
-// 画材管理アプリ UI（storage + rendering + バーコード読取）
+// ガザイコ UI（storage + rendering + バーコード読取）
 import {
   STORAGE_KEY, CATEGORIES, STATUSES, DEFAULT_FOLDERS, SORT_MODES, MAKER_NONE,
   createItem, adjustStock, computeShoppingList, filterItems, moveItems, sortItems, countByFolder,

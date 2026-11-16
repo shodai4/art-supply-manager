@@ -41,15 +41,15 @@ test('中継サーバーURLは http(s) だけ通し、末尾スラッシュを�
 });
 
 test('使う中継サーバーは 設定値 → 同梱の既定値 の順で決まる', () => {
-  // 同梱の既定値は空（Workersをデプロイしたら1行入れる）
-  assert.equal(DEFAULT_IMAGE_PROXY_URL, '');
-  assert.equal(resolveImageProxyUrl({}), '');
-  assert.equal(canUseImageProxy({}), false);
+  // 同梱の既定値は、2026年11月16日にデプロイしたCloudflare Workers
+  assert.equal(DEFAULT_IMAGE_PROXY_URL, 'https://rakuten-image-proxy.shodai121ueda.workers.dev');
+  assert.equal(resolveImageProxyUrl({}), DEFAULT_IMAGE_PROXY_URL);
+  assert.equal(canUseImageProxy({}), true);
 
   assert.equal(resolveImageProxyUrl({ imageProxyUrl: PROXY }), PROXY);
   assert.equal(canUseImageProxy({ imageProxyUrl: PROXY }), true);
-  // 設定値が壊れているときは既定値（ここでは空）に戻す
-  assert.equal(resolveImageProxyUrl({ imageProxyUrl: 'not a url' }), '');
+  // 設定値が壊れているときは同梱の既定値に戻す
+  assert.equal(resolveImageProxyUrl({ imageProxyUrl: 'not a url' }), DEFAULT_IMAGE_PROXY_URL);
 });
 
 test('中継サーバーへのURLは /?jan=13桁 の形にする', () => {
@@ -154,19 +154,25 @@ test('中継サーバーが「画像なし」「JAN不正」を返したら直�
   }
 });
 
-test('中継サーバーも自分の認証情報も無ければ、設定を促す', async () => {
+test('設定ゼロでも同梱の中継サーバーで取得できる', async () => {
   const fetchImpl = stubFetch(() => ({ ok: true, status: 200, json: async () => okBody }));
-  await assert.rejects(() => fetchProductImage(JAN, { fetchImpl }), /設定がありません/);
-  await assert.rejects(() => fetchProductImage(JAN, { appId: 'appid-1', fetchImpl }), /アクセスキー/);
-  await assert.rejects(() => fetchProductImage('123', { proxyUrl: PROXY, fetchImpl }), /13桁/);
-  assert.equal(fetchImpl.calls.length, 0);
+  assert.equal(await fetchProductImage(JAN, { fetchImpl }), okBody.imageUrl);
+  assert.equal(fetchImpl.calls.length, 1);
+  assert.equal(fetchImpl.calls[0].url, `${DEFAULT_IMAGE_PROXY_URL}/?jan=${JAN}`);
+  // 中継サーバーが落ちていて、自分のアプリIDだけでアクセスキーが無いときは案内する
+  const down = stubFetch(() => ({ ok: false, status: 500, json: async () => ({ error: 'not_configured' }) }));
+  await assert.rejects(() => fetchProductImage(JAN, { appId: 'appid-1', fetchImpl: down }), /アクセスキー/);
+  await assert.rejects(() => fetchProductImage('123', { fetchImpl }), /13桁/);
 });
 
-test('中継サーバー未設定でも自分の認証情報があれば直接取得できる（上級者向けの逃げ道）', async () => {
-  const fetchImpl = stubFetch(() => ({ ok: true, status: 200, json: async () => ({ Items: [{ mediumImageUrls: [{ imageUrl: 'https://thumbnail.image.rakuten.co.jp/e.jpg?_ex=128x128' }] }] }) }));
+test('同梱の中継サーバーが使えないときは自分の認証情報で直接取得できる（上級者向けの逃げ道）', async () => {
+  const fetchImpl = stubFetch((url) => (url.startsWith('https://openapi.rakuten.co.jp')
+    ? { ok: true, status: 200, json: async () => ({ Items: [{ mediumImageUrls: [{ imageUrl: 'https://thumbnail.image.rakuten.co.jp/e.jpg?_ex=128x128' }] }] }) }
+    : { ok: false, status: 500, json: async () => ({ error: 'not_configured' }) }));
   const url = await fetchProductImage(JAN, { appId: 'appid-1', accessKey: 'key-1', fetchImpl });
   assert.equal(url, 'https://thumbnail.image.rakuten.co.jp/e.jpg?_ex=300x300');
-  const call = fetchImpl.calls[0];
+  const call = fetchImpl.calls.at(-1);
+  assert.equal(url, 'https://thumbnail.image.rakuten.co.jp/e.jpg?_ex=300x300');
   assert.equal(new URL(call.url).searchParams.get('accessKey'), 'key-1');
   assert.equal(new URL(call.url).searchParams.get('applicationId'), 'appid-1');
 });

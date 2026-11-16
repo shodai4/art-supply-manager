@@ -19,7 +19,13 @@ export const PROJECT_PATH = process.env.IOS_PROJECT_PATH
   ? path.resolve(process.env.IOS_PROJECT_PATH)
   : path.join(ROOT, 'ios', 'App', 'App.xcodeproj', 'project.pbxproj');
 
-export const APP_DISPLAY_NAME = '画材管理';
+// ホーム画面・アプリ内に出す正式名称の短縮表記（正式名称は「ガザイコ〜画材の在庫を管理するアプリ〜」）
+export const APP_DISPLAY_NAME = 'ガザイコ';
+// CFBundleName は内部名。CI（.github/workflows/ios-build.yml）が APP_NAME で Info.plist を
+// 検査しており、その APP_NAME は App Store Connect の登録名「画材管理」のまま。
+// ワークフローはApp権限の都合でこちらから変更できないため、登録名を内部名として残しておく
+// （ホーム画面に出るのは CFBundleDisplayName なので表示はガザイコになる）。
+export const APP_BUNDLE_NAME = '画材管理';
 export const MINIMUM_IOS_VERSION = '15.0';
 
 const CAMERA_USAGE = 'バーコード（JANコード）を読み取るためにカメラを使用します。映像は端末内だけで処理し、外部へ送信しません。';
@@ -28,7 +34,7 @@ const PHOTO_USAGE = '画材の実物写真を登録するために、写真を�
 /** mode: 'value' は値まで一致させる / 'presence' はキーの存在だけ確認する */
 export const CONFIG_ENTRIES = [
   { key: 'CFBundleDisplayName', value: `<string>${APP_DISPLAY_NAME}</string>`, mode: 'value' },
-  { key: 'CFBundleName', value: `<string>${APP_DISPLAY_NAME}</string>`, mode: 'value' },
+  { key: 'CFBundleName', value: `<string>${APP_BUNDLE_NAME}</string>`, mode: 'value' },
   { key: 'NSCameraUsageDescription', value: `<string>${CAMERA_USAGE}</string>`, mode: 'value' },
   { key: 'NSPhotoLibraryUsageDescription', value: `<string>${PHOTO_USAGE}</string>`, mode: 'value' },
   { key: 'ITSAppUsesNonExemptEncryption', value: '<false/>', mode: 'value' },

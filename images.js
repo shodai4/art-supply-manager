@@ -247,10 +247,11 @@ export async function fetchRakutenImage(jan, appId, { accessKey = '', fetchImpl,
 /* ---------------- 中継サーバー（Cloudflare Workers）経由の画像取得 ---------------- */
 /**
  * みんなが共通で使う中継サーバー（workers/rakuten-image-proxy）。
- * デプロイできたら、この1行にURLを入れるだけで全員がアプリID未登録のまま使える。
- * 例: export const DEFAULT_IMAGE_PROXY_URL = 'https://rakuten-image-proxy.example.workers.dev';
+ * 2026年11月16日に Cloudflare Workers へデプロイ済み。このURLを入れておくと、
+ * 全員がアプリID未登録のままJANから商品画像を取得できる。
+ * 設定画面でURLを入れたときは、そちらが優先される。
  */
-export const DEFAULT_IMAGE_PROXY_URL = '';
+export const DEFAULT_IMAGE_PROXY_URL = 'https://rakuten-image-proxy.shodai121ueda.workers.dev';
 
 /** URLの前後の空白と末尾スラッシュを落とし、http(s) だけ通す */
 export function normalizeProxyUrl(value) {

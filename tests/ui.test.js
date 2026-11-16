@@ -155,8 +155,8 @@ test('画像取得の設定は「中継サーバーURL＋上級者の認証情�
   assert.match(app, /accessKey: String\(state\.settings\.rakutenAccessKey/);
   assert.equal(/fetchRakutenImage\(/.test(app), false);
 
-  // 全員に効くURLは1か所の定数（デプロイ後にここへ入れる）
-  assert.match(images, /export const DEFAULT_IMAGE_PROXY_URL = '';/);
+  // 全員に効くURLは1か所の定数（2026年11月16日にデプロイしたWorkersのURL）
+  assert.match(images, /export const DEFAULT_IMAGE_PROXY_URL = 'https:\/\/rakuten-image-proxy\.shodai121ueda\.workers\.dev';/);
 
   // 中継サーバーは楽天・Yahoo!の両方に対応していることを設定画面で伝える
   assert.match(html, /楽天・Yahoo!の両方に対応/);

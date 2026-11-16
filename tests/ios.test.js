@@ -77,7 +77,7 @@ test('Podfile と Xcode プロジェクトの最低OSを iOS 15.0 に揃える',
 test('capacitor.config.json と package.json の土台', () => {
   const config = JSON.parse(fs.readFileSync(path.join(ROOT, 'capacitor.config.json'), 'utf8'));
   assert.equal(config.appId, 'com.shodai4.artsupplymanager');
-  assert.equal(config.appName, '画材管理');
+  assert.equal(config.appName, APP_DISPLAY_NAME);
   assert.equal(config.webDir, 'www');
   assert.equal(config.ios.contentInset, 'never');
   assert.equal(config.ios.preferredContentMode, 'mobile');

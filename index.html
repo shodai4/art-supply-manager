@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#ffffff">
-<meta name="description" content="画材の在庫をフォルダ（家・アトリエ・持ち出し・ストック）で管理。JANバーコード読み取り対応の画材管理アプリ。">
-<title>画材管理 ｜ Art Supply Manager</title>
+<meta name="description" content="画材の在庫をフォルダ（家・アトリエ・持ち出し・ストック）で管理。JANバーコード読み取り対応のガザイコ。">
+<title>ガザイコ〜画材の在庫を管理するアプリ〜</title>
 <script>
 // 描画前にテーマを決める（ダーク設定で一瞬白い画面が出ないように）
 try {
@@ -101,7 +101,7 @@ try {
 
 <header class="app-header">
   <div class="hrow">
-    <h1>画材管理</h1>
+    <h1>ガザイコ</h1>
     <span class="total" id="hdrTotal">全0種</span>
   </div>
 
@@ -231,10 +231,10 @@ try {
       <p class="hint" id="rakutenState">—</p>
       <details class="advanced">
         <summary>設定する</summary>
-        <p class="hint">中継サーバーのURLを入れると、アプリIDの登録なしでJANから商品画像を取得できます（楽天・Yahoo!の両方に対応）。</p>
+        <p class="hint">中継サーバーは同梱のものを自動で使います（楽天・Yahoo!の両方に対応）。変えたいときだけURLを入れてください。</p>
         <div class="field">
           <label for="fProxyUrl">中継サーバーURL</label>
-          <input id="fProxyUrl" placeholder="https://rakuten-image-proxy.xxx.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="url">
+          <input id="fProxyUrl" placeholder="https://rakuten-image-proxy.shodai121ueda.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="url">
         </div>
         <div class="field">
           <label for="fRakuten">楽天アプリID（自分のIDで取得する）</label>

@@ -1,8 +1,11 @@
 # 商品画像プロキシの設置手順（Cloudflare Workers）— 楽天市場 + Yahoo!ショッピング
 
-画材管理アプリは、JANコードから商品画像を取ってきます。そのために楽天ウェブサービスや
+ガザイコは、JANコードから商品画像を取ってきます。そのために楽天ウェブサービスや
 Yahoo!デベロッパーネットワークの認証情報（アプリID・アクセスキー・Client ID）が必要ですが、
 利用者それぞれに登録してもらうのは現実的ではありません。
+
+本番URL（2026年11月16日 デプロイ済み・`images.js` の `DEFAULT_IMAGE_PROXY_URL` に設定済み）:
+`https://rakuten-image-proxy.shodai121ueda.workers.dev`
 
 `workers/rakuten-image-proxy/` の中継サーバー（Cloudflare Workers）を1つ公開しておけば、
 アプリ側はそのURLを叩くだけで商品画像を取得できます。認証情報は Worker の秘密（Secrets）に置くので、
@@ -66,7 +69,7 @@ Cloudflare Workers の無料枠は **1日10万リクエスト**（CPU時間は1�
    | 連絡先メールアドレス | `shodai121ueda@gmail.com` | メンテナンス等の連絡先 |
    | アプリケーション名 | `art-supply-manager` | 管理画面でしか見えない |
    | サイトURL | `https://shodai4.com/art-supply-manager/` | ホスト名にドットが必要。`localhost` などは登録不可 |
-   | アプリケーションの説明 | 画材管理アプリでJANコードから商品画像を表示するため | 管理画面でしか見えない |
+   | アプリケーションの説明 | ガザイコでJANコードから商品画像を表示するため | 管理画面でしか見えない |
    | プライバシーポリシーURL | `https://shodai4.com/art-supply-manager/privacy.html` | ID連携を利用しない場合は必須ではない（フォームの必須表示に従う） |
    | 利用規約URL | 任意 | 同上 |
    | ガイドライン | 同意する | |
@@ -93,7 +96,7 @@ Cloudflare Workers の無料枠は **1日10万リクエスト**（CPU時間は1�
    - アプリケーションURL: `https://shodai4.com/art-supply-manager/`
    - アプリケーションタイプ: **Webアプリケーション**
    - 許可されたウェブサイト: `shodai4.com`
-   - 利用目的: 画材管理アプリでJANから商品画像を表示するため
+   - 利用目的: ガザイコでJANから商品画像を表示するため
    - 想定QPS: 1 程度（楽天の制限は「1アプリIDにつき1秒1回以下」）
 3. 発行された **applicationId** と **accessKey** を控える（accessKey は再表示できないことがあるので必ず保存）
 

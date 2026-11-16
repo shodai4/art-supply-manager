@@ -1,6 +1,6 @@
 {
-  "name": "画材管理 ｜ Art Supply Manager",
-  "short_name": "画材管理",
+  "name": "ガザイコ〜画材の在庫を管理するアプリ〜",
+  "short_name": "ガザイコ",
   "description": "画材の在庫をフォルダ（家・アトリエ・持ち出し・ストック）で管理。JANバーコード読み取り対応。",
   "start_url": "./index.html",
   "scope": "./",
