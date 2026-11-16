@@ -11,9 +11,11 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 /* 正式名称と短縮表記（この2つ以外の名前を画面に出さない） */
-const APP_NAME_FULL = 'ガザイコ〜画材の在庫を管理するアプリ〜';
-const APP_NAME_SHORT = 'ガザイコ';
+const APP_NAME_FULL = 'アトリコ〜画材の在庫を管理するアプリ〜';
+const APP_NAME_SHORT = 'アトリコ';
 const OLD_NAME = '画材管理';
+/* 2026年11月16日に変えた前の名前。画面・配布物・設定に残っていないこと */
+const PREVIOUS_NAME = 'ガザイコ';
 
 const BASE_PLIST = `<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0">
@@ -49,7 +51,19 @@ test('正式名称と短縮表記が Web・PWA・iOS で揃っている', () => 
   assert.equal(capacitor.appName, APP_NAME_SHORT);
 
   assert.equal(APP_DISPLAY_NAME, APP_NAME_SHORT);
-  assert.ok(plistNames().includes(APP_NAME_SHORT), 'Info.plist の表示名がガザイコになっていない');
+  assert.ok(plistNames().includes(APP_NAME_SHORT), 'Info.plist の表示名がアトリコになっていない');
+});
+
+test('前の名前「ガザイコ」は画面・配布物・設定に残っていない', () => {
+  for (const rel of [
+    'index.html', 'manifest.webmanifest', 'capacitor.config.json', 'support.html', 'privacy.html',
+    'README.md', 'package.json', 'sw.js', 'scripts/configure-ios.mjs',
+    'preview-375.html', 'preview-393.html', 'docs/ios-release-plan.md',
+    'docs/ios-build.yml.template', 'docs/rakuten-proxy-setup.md',
+    'app.js', 'core.js', 'samples.js', 'scanner.js', 'scan-flow.js', 'images.js',
+  ]) {
+    assert.equal(read(rel).includes(PREVIOUS_NAME), false, `${rel} に前の名前が残っています`);
+  }
 });
 
 test('CI が検査する APP_NAME は Info.plist に実在する名前（ビルドを止めない）', () => {
@@ -68,7 +82,8 @@ test('CI が検査する APP_NAME は Info.plist に実在する名前（ビル�
 
 test('旧名は内部名（CFBundleName）だけに残し、画面・法務ページ・README には出さない', () => {
   // App Store Connect の登録名が「画材管理」のままなので、内部名としてだけ残している。
-  // ストア側の名前を変えたら APP_BUNDLE_NAME もガザイコにすればよい（CI の検査は表示名で通る）。
+  // ストア側の名前（App Store Connect の登録名）を変えたら APP_BUNDLE_NAME もアトリコにすればよい
+  // （CI の検査は APP_NAME 一致で通るので、いまは内部名のままでよい）。
   assert.equal(APP_BUNDLE_NAME, OLD_NAME);
   for (const rel of [
     'index.html', 'manifest.webmanifest', 'capacitor.config.json',

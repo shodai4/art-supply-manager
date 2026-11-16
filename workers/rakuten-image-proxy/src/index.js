@@ -11,6 +11,8 @@
 // - 同じJANは Cloudflare のエッジキャッシュ（caches.default）に7日間ためて、
 //   無料枠（1日10万リクエスト）と各APIの回数制限（楽天=1秒1回、Yahoo!=1分30回）を守る。
 // - 取得できるのは画像URLと最小限のメタデータだけ。
+// - JANが一致した商品の画像だけを返す。見つからないときに、似ている商品（同じ色違い・別サイズ等）で
+//   埋めることはしない（404 image_not_found を返し、アプリ側は画像なしのままにする）。
 //
 // 楽天APIは2026年の移行でエンドポイントが openapi.rakuten.co.jp に変わり、
 // applicationId と accessKey の両方が必要になった（旧 20220601 は2026年8月に廃止）。
@@ -199,12 +201,29 @@ export function normalizeImageUrl(url) {
   return https.replace(/([?&])_ex=\d+x\d+/g, `$1_ex=${IMAGE_EX_SIZE}`);
 }
 
-/** 楽天APIの応答から最初の商品の画像URLとメタデータを取る（formatVersion=2 / 旧形式の両対応） */
-export function pickItem(payload) {
+/**
+ * その商品が「このJANの商品」だと言い切れるか。
+ * 楽天の商品検索APIはJANの完全一致で絞る項目を持たない（keyword 検索）ので、
+ * 返ってきた商品の itemCode・itemUrl・itemName のどれかにJANが載っているものだけを同じ商品とみなす。
+ * 載っていないものは「似ている別の商品」の可能性があるので使わない（JAN一致の画像以外は返さない方針）。
+ */
+export function itemMatchesJan(item, jan) {
+  const code = normalizeJan(jan);
+  if (!/^\d{8,14}$/.test(code)) return false;
+  const haystack = [item?.itemCode, item?.itemUrl, item?.itemName].map((v) => String(v ?? '')).join(' ');
+  return haystack.includes(code);
+}
+
+/**
+ * 楽天APIの応答から、JANが一致する最初の商品の画像URLとメタデータを取る
+ * （formatVersion=2 / 旧形式の両対応）。JANが分からない・一致する商品が無ければ null。
+ */
+export function pickItem(payload, jan) {
   const list = Array.isArray(payload?.Items) ? payload.Items : Array.isArray(payload?.items) ? payload.items : [];
   for (const raw of list) {
     const it = raw && raw.Item ? raw.Item : raw;
     if (!it) continue;
+    if (!itemMatchesJan(it, jan)) continue;
     const urls = it.mediumImageUrls || it.smallImageUrls || [];
     if (!Array.isArray(urls)) continue;
     let imageUrl = '';
@@ -227,12 +246,20 @@ export function pickItem(payload) {
 /**
  * Yahoo!の商品検索API（v3）の応答から最初の商品を取る。
  * 画像は exImage（image_size=300で指定した大きさ）→ image.medium（146px）→ image.small（76px）の順。
- * 画像の無い商品しか無ければ null。
+ * jan_code で絞ってはいるが、返ってきた商品の janCode が違うものは使わない
+ * （似ている別商品の画像で補完しない）。画像の無い商品しか無ければ null。
  */
-export function pickYahooItem(payload) {
+export function pickYahooItem(payload, jan) {
+  const code = normalizeJan(jan);
   const hits = Array.isArray(payload?.hits) ? payload.hits : [];
   for (const hit of hits) {
     if (!hit || typeof hit !== 'object') continue;
+    const hitJan = normalizeJan(hit.janCode);
+    if (hitJan && hitJan !== code) continue; // 別のJANの商品は使わない
+    if (!hitJan && !String(hit.url ?? '').includes(code) && !String(hit.name ?? '').includes(code)) {
+      // janCode が返らないAPI応答では、商品URLか商品名にJANが載っているものだけを同じ商品とみなす
+      continue;
+    }
     const candidates = [hit.exImage?.url, hit.image?.medium, hit.image?.small];
     let imageUrl = '';
     for (const candidate of candidates) {
@@ -352,7 +379,7 @@ export async function fetchFromRakuten(jan, env, doFetch) {
   if (!res.ok || (payload && (payload.error || payload.errors))) {
     return failure(source, mapRakutenError(payload, res.status));
   }
-  const item = pickItem(payload);
+  const item = pickItem(payload, jan);
   if (!item) return noItem(source);
   return { ok: true, source, item };
 }
@@ -372,7 +399,7 @@ export async function fetchFromYahoo(jan, env, doFetch) {
   if (!res.ok || (payload && payload.Error)) {
     return failure(source, mapYahooError(payload, res.status));
   }
-  const item = pickYahooItem(payload);
+  const item = pickYahooItem(payload, jan);
   if (!item) return noItem(source);
   return { ok: true, source, item };
 }

@@ -19,12 +19,12 @@ export const PROJECT_PATH = process.env.IOS_PROJECT_PATH
   ? path.resolve(process.env.IOS_PROJECT_PATH)
   : path.join(ROOT, 'ios', 'App', 'App.xcodeproj', 'project.pbxproj');
 
-// ホーム画面・アプリ内に出す正式名称の短縮表記（正式名称は「ガザイコ〜画材の在庫を管理するアプリ〜」）
-export const APP_DISPLAY_NAME = 'ガザイコ';
+// ホーム画面・アプリ内に出す正式名称の短縮表記（正式名称は「アトリコ〜画材の在庫を管理するアプリ〜」）
+export const APP_DISPLAY_NAME = 'アトリコ';
 // CFBundleName は内部名。CI（.github/workflows/ios-build.yml）が APP_NAME で Info.plist を
 // 検査しており、その APP_NAME は App Store Connect の登録名「画材管理」のまま。
 // ワークフローはApp権限の都合でこちらから変更できないため、登録名を内部名として残しておく
-// （ホーム画面に出るのは CFBundleDisplayName なので表示はガザイコになる）。
+// （ホーム画面に出るのは CFBundleDisplayName なので表示はアトリコになる）。
 export const APP_BUNDLE_NAME = '画材管理';
 export const MINIMUM_IOS_VERSION = '15.0';
 

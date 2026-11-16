@@ -1,8 +1,8 @@
-# ガザイコ（画材の在庫を管理するアプリ）iPhoneアプリ化 設計書（DBゼロ辞書共有＋Capacitor iOS）
+# アトリコ（画材の在庫を管理するアプリ）iPhoneアプリ化 設計書（DBゼロ辞書共有＋Capacitor iOS）
 
 作成日: 2026年11月15日 / 対象: `shodai4/art-supply-manager` / 公開URL: https://shodai4.com/art-supply-manager/
 
-このドキュメントは、Web版（PWA）として完成しているガザイコを、iPhoneアプリとして配布するまでの設計と手順をまとめたものです。サーバーを1台も持たない構成（DBゼロ）を保ったまま、JAN辞書をみんなで育てる仕組みと、App Store までの道筋を扱います。
+このドキュメントは、Web版（PWA）として完成しているアトリコを、iPhoneアプリとして配布するまでの設計と手順をまとめたものです。サーバーを1台も持たない構成（DBゼロ）を保ったまま、JAN辞書をみんなで育てる仕組みと、App Store までの道筋を扱います。
 
 ---
 
@@ -115,7 +115,7 @@ export const SHOP_AFFILIATE_CONFIG = {
 ```json
 {
   "appId": "com.shodai4.artsupplymanager",
-  "appName": "ガザイコ",
+  "appName": "アトリコ",
   "webDir": "www",
   "server": { "iosScheme": "capacitor" },
   "ios": { "contentInset": "never", "backgroundColor": "#f4f6f9", "preferredContentMode": "mobile" }
@@ -129,7 +129,7 @@ export const SHOP_AFFILIATE_CONFIG = {
 
 | キー | 値 |
 |---|---|
-| `CFBundleDisplayName` | ガザイコ（ホーム画面に出る名前） |
+| `CFBundleDisplayName` | アトリコ（ホーム画面に出る名前） |
 | `CFBundleName` | 画材管理（内部名。CI の `APP_NAME` と合わせて残す） |
 | `NSCameraUsageDescription` | バーコード（JANコード）を読み取るためにカメラを使用します。映像は端末内だけで処理し、外部へ送信しません。 |
 | `NSPhotoLibraryUsageDescription` | 画材の実物写真を登録するために、写真を選択します。 |
@@ -197,7 +197,7 @@ npx cap sync ios
 
 1. **Apple Developer Program**（年99ドル）に登録。
 2. App Store Connect で **App Store Connect API キー**を発行（Issuer ID / Key ID / `.p8`）。
-3. App Store Connect に **アプリの器**を作成済み（2026年11月16日、ちびが登録）: Bundle ID `com.shodai4.artsupplymanager`、アプリ名 `画材管理`、**Apple ID `6835244770`**（ストアの表示名は App Store Connect 側で「ガザイコ〜画材の在庫を管理するアプリ〜」に変更する。アプリ内・ホーム画面の名前は 2026年11月16日にガザイコへ変更済み）。
+3. App Store Connect に **アプリの器**を作成済み（2026年11月16日、ちびが登録）: Bundle ID `com.shodai4.artsupplymanager`、アプリ名 `画材管理`、**Apple ID `6835244770`**（ストアの表示名は App Store Connect 側で「アトリコ〜画材の在庫を管理するアプリ〜」に変更する。アプリ内・ホーム画面の名前は 2026年11月16日にアトリコへ変更済み）。
 4. GitHub リポジトリの Secrets に4つ登録: `APPLE_TEAM_ID` / `APP_STORE_CONNECT_ISSUER_ID` / `APP_STORE_CONNECT_KEY_ID` / `APP_STORE_CONNECT_PRIVATE_KEY`（4つ目は .p8 の中身。`APP_STORE_CONNECT_API_KEY_P8` ではなく `APP_STORE_CONNECT_PRIVATE_KEY` に統一）。
 5. `.github/workflows/ios-build.yml` を配置（テンプレート: `docs/ios-build.yml.template`。内容は同一）。
 6. `workflow_dispatch` で実行 → 署名して TestFlight へアップロード。
@@ -234,7 +234,7 @@ GitHub App の権限によっては `.github/workflows/*.yml` のプッシュが
 
 | 項目 | 内容 |
 |---|---|
-| アプリ名（30字以内） | ガザイコ〜画材の在庫を管理するアプリ〜 |
+| アプリ名（30字以内） | アトリコ〜画材の在庫を管理するアプリ〜 |
 | サブタイトル（30字以内） | バーコードで読む、画材の棚 |
 | カテゴリ | 仕事効率化（セカンダリ: ユーティリティ） |
 | 価格 | 無料 |

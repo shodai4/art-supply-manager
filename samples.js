@@ -100,70 +100,115 @@ export const SAMPLE_SEEDS = [
 ];
 
 /**
+ * 過去の版で同じIDに使っていたJAN（サンプルの中身が入れ替わったもの）。
+ * 端末にこのJANのサンプルが残っていたら、画像だけでなく中身ごと最新のサンプルへ差し替えてよい。
+ * 「サンプルを入れ直したい」ための措置なので、自分で別の画材へ書き換えたデータ（この表に無いJAN）は触らない。
+ */
+export const SAMPLE_LEGACY_JANS = {
+  // v1.6 以前: カラバジオ 510 張りキャンバス F6（画像が返らず、一覧で「画像なし」に見えていた）
+  'sample-06': ['4547617000178'],
+};
+
+/** サンプル1点ぶんの画材を作る（日付は today から逆算するので、いつ入れても自然な並びになる） */
+function buildSeedItem(seed, base) {
+  const ago = (days) => new Date(base - Math.max(0, Number(days) || 0) * DAY).toISOString();
+  const purchases = Array.isArray(seed.purchases) ? seed.purchases : [];
+  const first = purchases.length ? Math.max(...purchases.map(([days]) => Number(days) || 0)) : Number(seed.updatedDaysAgo) || 0;
+  return createItem({
+    id: seed.id,
+    name: seed.name,
+    maker: seed.maker,
+    brand: seed.brand,
+    category: seed.category,
+    colorName: seed.colorName,
+    colorCode: seed.colorCode,
+    size: seed.size,
+    folderId: seed.folderId,
+    qty: seed.qty,
+    status: seed.status,
+    jan: seed.jan,
+    shop: seed.shop,
+    price: seed.price,
+    memo: seed.memo,
+    imageUrl: seed.imageUrl,
+    purchaseLog: purchases.map(([days, qty]) => ({
+      at: ago(days),
+      qty: Number(qty) || 0,
+      amount: (Number(seed.price) || 0) * (Number(qty) || 0),
+    })),
+    createdAt: ago(first),
+    updatedAt: ago(seed.updatedDaysAgo),
+  });
+}
+
+/** サンプルの基準時刻（today が壊れていても落ちない） */
+function baseTime(today) {
+  return today instanceof Date && !Number.isNaN(today.getTime()) ? today.getTime() : Date.now();
+}
+
+/**
  * 投入するサンプル画材を作る（日付は today から逆算するので、いつ入れても自然な並びになる）。
  * @param {Date} today
  */
 export function sampleItems(today = new Date()) {
-  const base = today instanceof Date && !Number.isNaN(today.getTime()) ? today.getTime() : Date.now();
-  const ago = (days) => new Date(base - Math.max(0, Number(days) || 0) * DAY).toISOString();
-  return SAMPLE_SEEDS.map((seed) => {
-    const purchases = Array.isArray(seed.purchases) ? seed.purchases : [];
-    const first = purchases.length ? Math.max(...purchases.map(([days]) => Number(days) || 0)) : Number(seed.updatedDaysAgo) || 0;
-    return createItem({
-      id: seed.id,
-      name: seed.name,
-      maker: seed.maker,
-      brand: seed.brand,
-      category: seed.category,
-      colorName: seed.colorName,
-      colorCode: seed.colorCode,
-      size: seed.size,
-      folderId: seed.folderId,
-      qty: seed.qty,
-      status: seed.status,
-      jan: seed.jan,
-      shop: seed.shop,
-      price: seed.price,
-      memo: seed.memo,
-      imageUrl: seed.imageUrl,
-      purchaseLog: purchases.map(([days, qty]) => ({
-        at: ago(days),
-        qty: Number(qty) || 0,
-        amount: (Number(seed.price) || 0) * (Number(qty) || 0),
-      })),
-      createdAt: ago(first),
-      updatedAt: ago(seed.updatedDaysAgo),
-    });
-  });
+  const base = baseTime(today);
+  return SAMPLE_SEEDS.map((seed) => buildSeedItem(seed, base));
 }
 
 /**
- * すでに入っているサンプルに、SAMPLE_SEEDS の imageUrl を静かに補う。
- * 画像を自分で設定した（画像URLか手元写真がある）画材は絶対に触らない。
- * サンプルのIDとJANが両方一致するものだけが対象（別の画材へ書き換えていたら触らない）。
+ * 端末に残っている（古い）サンプル1点を、最新のサンプルの中身へ差し替える。
+ * IDと作成日・入れているフォルダは引き継ぐ（一覧の並びや置き場所を勝手に変えない）。
+ */
+export function refreshSampleItem(item, seed, today = new Date()) {
+  const fresh = buildSeedItem(seed, baseTime(today));
+  return {
+    ...fresh,
+    id: item.id,
+    folderId: item.folderId || fresh.folderId,
+    createdAt: item.createdAt || fresh.createdAt,
+  };
+}
+
+/**
+ * すでに入っているサンプルを、最新のサンプルの中身＋imageUrl へ静かに補う。
+ *
+ * - サンプルのID（sample-01〜08）で、画像URLも手元写真も無いものが対象。
+ * - JANが今のサンプルと同じ: 画像URLだけを補う（名前・在庫など、自分で直した中身はそのまま）。
+ * - JANが過去の版のサンプル（SAMPLE_LEGACY_JANS）: 商品画像が無く「画像なし」に見えていたので、
+ *   名前・JAN・価格・画像まで最新のサンプルの中身へ差し替える。
+ * - それ以外（自分で別の画材へ書き換えた・画像URLを入れた・写真を撮った）は絶対に触らない。
  *
  * @param {object} state
- * @param {{photoIds?: {has(id:string):boolean}|string[]}} options 手元写真があるアイテムIDの集合
- * @returns {{state: object, filled: number}}
+ * @param {{photoIds?: {has(id:string):boolean}|string[], today?: Date}} options 手元写真があるアイテムIDの集合
+ * @returns {{state: object, filled: number, replaced: number}} filled=画像を補った数 / replaced=中身ごと差し替えた数
  */
-export function backfillSampleImages(state = {}, { photoIds } = {}) {
+export function backfillSampleImages(state = {}, { photoIds, today = new Date() } = {}) {
   const items = Array.isArray(state?.items) ? state.items : [];
   const hasPhoto = (id) => Boolean(id) && (typeof photoIds?.has === 'function'
     ? photoIds.has(id)
     : Array.isArray(photoIds) && photoIds.includes(id));
   const seedById = new Map(SAMPLE_SEEDS.map((seed) => [seed.id, seed]));
+  const isLegacyJan = (id, jan) => (SAMPLE_LEGACY_JANS[id] || [])
+    .some((known) => String(known) === String(jan));
   let filled = 0;
+  let replaced = 0;
   const next = items.map((item) => {
     const seed = seedById.get(item?.id);
     if (!seed || !seed.imageUrl) return item;
-    if (String(item.jan || '') !== String(seed.jan || '')) return item; // 別の商品へ書き換え済み
-    if (String(item.imageUrl || '').trim()) return item;               // 自分で画像URLを入れた
-    if (hasPhoto(item.id)) return item;                                // 自分で写真を撮った
-    filled += 1;
-    return { ...item, imageUrl: seed.imageUrl };
+    if (String(item.imageUrl || '').trim()) return item;                // 自分で画像URLを入れた
+    if (hasPhoto(item.id)) return item;                                 // 自分で写真を撮った
+    if (String(item.jan || '') === String(seed.jan || '')) {            // 同じ商品: 画像だけ足す
+      filled += 1;
+      return { ...item, imageUrl: seed.imageUrl };
+    }
+    if (isLegacyJan(item.id, item.jan)) {                               // 旧版のサンプル: 中身ごと差し替え
+      replaced += 1;
+      return refreshSampleItem(item, seed, today);
+    }
+    return item;                                                        // 別の画材へ書き換え済み
   });
-  if (!filled) return { state, filled: 0 };
-  return { state: { ...state, items: next }, filled };
+  if (!filled && !replaced) return { state, filled: 0, replaced: 0 };
+  return { state: { ...state, items: next }, filled, replaced };
 }
 
 /** 同じ画材とみなす鍵（メーカー＋商品名。空白の違いは無視） */

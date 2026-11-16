@@ -34,7 +34,8 @@ function searchPayload(overrides = {}) {
     Items: [{
       itemName: 'ホルベイン 透明水彩セット',
       itemPrice: 1234,
-      itemUrl: 'https://item.rakuten.co.jp/holbein/abc/',
+      itemCode: 'holbein:4900669001911',
+      itemUrl: 'https://item.rakuten.co.jp/holbein/4900669001911/',
       shopName: '画材の店',
       mediumImageUrls: [{ imageUrl: 'http://thumbnail.image.rakuten.co.jp/@0_mall/holbein/cabinet/01.jpg?_ex=128x128' }],
       ...overrides,
@@ -86,7 +87,7 @@ test('13桁JANで商品画像を返し、認証情報はURLにも応答にも出
   assert.equal(data.imageUrl, 'https://thumbnail.image.rakuten.co.jp/@0_mall/holbein/cabinet/01.jpg?_ex=300x300');
   assert.equal(data.itemName, 'ホルベイン 透明水彩セット');
   assert.equal(data.itemPrice, 1234);
-  assert.equal(data.itemUrl, 'https://item.rakuten.co.jp/holbein/abc/');
+  assert.equal(data.itemUrl, 'https://item.rakuten.co.jp/holbein/4900669001911/');
   assert.equal(data.shopName, '画材の店');
 
   // 楽天APIの叩き方
@@ -266,15 +267,17 @@ test('画像URLの正規化と商品の取り出し', () => {
   assert.equal(normalizeImageUrl('javascript:alert(1)'), '');
   assert.equal(normalizeImageUrl(null), '');
 
-  const v2 = pickItem({ Items: [{ mediumImageUrls: [{ imageUrl: 'https://x/a.jpg' }], itemName: 'a', itemPrice: '100' }] });
+  const v2 = pickItem({ Items: [{ mediumImageUrls: [{ imageUrl: 'https://x/a.jpg' }], itemName: 'a', itemCode: 'shop:4900669001911', itemPrice: '100' }] }, JAN);
   assert.deepEqual(v2, { imageUrl: 'https://x/a.jpg', itemName: 'a', itemPrice: 100, itemUrl: '', shopName: '' });
 
-  const legacy = pickItem({ items: [{ Item: { smallImageUrls: ['https://x/b.jpg'] } }] });
+  const legacy = pickItem({ items: [{ Item: { smallImageUrls: ['https://x/b.jpg'], itemName: 'JAN 4900669001911 の品' } }] }, JAN);
   assert.equal(legacy.imageUrl, 'https://x/b.jpg');
 
-  assert.equal(pickItem({ Items: [{ itemName: 'no image' }] }), null);
-  assert.equal(pickItem({}), null);
-  assert.equal(pickItem(null), null);
+  assert.equal(pickItem({ Items: [{ itemName: 'no image', itemCode: 'shop:4900669001911' }] }, JAN), null);
+  assert.equal(pickItem({}, JAN), null);
+  assert.equal(pickItem(null, JAN), null);
+  // JANが分からないときは何も返さない（似ている商品で埋めない）
+  assert.equal(pickItem({ Items: [{ mediumImageUrls: [{ imageUrl: 'https://x/a.jpg' }], itemName: 'a' }] }), null);
 
   // CORSヘッダー単体
   assert.equal(corsHeaders('https://shodai4.com', {})['Access-Control-Allow-Origin'], 'https://shodai4.com');
@@ -296,6 +299,7 @@ function yahooPayload(overrides = {}) {
     hits: [{
       index: 1,
       name: 'ホルベイン 透明水彩セット',
+      janCode: JAN,
       price: 2345,
       url: 'https://store.shopping.yahoo.co.jp/art/abc.html',
       seller: { sellerId: 'art', name: '画材の店' },
@@ -460,7 +464,7 @@ test('どちらのキーも無ければ500で、どのAPIも叩かない', async
 });
 
 test('Yahoo!の応答から画像を取る（exImage → medium → small、画像なしの商品は飛ばす）', () => {
-  assert.deepEqual(pickYahooItem(yahooPayload()), {
+  assert.deepEqual(pickYahooItem(yahooPayload(), JAN), {
     imageUrl: 'https://item-shopping.c.yimg.jp/i/l/art_abc',
     itemName: 'ホルベイン 透明水彩セット',
     itemPrice: 2345,
@@ -469,26 +473,30 @@ test('Yahoo!の応答から画像を取る（exImage → medium → small、画�
   });
 
   // exImage が無ければ medium（146px）、それも無ければ small（76px）
-  const medium = pickYahooItem(yahooPayload({ exImage: undefined }));
+  const medium = pickYahooItem(yahooPayload({ exImage: undefined }), JAN);
   assert.equal(medium.imageUrl, 'https://item-shopping.c.yimg.jp/i/g/art_abc');
-  const small = pickYahooItem(yahooPayload({ exImage: undefined, image: { small: 'https://item-shopping.c.yimg.jp/i/c/art_abc' } }));
+  const small = pickYahooItem(yahooPayload({ exImage: undefined, image: { small: 'https://item-shopping.c.yimg.jp/i/c/art_abc' } }), JAN);
   assert.equal(small.imageUrl, 'https://item-shopping.c.yimg.jp/i/c/art_abc');
 
   // 画像の無い商品は飛ばして次の商品を見る
   const skipped = pickYahooItem({
     hits: [
-      { name: '画像なし', url: 'https://x/1' },
-      { name: 'こちら', price: '500', seller: { sellerId: 'shop1' }, image: { medium: 'http://item-shopping.c.yimg.jp/i/g/shop1_1' } },
+      { name: '画像なし', janCode: JAN, url: 'https://x/1' },
+      { name: 'こちら', janCode: JAN, price: '500', seller: { sellerId: 'shop1' }, image: { medium: 'http://item-shopping.c.yimg.jp/i/g/shop1_1' } },
     ],
-  });
+  }, JAN);
   assert.equal(skipped.imageUrl, 'https://item-shopping.c.yimg.jp/i/g/shop1_1'); // http は https にそろえる
   assert.equal(skipped.itemName, 'こちら');
   assert.equal(skipped.itemPrice, 500);
   assert.equal(skipped.shopName, 'shop1', 'ストア名が無ければストアIDにする');
 
-  assert.equal(pickYahooItem({ hits: [] }), null);
-  assert.equal(pickYahooItem({ totalResultsAvailable: 0 }), null);
-  assert.equal(pickYahooItem(null), null);
+  // 別のJANの商品は使わない（似ている商品で補完しない）
+  const otherJan = pickYahooItem({ hits: [{ name: '別の色', janCode: '4900669001928', image: { medium: 'https://item-shopping.c.yimg.jp/i/g/other' } }] }, JAN);
+  assert.equal(otherJan, null);
+
+  assert.equal(pickYahooItem({ hits: [] }, JAN), null);
+  assert.equal(pickYahooItem({ totalResultsAvailable: 0 }, JAN), null);
+  assert.equal(pickYahooItem(null, JAN), null);
 });
 
 test('Yahoo!のURL組み立てとエラーの読み替え（秘密は含めない）', () => {

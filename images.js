@@ -174,11 +174,26 @@ export function upgradeRakutenImage(url) {
   return s.replace(/([?&])_ex=\d+x\d+/g, '$1_ex=300x300');
 }
 
-/** API応答から最初の商品画像URLを取り出す（formatVersion=2 / 旧形式の両対応） */
-export function pickRakutenImageUrl(payload) {
+/**
+ * その商品が「このJANの商品」だと言い切れるか（楽天の商品検索APIはJAN完全一致の項目を持たないため、
+ * itemCode・itemUrl・itemName にJANが載っているものだけを同じ商品とみなす）。
+ */
+export function itemMatchesJan(item, jan) {
+  const code = String(jan ?? '').replace(/\s+/g, '');
+  if (!/^\d{8,14}$/.test(code)) return false;
+  const haystack = [item?.itemCode, item?.itemUrl, item?.itemName].map((v) => String(v ?? '')).join(' ');
+  return haystack.includes(code);
+}
+
+/**
+ * API応答から、JANが一致する最初の商品画像URLを取り出す（formatVersion=2 / 旧形式の両対応）。
+ * JANを渡さない・一致する商品が無いときは ''（似ている別商品の画像で埋めない）。
+ */
+export function pickRakutenImageUrl(payload, jan) {
   const list = Array.isArray(payload?.Items) ? payload.Items : Array.isArray(payload?.items) ? payload.items : [];
   for (const raw of list) {
     const it = raw && raw.Item ? raw.Item : raw;
+    if (!itemMatchesJan(it, jan)) continue;
     const urls = it?.mediumImageUrls || it?.smallImageUrls || [];
     if (!Array.isArray(urls)) continue;
     for (const u of urls) {
@@ -239,7 +254,7 @@ export async function fetchRakutenImage(jan, appId, { accessKey = '', fetchImpl,
   if (!res.ok || (payload && (payload.error || payload.errors))) {
     throw new Error(describeRakutenError(payload, res.status));
   }
-  const url = pickRakutenImageUrl(payload);
+  const url = pickRakutenImageUrl(payload, code);
   if (!url) throw new Error('商品画像が見つかりませんでした');
   return url;
 }

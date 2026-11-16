@@ -1,4 +1,4 @@
-// ガザイコ コアロジック（DOM 非依存 / node --test で検証）
+// アトリコ コアロジック（DOM 非依存 / node --test で検証）
 import { JAN_PREFIXES, JAN_DICTIONARY } from './jan-database.js';
 
 export const STORAGE_KEY = 'art-supply-manager/v1';

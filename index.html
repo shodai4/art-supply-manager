@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#ffffff">
-<meta name="description" content="画材の在庫をフォルダ（家・アトリエ・持ち出し・ストック）で管理。JANバーコード読み取り対応のガザイコ。">
-<title>ガザイコ〜画材の在庫を管理するアプリ〜</title>
+<meta name="description" content="画材の在庫をフォルダ（家・アトリエ・持ち出し・ストック）で管理。JANバーコード読み取り対応のアトリコ。">
+<title>アトリコ〜画材の在庫を管理するアプリ〜</title>
 <script>
 // 描画前にテーマを決める（ダーク設定で一瞬白い画面が出ないように）
 try {
@@ -15,7 +15,7 @@ try {
 } catch (e) { /* 保存が読めないときはライト */ }
 </script>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="styles.css?v=1.8.0">
+<link rel="stylesheet" href="styles.css?v=1.9.0">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
 </head>
@@ -96,12 +96,18 @@ try {
       <path d="M6 3.4h7.6L18.8 8v12.6H6z"/><path d="M13.4 3.6V8h4.9"/>
       <path d="M8.8 12h7M8.8 15.2h7M8.8 18.4h4.4"/>
     </symbol>
+    <!-- カメラの内／外切り替え -->
+    <symbol id="i-camera-flip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4.2 10.4A2 2 0 0 1 6.2 8.4h1.5l1.2-1.8h6.2l1.2 1.8h1.5a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H6.2a2 2 0 0 1-2-2z"/>
+      <circle cx="12" cy="13.6" r="3.1"/>
+      <path d="M16.6 2.4l2.6 2.6-2.6 2.6"/>
+    </symbol>
   </defs>
 </svg>
 
 <header class="app-header">
   <div class="hrow">
-    <h1>ガザイコ</h1>
+    <h1>アトリコ</h1>
     <span class="total" id="hdrTotal">全0種</span>
   </div>
 
@@ -395,6 +401,9 @@ try {
   <h2 id="scanTitle">バーコード読取<button class="close" data-close="sheetScan" aria-label="閉じる"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></h2>
   <div class="scan-mode">
     <button type="button" class="fchip" id="btnContinuous" aria-pressed="false">連続スキャン OFF</button>
+    <button type="button" class="fchip cam" id="btnFacing" aria-label="カメラを切り替え" title="カメラを切り替え">
+      <svg class="ic" aria-hidden="true"><use href="#i-camera-flip"/></svg><span id="facingLabel">外カメラ</span>
+    </button>
     <span class="scan-mode-note" id="scanModeNote">1本読むと閉じます</span>
   </div>
   <div class="scan-box" id="scanBox">
@@ -519,6 +528,6 @@ try {
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<script type="module" src="app.js?v=1.8.0"></script>
+<script type="module" src="app.js?v=1.9.0"></script>
 </body>
 </html>

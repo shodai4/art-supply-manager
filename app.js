@@ -1,4 +1,4 @@
-// ガザイコ UI（storage + rendering + バーコード読取）
+// アトリコ UI（storage + rendering + バーコード読取）
 import {
   STORAGE_KEY, CATEGORIES, STATUSES, DEFAULT_FOLDERS, SORT_MODES, MAKER_NONE,
   createItem, adjustStock, computeShoppingList, filterItems, moveItems, sortItems, countByFolder,
@@ -30,6 +30,7 @@ import {
 } from './shops.js';
 import {
   chooseScanStrategy, isNativeShell, nativeScannerPlugin, loadVendorScanner, VENDOR_SCANNER_PATH,
+  DEFAULT_FACING, toggleFacing, facingLabel, facingConstraints, scannerFacingConfig, canChooseFacing,
 } from './scanner.js';
 import {
   createScanSession, resetScanSession, checkCooldown, markScanned, applyScan,
@@ -612,6 +613,18 @@ document.addEventListener('error', (e) => {
   const img = e.target;
   if (!img || img.tagName !== 'IMG') return;
   if (img.classList.contains('shelfimg') || img.classList.contains('previewimg') || img.classList.contains('swimg')) img.classList.add('imgfail');
+}, true);
+
+// 実画像が読み込めたら、枠に hasimg を付ける（背景の「画像なし」アイコンと棚の影をCSSで完全に隠す）。
+// 画像が壊れていた／読み込めなかったときは付けないので、これまでどおりアイコン表示に戻る。
+document.addEventListener('load', (e) => {
+  const img = e.target;
+  if (!img || img.tagName !== 'IMG') return;
+  if (!img.classList.contains('shelfimg') && !img.classList.contains('swimg')) return;
+  if (img.classList.contains('imgfail')) return;
+  img.classList.add('imgloaded');
+  // グリッドの棚（.sw）・リストのサムネイル（.thumb）・色見本（.swc）のどれでも親が枠
+  img.parentElement?.classList.add('hasimg');
 }, true);
 
 /** 画材タイル1枚（在庫切れはグレー表示。操作は通常どおり） */
@@ -1268,7 +1281,7 @@ async function autoFillScannedImage(item) {
 /** すでに入っているサンプルに、定義の画像を静かに補う（自分で設定した画像・写真は残す） */
 function backfillSampleImagesInState() {
   const out = backfillSampleImages(state, { photoIds: photoUrls });
-  if (!out.filled) return;
+  if (!out.filled && !out.replaced) return;
   state = out.state;
   save();
   render();
@@ -1528,6 +1541,8 @@ let scanContinuous = false; // 連続スキャン（スキャン画面を開い�
 let scanLog = [];           // 今回の読み取りログ（新しいものが先頭）
 let scanLimitHit = false;   // 新規登録が無料上限で止まっているか
 let scannerLive = false;    // カメラ（またはネイティブ読取）が動いているか
+let scanFacing = DEFAULT_FACING; // 使っているカメラの向き（外=environment / 内=user）
+let scanSwitchBusy = false; // カメラ切り替えの再起動中
 const SCAN_LOG_MAX = 5;     // 画面に出す直近件数
 
 $('btnScan').addEventListener('click', () => {
@@ -1540,12 +1555,44 @@ $('btnScan').addEventListener('click', () => {
 });
 $('btnRescan').addEventListener('click', () => { stopScanner(); startScanner(); });
 
+/* --- カメラの内／外切り替え（連続スキャンの状態とログはそのまま） --- */
+$('btnFacing').addEventListener('click', async () => {
+  if (scanSwitchBusy) return;
+  scanSwitchBusy = true;
+  scanFacing = toggleFacing(scanFacing);
+  renderScanFacing();
+  $('btnFacing').disabled = true;
+  showScanStatus(`${facingLabel(scanFacing)}に切り替えます`, '');
+  try {
+    await restartScanner(); // 先にカメラを止めてから、新しい向きで開き直す
+  } finally {
+    scanSwitchBusy = false;
+    $('btnFacing').disabled = false;
+  }
+});
+
+/** 今どちらのカメラかが分かる表示にする（ボタンの文字・読み上げ・案内） */
+function renderScanFacing() {
+  const label = facingLabel(scanFacing);
+  $('facingLabel').textContent = label;
+  $('btnFacing').setAttribute('aria-label', `カメラを切り替え（いま${label}）`);
+  $('btnFacing').title = `カメラを切り替え（いま${label}）`;
+}
+
+/** カメラを止めてから、同じ向き設定で開き直す（連続スキャンON/OFF・ログはそのまま） */
+async function restartScanner() {
+  await stopScanner();
+  if (!openSheets.has('sheetScan')) return; // 閉じていたら開け直さない
+  await startScanner();
+}
+
 /* --- 連続スキャンの表示（トグル・ログ・status） --- */
 function renderScanMode() {
   $('btnContinuous').setAttribute('aria-pressed', String(scanContinuous));
   $('btnContinuous').textContent = `連続スキャン ${scanContinuous ? 'ON' : 'OFF'}`;
   $('scanModeNote').textContent = scanContinuous ? '閉じずに続けて登録します' : '1本読むと閉じます';
   $('scanLog').hidden = !scanContinuous;
+  renderScanFacing();
   renderScanLog();
 }
 
@@ -1603,7 +1650,7 @@ function showScanMsg(msg) {
 }
 
 async function startScanner() {
-  stopScanner();
+  await stopScanner();
   const video = $('scanVideo');
   video.hidden = true;
   $('scanReticle').hidden = true;
@@ -1614,9 +1661,12 @@ async function startScanner() {
     hasBarcodeDetector: 'BarcodeDetector' in window,
     secureContext: secure,
   });
+  // カメラの向きを選べない方式（ネイティブ読取・手入力）では切り替えボタンを出さない
+  $('btnFacing').hidden = !canChooseFacing(strategy);
+  renderScanFacing();
   showScanMsg('カメラ起動中');
   if (strategy === 'manual') {
-    showScanMsg('カメラは https で使えます。下の手入力をどうぞ');
+    showScanMsg('カメラを使えません。下の手入力をどうぞ');
     return;
   }
 
@@ -1652,7 +1702,7 @@ async function startScanner() {
       const supported = (await window.BarcodeDetector.getSupportedFormats?.()) || [];
       const formats = ['ean_13', 'ean_8', 'upc_a', 'code_128'].filter((f) => !supported.length || supported.includes(f));
       const detector = new window.BarcodeDetector({ formats });
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: facingConstraints(scanFacing) });
       video.srcObject = stream;
       video.hidden = false;
       $('scanReticle').hidden = false;
@@ -1692,30 +1742,48 @@ async function startScanner() {
     $('scanBox').appendChild(holder);
     const inst = new Html5Qrcode('qrReader', { verbose: false });
     scanner = inst;
-    await inst.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 240, height: 140 } },
+    await inst.start(scannerFacingConfig(scanFacing), { fps: 10, qrbox: { width: 240, height: 140 } },
       (text) => { onScan(text); }, () => {});
     scannerLive = true;
+    hideScanStatus();
   } catch (e) {
     console.warn('html5-qrcode失敗', e);
+    // 内カメラしか無い端末などで開けなかったときは、外カメラへ戻して一度だけ試す
+    if (scanFacing !== DEFAULT_FACING) {
+      scanFacing = DEFAULT_FACING;
+      renderScanFacing();
+      document.getElementById('qrReader')?.remove();
+      return startScanner();
+    }
     showScanMsg('カメラを起動できません。手入力をどうぞ');
   }
 }
 
+/**
+ * カメラ（またはネイティブ読取）を止める。
+ * 同梱スキャナの stop() は非同期なので、Promise を返して再起動側が待てるようにしている
+ * （向きの切り替えで、古いストリームと新しいストリームが重ならないようにする）。
+ */
 function stopScanner() {
   scannerLive = false;
   if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(rafId);
   rafId = 0;
   const video = $('scanVideo');
   if (video?.srcObject) {
-    video.srcObject.getTracks().forEach((t) => t.stop());
+    try { video.srcObject.getTracks().forEach((t) => t.stop()); } catch (e) { console.warn('カメラ停止に失敗', e); }
     video.srcObject = null;
   }
-  if (scanner) {
-    const s = scanner;
-    scanner = null;
-    s.stop().then(() => s.clear?.()).catch(() => {});
+  video.hidden = true;
+  const holder = document.getElementById('qrReader');
+  const s = scanner;
+  scanner = null;
+  if (!s) {
+    holder?.remove();
+    return Promise.resolve();
   }
-  document.getElementById('qrReader')?.remove();
+  return Promise.resolve(s.stop())
+    .then(() => { s.clear?.(); holder?.remove(); })
+    .catch(() => { holder?.remove(); });
 }
 
 /** 読み取った値の受け口（通常モード／連続モードの分岐）。受け付けたら true */

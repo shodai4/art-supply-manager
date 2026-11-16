@@ -1,6 +1,6 @@
 name: iOS Build & TestFlight
 
-# ガザイコ（com.shodai4.artsupplymanager / App Store Connect Apple ID 6835244770）
+# アトリコ（com.shodai4.artsupplymanager / App Store Connect Apple ID 6835244770）
 # Mac が無くても GitHub の macOS ランナーで署名してTestFlightへ配信する。
 #
 # 必要な GitHub Secrets（4つ）:
@@ -47,7 +47,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  APP_NAME: ガザイコ
+  APP_NAME: アトリコ
   BUNDLE_ID: com.shodai4.artsupplymanager
   MARKETING_VERSION: '1.0'
 

@@ -135,7 +135,7 @@ test('中継サーバーがあれば設定ゼロで取得する（自分のア�
 test('中継サーバーが落ちているときだけ自分のアプリIDで直接取得する', async () => {
   const fetchImpl = stubFetch((url) => {
     if (url.startsWith(PROXY)) return { ok: false, status: 500, json: async () => ({ error: 'not_configured', message: '未完了' }) };
-    return { ok: true, status: 200, json: async () => ({ Items: [{ mediumImageUrls: [{ imageUrl: 'https://thumbnail.image.rakuten.co.jp/d.jpg' }] }] }) };
+    return { ok: true, status: 200, json: async () => ({ Items: [{ itemCode: `shop:${JAN}`, mediumImageUrls: [{ imageUrl: 'https://thumbnail.image.rakuten.co.jp/d.jpg' }] }] }) };
   });
   const url = await fetchProductImage(JAN, { proxyUrl: PROXY, appId: 'appid-1', accessKey: 'key-1', fetchImpl });
   assert.equal(url, 'https://thumbnail.image.rakuten.co.jp/d.jpg');
@@ -167,7 +167,7 @@ test('設定ゼロでも同梱の中継サーバーで取得できる', async ()
 
 test('同梱の中継サーバーが使えないときは自分の認証情報で直接取得できる（上級者向けの逃げ道）', async () => {
   const fetchImpl = stubFetch((url) => (url.startsWith('https://openapi.rakuten.co.jp')
-    ? { ok: true, status: 200, json: async () => ({ Items: [{ mediumImageUrls: [{ imageUrl: 'https://thumbnail.image.rakuten.co.jp/e.jpg?_ex=128x128' }] }] }) }
+    ? { ok: true, status: 200, json: async () => ({ Items: [{ itemCode: `shop:${JAN}`, mediumImageUrls: [{ imageUrl: 'https://thumbnail.image.rakuten.co.jp/e.jpg?_ex=128x128' }] }] }) }
     : { ok: false, status: 500, json: async () => ({ error: 'not_configured' }) }));
   const url = await fetchProductImage(JAN, { appId: 'appid-1', accessKey: 'key-1', fetchImpl });
   assert.equal(url, 'https://thumbnail.image.rakuten.co.jp/e.jpg?_ex=300x300');
@@ -248,7 +248,7 @@ test('画像取得の入口は、取得元つきの商品情報を返す（URL�
   // 中継サーバーが落ちて自分の楽天アプリIDで取ったときは source を rakuten にする
   const fallbackFetch = stubFetch((url) => {
     if (url.startsWith(PROXY)) return { ok: false, status: 500, json: async () => ({ error: 'not_configured' }) };
-    return { ok: true, status: 200, json: async () => ({ Items: [{ mediumImageUrls: [{ imageUrl: 'https://thumbnail.image.rakuten.co.jp/d.jpg' }] }] }) };
+    return { ok: true, status: 200, json: async () => ({ Items: [{ itemCode: `shop:${JAN}`, mediumImageUrls: [{ imageUrl: 'https://thumbnail.image.rakuten.co.jp/d.jpg' }] }] }) };
   });
   const direct = await fetchProductImageInfo(JAN, { proxyUrl: PROXY, appId: 'appid-1', accessKey: 'key-1', fetchImpl: fallbackFetch });
   assert.equal(direct.imageUrl, 'https://thumbnail.image.rakuten.co.jp/d.jpg');

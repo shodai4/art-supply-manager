@@ -6,6 +6,50 @@
 /** 同梱スキャナの場所（アプリのルートからの相対パス） */
 export const VENDOR_SCANNER_PATH = 'vendor/html5-qrcode.min.js';
 
+/* ---------------- カメラの向き（内カメラ／外カメラ） ---------------- */
+
+/** 使うカメラの向き。environment=外（背面）カメラ / user=内（前面）カメラ */
+export const FACING_MODES = ['environment', 'user'];
+
+/** 最初に使うカメラ（画材のバーコードは外カメラで読むのが基本） */
+export const DEFAULT_FACING = 'environment';
+
+/** 想定外の値は外カメラに倒す（保存値が壊れていても落ちない） */
+export function normalizeFacing(value) {
+  return String(value ?? '').trim() === 'user' ? 'user' : DEFAULT_FACING;
+}
+
+/** 切り替え先の向き（外→内→外） */
+export function toggleFacing(value) {
+  return normalizeFacing(value) === 'user' ? 'environment' : 'user';
+}
+
+/** 画面に出す短い名前 */
+export function facingLabel(value) {
+  return normalizeFacing(value) === 'user' ? '内カメラ' : '外カメラ';
+}
+
+/**
+ * getUserMedia（Web の BarcodeDetector 経路）に渡すカメラ指定。
+ * ideal にして、その向きが無い端末でも「カメラが開かない」で止まらないようにする。
+ */
+export function facingConstraints(value) {
+  return { facingMode: { ideal: normalizeFacing(value) } };
+}
+
+/**
+ * 同梱の html5-qrcode に渡すカメラ指定。
+ * このライブラリは facingMode を「文字列」か「{ exact: … }」でしか受け付けない（ideal を渡すと例外）。
+ */
+export function scannerFacingConfig(value) {
+  return { facingMode: normalizeFacing(value) };
+}
+
+/** カメラの向きを選べる方式か（ネイティブ読取・手入力のときは切り替えボタンを出さない） */
+export function canChooseFacing(strategy) {
+  return strategy === 'barcode-detector' || strategy === 'html5-qrcode';
+}
+
 /**
  * 使える読取方式を決める。
  * 1. Capacitor のネイティブプラグイン（あれば最優先・高速で確実）

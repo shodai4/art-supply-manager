@@ -1,6 +1,6 @@
 {
   "appId": "com.shodai4.artsupplymanager",
-  "appName": "ガザイコ",
+  "appName": "アトリコ",
   "webDir": "www",
   "server": {
     "iosScheme": "capacitor"

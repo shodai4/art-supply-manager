@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  fitWithin, upgradeRakutenImage, pickRakutenImageUrl, rakutenSearchUrl,
+  fitWithin, upgradeRakutenImage, pickRakutenImageUrl, rakutenSearchUrl, itemMatchesJan,
   describeRakutenError, fetchRakutenImage, RAKUTEN_SEARCH_ENDPOINT,
   MAX_EDGE, JPEG_QUALITY,
 } from '../images.js';
@@ -59,23 +59,34 @@ test('楽天の画像URLは _ex を 300x300 に上げる', () => {
 });
 
 test('楽天APIの応答から商品画像を取り出す（v2/旧形式・小画像フォールバック）', () => {
+  const JAN = '4900669001911';
   const v2 = {
     Items: [{
       itemName: 'ホルベイン 油絵具',
+      itemCode: 'holbein:4900669001911',
       mediumImageUrls: [{ imageUrl: 'https://thumbnail.image.rakuten.co.jp/a.jpg?_ex=128x128' }],
     }],
   };
-  assert.equal(pickRakutenImageUrl(v2), 'https://thumbnail.image.rakuten.co.jp/a.jpg?_ex=300x300');
+  assert.equal(pickRakutenImageUrl(v2, JAN), 'https://thumbnail.image.rakuten.co.jp/a.jpg?_ex=300x300');
 
-  const legacy = { Items: [{ Item: { mediumImageUrls: ['https://thumbnail.image.rakuten.co.jp/b.jpg?_ex=128x128'] } }] };
-  assert.equal(pickRakutenImageUrl(legacy), 'https://thumbnail.image.rakuten.co.jp/b.jpg?_ex=300x300');
+  const legacy = { Items: [{ Item: { mediumImageUrls: ['https://thumbnail.image.rakuten.co.jp/b.jpg?_ex=128x128'], itemUrl: 'https://item.rakuten.co.jp/shop/4900669001911/' } }] };
+  assert.equal(pickRakutenImageUrl(legacy, JAN), 'https://thumbnail.image.rakuten.co.jp/b.jpg?_ex=300x300');
 
-  const smallOnly = { Items: [{ smallImageUrls: [{ imageUrl: 'https://thumbnail.image.rakuten.co.jp/c.jpg' }] }] };
-  assert.equal(pickRakutenImageUrl(smallOnly), 'https://thumbnail.image.rakuten.co.jp/c.jpg');
+  const smallOnly = { Items: [{ smallImageUrls: [{ imageUrl: 'https://thumbnail.image.rakuten.co.jp/c.jpg' }], itemName: 'JAN 4900669001911' }] };
+  assert.equal(pickRakutenImageUrl(smallOnly, JAN), 'https://thumbnail.image.rakuten.co.jp/c.jpg');
 
-  assert.equal(pickRakutenImageUrl({ Items: [] }), '');
-  assert.equal(pickRakutenImageUrl({ Items: [{ itemName: '画像なし' }] }), '');
-  assert.equal(pickRakutenImageUrl(null), '');
+  assert.equal(pickRakutenImageUrl({ Items: [] }, JAN), '');
+  assert.equal(pickRakutenImageUrl({ Items: [{ itemName: '画像なし' }] }, JAN), '');
+  assert.equal(pickRakutenImageUrl(null, JAN), '');
+  // JANを渡さない・一致しない商品しか無いときは空（似ている別商品の画像で埋めない）
+  assert.equal(pickRakutenImageUrl(v2), '');
+  assert.equal(pickRakutenImageUrl({ Items: [{ itemName: '別の色', mediumImageUrls: [{ imageUrl: 'https://x/other.jpg' }] }] }, JAN), '');
+  assert.equal(itemMatchesJan({ itemCode: 'shop:4900669001911' }, JAN), true);
+  assert.equal(itemMatchesJan({ itemUrl: 'https://item.rakuten.co.jp/shop/4900669001911' }, JAN), true);
+  assert.equal(itemMatchesJan({ itemName: 'ホルベイン 4900669001911' }, JAN), true);
+  assert.equal(itemMatchesJan({ itemName: 'ホルベイン 4900669001912' }, JAN), false);
+  assert.equal(itemMatchesJan({ itemName: 'ホルベイン' }, JAN), false);
+  assert.equal(itemMatchesJan({ itemName: 'ホルベイン 4900669001911' }, ''), false);
 });
 
 test('楽天商品検索APIのURLを組み立てる（現行のopenapi版を使う）', () => {
@@ -94,7 +105,7 @@ test('JANから画像を取得（成功・未設定・APIエラー・画像な�
   const calls = [];
   const okFetch = (u, init) => {
     calls.push({ url: u, headers: (init && init.headers) || {} });
-    return Promise.resolve({ ok: true, status: 200, json: async () => ({ Items: [{ mediumImageUrls: [{ imageUrl: 'https://thumbnail.image.rakuten.co.jp/p.jpg?_ex=128x128' }] }] }) });
+    return Promise.resolve({ ok: true, status: 200, json: async () => ({ Items: [{ itemCode: 'shop:4900669001911', mediumImageUrls: [{ imageUrl: 'https://thumbnail.image.rakuten.co.jp/p.jpg?_ex=128x128' }] }] }) });
   };
   const url = await fetchRakutenImage('4900669001911', 'appid-1', { accessKey: 'key-1', fetchImpl: okFetch });
   assert.equal(url, 'https://thumbnail.image.rakuten.co.jp/p.jpg?_ex=300x300');
@@ -120,6 +131,14 @@ test('JANから画像を取得（成功・未設定・APIエラー・画像な�
   );
   await assert.rejects(
     () => fetchRakutenImage('4900669001911', 'appid-1', { accessKey: 'key-1', fetchImpl: () => Promise.resolve({ ok: true, status: 200, json: async () => ({ Items: [] }) }) }),
+    /商品画像が見つかりません/,
+  );
+  // JANが一致しない（似ている別商品の）結果では画像を返さない
+  await assert.rejects(
+    () => fetchRakutenImage('4900669001911', 'appid-1', {
+      accessKey: 'key-1',
+      fetchImpl: () => Promise.resolve({ ok: true, status: 200, json: async () => ({ Items: [{ itemName: 'ホルベイン 別の色', mediumImageUrls: [{ imageUrl: 'https://thumbnail.image.rakuten.co.jp/other.jpg' }] }] }) }),
+    }),
     /商品画像が見つかりません/,
   );
   await assert.rejects(
