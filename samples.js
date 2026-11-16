@@ -1,5 +1,7 @@
 // お試し用サンプルデータ。初回起動・空の一覧・設定の「サンプルを入れる」から入れる。
 // JAN は内蔵辞書にある実在品、値段・メモは目安（サンプルなので自由に編集・削除してよい）。
+// imageUrl は中継サーバー（workers/rakuten-image-proxy）に JAN を投げて実際に返ってきた画像URL
+// （2026年11月16日実測）。最初から写真が並ぶので、一覧の見た目がすぐ分かる。
 import { createItem } from './core.js';
 
 /** 「サンプルを一度入れた / 初回を済ませた」印（アイテムを全部消しても復活させない） */
@@ -22,6 +24,7 @@ export const SAMPLE_SEEDS = [
     colorName: 'ウルトラマリン ライト', colorCode: 'H107', size: '6号(20ml)',
     folderId: 'atelier', qty: 3, status: 'enough', jan: '4900669001072',
     shop: '世界堂', price: 1100, memo: '空の混色に',
+    imageUrl: 'https://item-shopping.c.yimg.jp/i/j/arcoasis2_4900669001072x3',
     purchases: [[60, 2], [20, 1]], updatedDaysAgo: 3,
   },
   {
@@ -31,6 +34,7 @@ export const SAMPLE_SEEDS = [
     colorName: 'カドミウムイエローライト', colorCode: 'H051', size: '6号(20ml)',
     folderId: 'atelier', qty: 1, status: 'low', jan: '4900669000518',
     shop: '世界堂', price: 1450, memo: '残り少ない',
+    imageUrl: 'https://item-shopping.c.yimg.jp/i/j/prezataisaku_h051',
     purchases: [[45, 1]], updatedDaysAgo: 8,
   },
   {
@@ -40,6 +44,7 @@ export const SAMPLE_SEEDS = [
     colorName: 'ウルトラマリン', colorCode: '021', size: '2号(5ml)',
     folderId: 'carry', qty: 0, status: 'empty', jan: '4933317000219',
     shop: '世界堂', price: 380, memo: 'スケッチ用。買い足す',
+    imageUrl: 'https://item-shopping.c.yimg.jp/i/j/arcoasis2_4933317000219x3',
     purchases: [[120, 2], [90, 1]], updatedDaysAgo: 30,
   },
   {
@@ -49,6 +54,7 @@ export const SAMPLE_SEEDS = [
     colorName: 'ウルトラマリンブルー', colorCode: '380(043)', size: '118ml',
     folderId: 'stock', qty: 2, status: 'new', jan: '0887452049562',
     shop: '', price: 980, memo: '未開封の予備',
+    imageUrl: 'https://item-shopping.c.yimg.jp/i/j/e-gazai-tougei_809299',
     purchases: [[25, 2]], updatedDaysAgo: 6,
   },
   {
@@ -58,15 +64,17 @@ export const SAMPLE_SEEDS = [
     colorName: '', colorCode: 'LR', size: '10号',
     folderId: 'carry', qty: 2, status: 'enough', jan: '4943668000325',
     shop: '世界堂', price: 1600, memo: '面相筆と併用',
+    imageUrl: 'https://item-shopping.c.yimg.jp/i/j/kotobukiyabunguten_nfn27',
     purchases: [[70, 2]], updatedDaysAgo: 11,
   },
   {
     id: 'sample-06',
-    name: 'カラバジオ 510 張りキャンバス F6',
-    maker: 'カラバジオ', brand: '', category: 'canvas',
-    colorName: '', colorCode: '510', size: 'F6',
-    folderId: 'atelier', qty: 0, status: 'empty', jan: '4547617000178',
-    shop: '', price: 900, memo: '張り替え用に補充',
+    name: 'ホルベイン ボールドキャンバス F6',
+    maker: 'ホルベイン', brand: 'HOLBEIN', category: 'canvas',
+    colorName: '', colorCode: '', size: 'F6',
+    folderId: 'atelier', qty: 0, status: 'empty', jan: '4938331139242',
+    shop: '', price: 924, memo: '張り替え用に補充',
+    imageUrl: 'https://item-shopping.c.yimg.jp/i/j/art-and-craft-lab_4938331139242',
     purchases: [[100, 2]], updatedDaysAgo: 40,
   },
   {
@@ -76,6 +84,7 @@ export const SAMPLE_SEEDS = [
     colorName: '', colorCode: 'S131', size: 'A4',
     folderId: 'home', qty: 1, status: 'enough', jan: '4979093000418',
     shop: 'ユザワヤ', price: 550, memo: 'デッサン用',
+    imageUrl: 'https://item-shopping.c.yimg.jp/i/j/stationery-goods2_4979093000418',
     purchases: [[14, 1]], updatedDaysAgo: 2,
   },
   {
@@ -85,6 +94,7 @@ export const SAMPLE_SEEDS = [
     colorName: '', colorCode: '019', size: '75ml',
     folderId: 'atelier', qty: 1, status: 'low', jan: '8712079016968',
     shop: '', price: 1200, memo: '換気して使う',
+    imageUrl: 'https://item-shopping.c.yimg.jp/i/j/e-gazai-tougei_804192',
     purchases: [[35, 1]], updatedDaysAgo: 9,
   },
 ];
@@ -115,6 +125,7 @@ export function sampleItems(today = new Date()) {
       shop: seed.shop,
       price: seed.price,
       memo: seed.memo,
+      imageUrl: seed.imageUrl,
       purchaseLog: purchases.map(([days, qty]) => ({
         at: ago(days),
         qty: Number(qty) || 0,
@@ -124,6 +135,35 @@ export function sampleItems(today = new Date()) {
       updatedAt: ago(seed.updatedDaysAgo),
     });
   });
+}
+
+/**
+ * すでに入っているサンプルに、SAMPLE_SEEDS の imageUrl を静かに補う。
+ * 画像を自分で設定した（画像URLか手元写真がある）画材は絶対に触らない。
+ * サンプルのIDとJANが両方一致するものだけが対象（別の画材へ書き換えていたら触らない）。
+ *
+ * @param {object} state
+ * @param {{photoIds?: {has(id:string):boolean}|string[]}} options 手元写真があるアイテムIDの集合
+ * @returns {{state: object, filled: number}}
+ */
+export function backfillSampleImages(state = {}, { photoIds } = {}) {
+  const items = Array.isArray(state?.items) ? state.items : [];
+  const hasPhoto = (id) => Boolean(id) && (typeof photoIds?.has === 'function'
+    ? photoIds.has(id)
+    : Array.isArray(photoIds) && photoIds.includes(id));
+  const seedById = new Map(SAMPLE_SEEDS.map((seed) => [seed.id, seed]));
+  let filled = 0;
+  const next = items.map((item) => {
+    const seed = seedById.get(item?.id);
+    if (!seed || !seed.imageUrl) return item;
+    if (String(item.jan || '') !== String(seed.jan || '')) return item; // 別の商品へ書き換え済み
+    if (String(item.imageUrl || '').trim()) return item;               // 自分で画像URLを入れた
+    if (hasPhoto(item.id)) return item;                                // 自分で写真を撮った
+    filled += 1;
+    return { ...item, imageUrl: seed.imageUrl };
+  });
+  if (!filled) return { state, filled: 0 };
+  return { state: { ...state, items: next }, filled };
 }
 
 /** 同じ画材とみなす鍵（メーカー＋商品名。空白の違いは無視） */

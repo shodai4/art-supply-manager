@@ -96,6 +96,10 @@ body {
 }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
+
+/* ダブルタップの拡大を止める（画面サイズは固定。スクロールと文字入力はそのまま使える） */
+html, body { touch-action: manipulation; }
+button, a, select, label, summary, .tool, .vpill, .fab, .tabbar button { touch-action: manipulation; }
 .sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
 .ic { width: 16px; height: 16px; display: block; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
@@ -126,7 +130,7 @@ button { cursor: pointer; }
 .search-row[hidden] { display: none; }
 .search-row input[type="search"] {
   flex: 1 1 auto; min-width: 0; border: 1px solid var(--line); background: var(--surface); border-radius: 10px;
-  padding: 7px 12px; font-size: 14px; height: 34px;
+  padding: 7px 12px; font-size: 16px; height: 34px; /* iOSは16px未満の入力欄で勝手に拡大する */
 }
 .search-row input[type="search"]:focus { outline: none; border-color: var(--accent-line); box-shadow: 0 0 0 3px rgba(47, 111, 208, .14); }
 .search-row input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
@@ -154,6 +158,17 @@ button { cursor: pointer; }
 .crumb .quota.tight { color: var(--warn); }
 .crumb .quota:empty { display: none; }
 .crumb .quota + .cbtn { margin-left: 4px; }
+
+/* ---------- 表示の切り替え（一覧の上部・ワンタップ） ---------- */
+.viewrow { display: flex; align-items: center; gap: 6px; padding: 0 12px 7px; }
+.viewrow[hidden] { display: none; }
+.vpill {
+  display: inline-flex; align-items: center; height: 26px; padding: 0 10px;
+  border: 1px solid var(--line); background: var(--surface); border-radius: 999px;
+  font-size: 11.5px; font-weight: 700; color: var(--soft-ink); line-height: 1; white-space: nowrap;
+}
+.vpill:active { background: var(--surface-2); }
+.vpill[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--on-accent-soft); }
 
 /* ---------- フォルダグリッド（保管場所） ---------- */
 .fgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px 8px; padding: 12px 12px 6px; }
@@ -365,7 +380,7 @@ main { padding: 0 0 56px; }
 .field { margin-bottom: 10px; }
 .field label { display: block; font-size: 12px; font-weight: 700; color: var(--ink-2); margin-bottom: 4px; }
 .field input, .field select, .field textarea {
-  width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 10px; font-size: 15px; background: var(--surface);
+  width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 10px; font-size: 16px; background: var(--surface);
 }
 .field input[type="color"] { padding: 3px; height: 42px; }
 .field-row { display: flex; gap: 8px; }

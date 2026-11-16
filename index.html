@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#ffffff">
 <meta name="description" content="画材の在庫をフォルダ（家・アトリエ・持ち出し・ストック）で管理。JANバーコード読み取り対応のガザイコ。">
 <title>ガザイコ〜画材の在庫を管理するアプリ〜</title>
@@ -15,7 +15,7 @@ try {
 } catch (e) { /* 保存が読めないときはライト */ }
 </script>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="styles.css?v=1.6.0">
+<link rel="stylesheet" href="styles.css?v=1.7.0">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
 </head>
@@ -141,6 +141,11 @@ try {
     <span class="quota" id="quotaNote"></span>
     <button class="cbtn" id="btnUp" aria-label="上へ戻る" disabled><svg class="ic" aria-hidden="true"><use href="#i-up"/></svg></button>
   </nav>
+
+  <!-- 表示の切り替え（一覧の上部。ワンタップでメーカー別に見る） -->
+  <div class="viewrow" id="viewRow" hidden>
+    <button class="vpill" id="btnMakerGroup" aria-pressed="false" aria-label="メーカー別に分けて表示">メーカー別</button>
+  </div>
 </header>
 
 <main>
@@ -489,6 +494,6 @@ try {
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<script type="module" src="app.js?v=1.6.0"></script>
+<script type="module" src="app.js?v=1.7.0"></script>
 </body>
 </html>

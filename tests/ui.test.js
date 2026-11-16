@@ -171,3 +171,70 @@ test('Yahoo!のAPIを使うため、規定のHTMLでクレジットを最下部�
   const snippetAt = html.indexOf('Begin Yahoo! JAPAN Web Services Attribution Snippet');
   assert.ok(snippetAt > html.indexOf('foot-note'), 'クレジットは注記より下（アプリの下部）に置く');
 });
+
+test('一覧の上部の「メーカー別」で、ワンタップでメーカーごとに分けて見られる', () => {
+  const html = read('index.html');
+  const app = read('app.js');
+  const css = read('styles.css');
+
+  // 一覧の上部（ヘッダー内）にピルが1つ。ツールバーは狭いので増やさない
+  assert.match(html, /<div class="viewrow" id="viewRow" hidden>\s*<button class="vpill" id="btnMakerGroup" aria-pressed="false"[^>]*>メーカー別</);
+  assert.equal(/id="btnMakerGroup"[^>]*>\s*<svg/.test(html), false, 'アイコンだけにせず言葉で分かるようにする');
+  assert.equal(/id="viewRow"[\s\S]{0,300}<svg/.test(html), false, 'ピルにアイコンを足さない');
+
+  // 押すとオン・オフが切り替わる（既存のメーカー見出しグループ表示を使う）
+  assert.match(app, /\$\('btnMakerGroup'\)\.addEventListener\('click', \(\) => \{[\s\S]{0,200}toggleMakerGroup\(state\.settings\)/);
+  assert.match(app, /renderTilesInto\(\$\('itemList'\), currentList\(\), \{ group: state\.settings\.sort === 'maker'/);
+  // 押されている状態が見た目で分かる
+  assert.match(app, /\$\('btnMakerGroup'\)\.setAttribute\('aria-pressed', String\(grouped\)\)/);
+  // 絞込・並替の「メーカー順」と矛盾しない（どちらから変えても同じ状態になる）
+  assert.match(app, /withSortMode\(state\.settings, b\.dataset\.sort\)/);
+  assert.equal(/settings: \{ \.\.\.state\.settings, sort: b\.dataset\.sort \}/.test(app), false, '並替は連動する入口を通す');
+  // 出るのは在庫タブの一覧のときだけ（保管場所のグリッドでは出さない）
+  assert.match(app, /\$\('viewRow'\)\.hidden = ui\.tab !== 'stock' \|\| isFolderMode\(\)/);
+
+  // 375pxではみ出さない（横並び1つ・折り返さない・高さはツールバー並み）
+  assert.match(css, /\.viewrow\s*\{[^}]*display:\s*flex/);
+  assert.match(css, /\.viewrow\[hidden\]\s*\{\s*display:\s*none/);
+  assert.match(css, /\.vpill\s*\{[^}]*white-space:\s*nowrap/);
+  const pill = /\.vpill\s*\{([^}]*)\}/.exec(css)[1];
+  assert.match(pill, /height:\s*26px/);
+  assert.match(pill, /font-size:\s*11\.5px/);
+  // 押されているときの見た目（テーマの変数を使う）
+  assert.match(css, /\.vpill\[aria-pressed="true"\]\s*\{[^}]*background:\s*var\(--accent-soft\)/);
+
+  // 絵文字を使わない
+  const block = html.slice(html.indexOf('id="viewRow"'), html.indexOf('id="viewRow"') + 300);
+  assert.equal(EMOJI.test(block), false, 'メーカー別の導線に絵文字がある');
+});
+
+test('画面サイズは固定（ダブルタップ・ピンチで拡大しない）', () => {
+  const html = read('index.html');
+  const css = read('styles.css');
+  const app = read('app.js');
+
+  // viewport: 拡大を止めつつ、既存の viewport-fit=cover は残す
+  const meta = /<meta name="viewport" content="([^"]+)"/.exec(html);
+  assert.ok(meta, 'viewport がありません');
+  assert.match(meta[1], /width=device-width/);
+  assert.match(meta[1], /initial-scale=1\.0/);
+  assert.match(meta[1], /maximum-scale=1\.0/);
+  assert.match(meta[1], /user-scalable=no/);
+  assert.match(meta[1], /viewport-fit=cover/);
+
+  // CSS: html/body と下部タブバー・ボタン類はダブルタップの拡大をしない
+  assert.match(css, /html, body\s*\{[^}]*touch-action:\s*manipulation/);
+  assert.match(css, /[^{}]*button[^{}]*\{[^}]*touch-action:\s*manipulation/);
+  assert.match(css, /[^{}]*\.tabbar button[^{}]*\{[^}]*touch-action:\s*manipulation/);
+
+  // iOS WKWebView は user-scalable=no を無視するので、2本指のジェスチャーも止める
+  assert.match(app, /for \(const type of \['gesturestart', 'gesturechange', 'gestureend'\]\) \{\s*document\.addEventListener\(type, \(e\) => e\.preventDefault\(\), \{ passive: false \}\);/);
+
+  // 1本指のスクロール・文字入力を塞がない（touchstart を丸ごと止めない）
+  assert.equal(/addEventListener\('touchstart'[\s\S]{0,160}preventDefault/.test(app), false, 'スクロールを止めている');
+  assert.equal(/addEventListener\('touchmove'[\s\S]{0,160}preventDefault/.test(app), false, 'スクロールを止めている');
+  // 入力欄の拡大抑止で文字入力を壊さない（font-size は16px以上を保つ）
+  const inputFont = /\.field input, \.field select, \.field textarea\s*\{([^}]*)\}/.exec(css);
+  assert.ok(inputFont, '入力欄のスタイルがありません');
+  assert.match(inputFont[1], /font-size:\s*1[6-9]px|font-size:\s*1[6-9]\./);
+});

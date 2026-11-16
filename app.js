@@ -9,6 +9,7 @@ import {
   folderParentId, folderChildren, folderChain, folderDepth, folderPathLabel, folderSubtreeIds,
   folderTree, folderOptions, countByFolderDeep,
   toggleSelection, isSelected, selectAllIds, pruneSelection, searchDictionary, dictionaryHaystack,
+  isMakerGroupOn, withSortMode, toggleMakerGroup,
 } from './core.js';
 import {
   FREE_ITEM_LIMIT, FREE_FOLDER_LIMIT, PRO_BENEFITS, isPro, itemQuota, folderQuota,
@@ -16,6 +17,7 @@ import {
 } from './pro.js';
 import {
   sampleItems, mergeSampleItems, shouldSeedSamples, readSampleSeeded, writeSampleSeeded,
+  backfillSampleImages,
 } from './samples.js';
 import { JAN_DICTIONARY } from './jan-database.js';
 import {
@@ -37,6 +39,10 @@ import {
   compressImageFile, listPhotos, putPhoto, deletePhoto, clearPhotos, fetchProductImageInfo,
   resolveImageProxyUrl, normalizeProxyUrl, canUseImageProxy, sourceLabel,
 } from './images.js';
+import {
+  autoImageJan, needsAutoImage, applyFetchedImage, shouldApplyFormImage, fetchAutoImage,
+  describeFetchedImage,
+} from './auto-image.js';
 import {
   THEME_MODES, normalizeTheme, resolveTheme, themeColor, themeLabel, readStoredTheme,
   writeStoredTheme, prefersDark,
@@ -272,15 +278,17 @@ function dropPhotoUrl(id) {
   if (prev) URL.revokeObjectURL(prev);
   photoUrls.delete(id);
 }
-/** 起動時に保存済みの手元写真をまとめて読み込む */
+/** 起動時に保存済みの手元写真をまとめて読み込む（読み込めたら true） */
 async function preloadPhotos() {
   try {
     const rows = await listPhotos();
     for (const row of rows) if (row && row.id && row.blob) setPhotoUrl(row.id, row.blob);
     photoCount = rows.length;
     render();
+    return true;
   } catch (e) {
     console.warn('写真の読み込みに失敗', e);
+    return false; // 写真が読めないときはサンプルの画像補完をしない（写真を上書きしないため）
   }
 }
 
@@ -450,6 +458,7 @@ function render() {
   for (const t of ['stock', 'swatch', 'shopping', 'folders', 'settings']) $(`view-${t}`).hidden = t !== ui.tab;
   $('tools').hidden = ui.tab !== 'stock';
   $('crumb').hidden = ui.tab !== 'stock';
+  $('viewRow').hidden = ui.tab !== 'stock' || isFolderMode();
   $('searchRow').hidden = !ui.searchOpen || ui.tab !== 'stock';
   $('btnAdd').style.visibility = ui.tab === 'stock' || ui.tab === 'shopping' ? 'visible' : 'hidden';
 }
@@ -477,6 +486,10 @@ function renderTools() {
   $('btnSelect').hidden = isFolderMode();
   $('btnSelect').setAttribute('aria-pressed', String(ui.selectMode));
   $('btnSelect').setAttribute('aria-label', ui.selectMode ? '選択をやめる' : '複数選択');
+  // 「メーカー別」は一覧の上部のピル（オン・オフが見た目で分かるように）
+  const grouped = isMakerGroupOn(state.settings);
+  $('btnMakerGroup').setAttribute('aria-pressed', String(grouped));
+  $('btnMakerGroup').setAttribute('aria-label', grouped ? 'メーカー別をやめる' : 'メーカー別に分けて表示');
 }
 
 function renderCrumb() {
@@ -939,7 +952,8 @@ $('sheetFilter').addEventListener('click', (e) => {
 $('sheetSort').addEventListener('click', (e) => {
   const b = e.target.closest('[data-sort]');
   if (!b) return;
-  state = { ...state, settings: { ...state.settings, sort: b.dataset.sort } };
+  // メーカー順を選ぶと「メーカー別」もオンになる（上部のピルと連動）
+  state = { ...state, settings: withSortMode(state.settings, b.dataset.sort) };
   save();
   closeSheet('sheetSort');
   render();
@@ -982,6 +996,13 @@ $('btnSort').addEventListener('click', () => { renderFilterSheet(); openSheet('s
 $('btnLayout').addEventListener('click', () => {
   ui.layout = ui.layout === 'list' ? 'grid' : 'list';
   state = { ...state, settings: { ...state.settings, layout: ui.layout } };
+  save();
+  render();
+});
+
+/** 一覧上部の「メーカー別」（ワンタップでメーカー見出しの表示に切り替える） */
+$('btnMakerGroup').addEventListener('click', () => {
+  state = { ...state, settings: toggleMakerGroup(state.settings) };
   save();
   render();
 });
@@ -1122,6 +1143,8 @@ function openItemSheet(id, preset = {}) {
   openSheet('sheetItem');
   $('sheetItem').scrollTop = 0;
   setTimeout(() => $('fName').focus({ preventScroll: true }), 120);
+  // JANが入っていて画像・写真が未設定なら、そのまま画像を取りに行く（読取・辞書から開いたとき）
+  autoFetchFormImage();
 }
 
 // 数量ステッパー（編集シート内）
@@ -1175,6 +1198,61 @@ $('btnPhotoClear').addEventListener('click', () => {
   renderPhotoPreview();
 });
 $('fImageUrl').addEventListener('input', renderPhotoPreview);
+
+/* ---------------- 商品画像の自動取得（読取・連続スキャン・辞書から） ---------------- */
+// 「画像を取得」ボタンを押さなくても、JANが入った時点で静かに画像を取りに行く。
+// 失敗（未ヒット・通信不可）は何も出さずにあきらめる（登録・読取・UI操作は止めない）。
+let formImageToken = 0;              // 編集シートの自動取得が古くなっていないかを見る番号
+const autoImageInFlight = new Set(); // 同じJANを二重に取りにいかない
+
+/** 編集シートに画像を自動で入れる（JANがあり、画像URL・手元写真が未設定のときだけ） */
+async function autoFetchFormImage() {
+  formImageToken += 1;
+  const token = formImageToken;
+  const jan = autoImageJan($('fJan').value);
+  if (!jan) return;
+  if (normalizeImageUrl($('fImageUrl').value)) return;
+  if (pendingPhoto) return;
+  if (ui.editingId && photoUrls.has(ui.editingId)) return;
+  const info = await fetchAutoImage(jan, { settings: state.settings, inFlight: autoImageInFlight });
+  if (!info || !info.imageUrl) return; // 未ヒット・通信不可は静かにスキップ
+  const ok = shouldApplyFormImage({
+    requestJan: jan,
+    currentJan: $('fJan').value,
+    currentImageUrl: $('fImageUrl').value,
+    hasPendingPhoto: Boolean(pendingPhoto),
+    hasSavedPhoto: Boolean(ui.editingId && photoUrls.has(ui.editingId)),
+    token,
+    activeToken: formImageToken,
+  });
+  if (!ok) return; // 取得中にJAN・画像・写真が変わっていたら入れない
+  $('fImageUrl').value = info.imageUrl;
+  $('imageUrlHint').textContent = describeFetchedImage(info, { sourceText: sourceLabel(info.source) });
+  renderPhotoPreview();
+}
+
+/** 連続スキャンで登録した画材へ、画像を後から静かに足す（一覧を描き直す） */
+async function autoFillScannedImage(item) {
+  if (!needsAutoImage(item, { photoIds: photoUrls })) return;
+  const info = await fetchAutoImage(item.jan, { settings: state.settings, inFlight: autoImageInFlight });
+  if (!info || !info.imageUrl) return;
+  const out = applyFetchedImage(state, {
+    itemId: item.id, jan: item.jan, imageUrl: info.imageUrl, photoIds: photoUrls,
+  });
+  if (!out.changed) return; // 削除・別画像・写真の設定があったら上書きしない
+  state = out.state;
+  save();
+  render();
+}
+
+/** すでに入っているサンプルに、定義の画像を静かに補う（自分で設定した画像・写真は残す） */
+function backfillSampleImagesInState() {
+  const out = backfillSampleImages(state, { photoIds: photoUrls });
+  if (!out.filled) return;
+  state = out.state;
+  save();
+  render();
+}
 
 /** 読み込み後、存在しない画材の写真を端末内から片付ける */
 async function prunePhotos() {
@@ -1661,6 +1739,8 @@ function continuousScan(jan, { skipCooldown = false } = {}) {
   scanLog = [result, ...scanLog];
   renderScanLog();
   render();
+  // 登録した画材に画像を後から足す（辞書ヒットの自動登録・未収録の仮登録が対象）
+  if (result.item && (result.kind === 'added' || result.kind === 'drafted')) autoFillScannedImage(result.item);
   return true;
 }
 
@@ -1883,6 +1963,7 @@ function applyDictEntry(d) {
   refreshFormShopLinks();
   closeSheet('sheetDictFind');
   toast('辞書の商品を入れました');
+  autoFetchFormImage(); // JANが入ったので、そのまま商品画像を取りに行く
 }
 
 $('btnDictFind').addEventListener('click', () => {
@@ -1906,8 +1987,17 @@ if ('serviceWorker' in navigator && !isNativeShell(window)) {
   });
 }
 
+/* ---------------- 画面サイズの固定（ダブルタップ・ピンチで拡大しない） ---------------- */
+// iOS WKWebView は viewport の user-scalable=no を無視してピンチで拡大することがあるため、
+// 2本指のジェスチャーだけを止める（1本指のスクロール・文字入力・ボタン操作はそのまま）。
+for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
+  document.addEventListener(type, (e) => e.preventDefault(), { passive: false });
+}
+
 seedSamplesOnFirstRun();
 render();
-preloadPhotos();
+preloadPhotos().then((ok) => {
+  if (ok) backfillSampleImagesInState();
+});
 renderDictionaryState();
 syncDictionary();

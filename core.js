@@ -452,6 +452,39 @@ export function sortItems(items, mode = 'updated') {
   return copy.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
 }
 
+/* ---------------- 並び順の切り替え（一覧上部の「メーカー別」と連動） ---------------- */
+
+/** 「メーカー別」表示（メーカー見出しで分ける）がオンか */
+export function isMakerGroupOn(settings = {}) {
+  return settings?.sort === 'maker';
+}
+
+/** 使える並び順か（知らない値は「新しい順」に倒す） */
+function normalizeSortMode(mode) {
+  return SORT_MODES.some((m) => m.id === mode) ? mode : 'updated';
+}
+
+/**
+ * 並び順を変える設定を作る。
+ * 「メーカー別」を外したときは、直前に見ていた並び（メーカー順以外）へ戻せるよう覚えておく。
+ */
+export function withSortMode(settings = {}, mode = 'updated') {
+  const next = normalizeSortMode(mode);
+  const remembered = normalizeSortMode(settings?.sortBeforeMaker || 'updated');
+  const before = remembered === 'maker' ? 'updated' : remembered;
+  if (next === 'maker') {
+    const current = normalizeSortMode(settings?.sort || 'updated');
+    return { ...settings, sort: 'maker', sortBeforeMaker: current === 'maker' ? before : current };
+  }
+  return { ...settings, sort: next, sortBeforeMaker: before };
+}
+
+/** 「メーカー別」表示のオン・オフ（オンなら直前の並びへ戻す） */
+export function toggleMakerGroup(settings = {}) {
+  if (isMakerGroupOn(settings)) return withSortMode(settings, settings?.sortBeforeMaker || 'updated');
+  return withSortMode(settings, 'maker');
+}
+
 export function countByFolder(items) {
   const out = { all_total: items.length };
   for (const it of items) out[it.folderId] = (out[it.folderId] || 0) + 1;

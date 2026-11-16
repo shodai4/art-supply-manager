@@ -7,6 +7,7 @@ import {
   upsertItem, deleteItems, exportState, importState, summarize, blankState,
   countByFolder, DEFAULT_FOLDERS, CATEGORIES, SORT_MODES, MAKER_NONE,
   itemMaker, listMakers, groupByMaker, stripEmoji,
+  isMakerGroupOn, withSortMode, toggleMakerGroup,
 } from '../core.js';
 
 test('JANチェックディジット計算', () => {
@@ -228,4 +229,29 @@ test('絵文字を含む旧データは読み込み時に文字だけへ整え�
   // 既定フォルダの定義自体にも絵文字を持たない
   assert.equal(DEFAULT_FOLDERS.every((f) => !('icon' in f) || !f.icon), true);
   assert.equal(CATEGORIES.every((c) => !('icon' in c) || !c.icon), true);
+});
+
+test('並び順の切り替え（「メーカー別」と並替メニューが連動する）', () => {
+  const base = blankState().settings;
+  assert.equal(isMakerGroupOn(base), false);
+  // メーカー順にすると「メーカー別」がオン
+  const on = toggleMakerGroup(base);
+  assert.equal(on.sort, 'maker');
+  assert.equal(isMakerGroupOn(on), true);
+  // もう一度押すと直前に見ていた並びへ戻る
+  assert.equal(toggleMakerGroup(on).sort, 'updated');
+  const fromName = withSortMode({ ...base, sort: 'name' }, 'maker');
+  assert.equal(fromName.sortBeforeMaker, 'name');
+  assert.equal(toggleMakerGroup(fromName).sort, 'name');
+  // 並替メニューでメーカー順を選んでも同じ状態になる
+  assert.deepEqual(withSortMode({ ...base, sort: 'shortage' }, 'maker'), toggleMakerGroup({ ...base, sort: 'shortage' }));
+  // メーカー順以外を選ぶとオフになり、次にメーカー順へ戻すと直前の並びを覚えている
+  const off = withSortMode(fromName, 'name');
+  assert.equal(off.sort, 'name');
+  assert.equal(isMakerGroupOn(off), false);
+  assert.equal(withSortMode(off, 'maker').sortBeforeMaker, 'name');
+  // 知らない値は「新しい順」に倒す（壊れたデータでも落ちない）
+  assert.equal(withSortMode(base, 'unknown-mode').sort, 'updated');
+  assert.equal(withSortMode(undefined, 'maker').sort, 'maker');
+  assert.equal(withSortMode(base, 'maker').sortBeforeMaker, 'updated');
 });

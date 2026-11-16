@@ -1,9 +1,9 @@
 // ガザイコ Service Worker（オフライン用キャッシュ）
-const CACHE = 'art-supply-manager-v24';
+const CACHE = 'art-supply-manager-v25';
 const ASSETS = [
   './', './index.html', './privacy.html', './support.html',
   './styles.css', './app.js', './core.js', './links.js', './images.js', './pro.js', './samples.js', './theme.js', './jan-database.js', './jan-extra.js',
-  './jan-extra.json', './shops.js', './scanner.js', './scan-flow.js',
+  './jan-extra.json', './shops.js', './scanner.js', './scan-flow.js', './auto-image.js',
   './manifest.webmanifest', './icon.svg',
 ];
 

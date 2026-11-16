@@ -25,6 +25,7 @@ export const WEB_ASSETS = [
   'shops.js',
   'scanner.js',
   'scan-flow.js',
+  'auto-image.js',
   'app.js',
   'manifest.webmanifest',
   'icon.svg',
