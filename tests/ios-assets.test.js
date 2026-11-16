@@ -66,6 +66,70 @@ test('AppIcon と起動画面を生成できる（1024px・アルファ無し・
   assert.equal(splashHeader.readUInt32BE(20), 2732);
 });
 
+test('アイコンの元画像は 1024px・アルファ無しで、そこから全サイズを作る', (t) => {
+  const source = path.join(ROOT, 'resources', 'icon-1024.png');
+  assert.ok(fs.existsSync(source), 'resources/icon-1024.png がありません');
+  const header = fs.readFileSync(source).subarray(0, 26);
+  assert.equal(header.toString('latin1', 12, 16), 'IHDR');
+  assert.equal(header.readUInt32BE(16), 1024);
+  assert.equal(header.readUInt32BE(20), 1024);
+  assert.equal(header[25], 2, 'アルファ無しのRGB（カラータイプ2）で保存する');
+
+  if (!pythonReady()) {
+    t.skip('Pillow が無い環境のため生成の検証はスキップ');
+    return;
+  }
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'asm-ios-icon-'));
+  execFileSync('python3', [path.join(ROOT, 'scripts', 'generate-ios-assets.py')], {
+    env: { ...process.env, IOS_ASSETS_OUT: out },
+    stdio: 'ignore',
+  });
+  // 元画像の絵がそのまま使われる（描画アイコンへ戻っていないこと）
+  const marketing = path.join(out, 'resources', 'AppIcon.appiconset', 'AppIcon-1024x1024@1x.png');
+  assert.ok(fs.existsSync(marketing));
+  const py = `import sys
+from PIL import Image
+im = Image.open(sys.argv[1]).convert("RGB").resize((8, 8))
+print(sum(sum(px) for px in im.getdata()))`;
+  const digest = (file) => execFileSync('python3', ['-c', py, file], { encoding: 'utf8' }).trim();
+  assert.equal(digest(marketing), digest(source), 'AppIcon が元画像から作られていない');
+
+  // Web・PWA・ホーム画面用のPNGも同時に作られる
+  for (const [name, px] of [['icon-192.png', 192], ['icon-512.png', 512], ['apple-touch-icon.png', 180]]) {
+    const file = path.join(out, name);
+    assert.ok(fs.existsSync(file), `${name} が生成されていません`);
+    const h = fs.readFileSync(file).subarray(0, 26);
+    assert.equal(h.readUInt32BE(16), px, `${name} の幅`);
+    assert.equal(h.readUInt32BE(20), px, `${name} の高さ`);
+    assert.equal(h[25], 2, `${name} はアルファ無し`);
+  }
+  const svg = fs.readFileSync(path.join(out, 'icon.svg'), 'utf8');
+  assert.match(svg, /<image href="data:image\/png;base64,/);
+  assert.match(svg, /viewBox="0 0 192 192"/);
+});
+
+test('リポジトリ同梱の Web/PWA アイコンは元画像と同じ絵', () => {
+  for (const name of ['icon-192.png', 'icon-512.png', 'apple-touch-icon.png']) {
+    const file = path.join(ROOT, name);
+    assert.ok(fs.existsSync(file), `${name} がありません`);
+    const header = fs.readFileSync(file).subarray(0, 26);
+    assert.equal(header[25], 2, `${name} はアルファ無し`);
+  }
+  const html = read('index.html');
+  assert.match(html, /<link rel="apple-touch-icon" href="apple-touch-icon.png">/);
+  assert.match(html, /<link rel="icon" href="icon.svg" type="image\/svg\+xml">/);
+  const manifest = JSON.parse(read('manifest.webmanifest'));
+  for (const icon of manifest.icons) {
+    assert.ok(fs.existsSync(path.join(ROOT, icon.src)), `manifest の ${icon.src} がありません`);
+  }
+  const sw = read('sw.js');
+  for (const name of ['./icon-192.png', './icon-512.png', './apple-touch-icon.png']) {
+    assert.ok(sw.includes(name), `sw.js が ${name} をキャッシュしない`);
+  }
+  const build = read('scripts/build.mjs');
+  assert.match(build, /'apple-touch-icon\.png'/);
+});
+
 test('リポジトリ同梱の素材（1024px アイコンと起動画面）が揃っている', () => {
   const icon = path.join(ROOT, 'resources', 'AppIcon.appiconset', 'AppIcon-1024x1024@1x.png');
   const splash = path.join(ROOT, 'resources', 'splash.png');

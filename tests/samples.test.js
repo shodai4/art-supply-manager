@@ -203,7 +203,7 @@ test('画面の導線（空の一覧・設定）と配信ファイルへの登�
 
   // キャッシュ・iOSビルド・Service Worker に新しいファイルが入っている
   assert.match(sw, /'\.\/samples\.js'/);
-  assert.match(sw, /art-supply-manager-v27/);
+  assert.match(sw, /art-supply-manager-v28/);
   assert.match(build, /'samples\.js'/);
   // CI（iOSビルド）は app.js / index.html の変更で走る（samples.js は build.mjs 経由で www/ へ入る）
   assert.match(workflow, /- 'app\.js'/);

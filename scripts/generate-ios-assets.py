@@ -1,21 +1,27 @@
 #!/usr/bin/env python3
-"""iOS の AppIcon（1024px・アルファ無し）と起動画面の素材を作る。
+"""iOS の AppIcon（1024px・アルファ無し）と Web/PWA アイコン、起動画面の素材を作る。
 
+- 図柄は `resources/icon-1024.png`（アトリコのアイコン）から作る。このファイルが無いときだけ、
+  従来の描画アイコン（青→紫のグラデーションに白い一筆）へ自動で戻る。
+- 元画像は RGB（アルファ無し）にそろえる。App Store は透過 PNG を受け付けないため。
 - 文字を描かないのでフォントを一切使わない（macOS ランナーに Linux のフォントパスが
   無いことで落ちる問題を避ける。date-15 で踏んだエラーと同じ種類の罠を踏まない）
-- 形は Pillow の描画だけで作り、4倍の大きさで描いてから縮小する（輪郭が滑らかになる）
-- 出力は resources/ 配下（`IOS_ASSETS_OUT` を指定すると別の場所へ。テスト用）
+- 出力は resources/ とリポジトリ直下（`IOS_ASSETS_OUT` を指定すると別の場所へ。テスト用）
 
 出力:
   resources/AppIcon.appiconset/Contents.json   … iPhone / iPad / App Store の全サイズ
   resources/AppIcon.appiconset/AppIcon-*.png
   resources/splash.png                         … 2732x2732
+  icon-192.png / icon-512.png / apple-touch-icon.png … Web・PWA・ホーム画面用
+  icon.svg                                     … ファビコン（192px のPNGを埋め込んだSVG）
 
 使い方: python3 scripts/generate-ios-assets.py
 必要なもの: Pillow（pip install Pillow）
 """
 from __future__ import annotations
 
+import base64
+import io
 import json
 import os
 import sys
@@ -30,6 +36,17 @@ ROOT = Path(__file__).resolve().parent.parent
 OUT_ROOT = Path(os.environ.get("IOS_ASSETS_OUT") or ROOT)
 RES_DIR = OUT_ROOT / "resources"
 APPICON_DIR = RES_DIR / "AppIcon.appiconset"
+
+# アイコンの元画像（アトリコ）。リポジトリの resources/ を常に元にする
+# （出力先を IOS_ASSETS_OUT で変えても、元画像はリポジトリ側を見る）。`ICON_SOURCE` で差し替え可。
+ICON_SOURCE = Path(os.environ.get("ICON_SOURCE") or ROOT / "resources" / "icon-1024.png")
+
+# Web・PWA・ホーム画面用のPNG（ファイル名: 大きさ）
+WEB_ICONS = {
+    "icon-192.png": 192,
+    "icon-512.png": 512,
+    "apple-touch-icon.png": 180,
+}
 
 ICON_SIZE = 1024
 SPLASH_SIZE = 2732
@@ -182,15 +199,63 @@ def write_splash(icon):
     return path
 
 
+def load_icon(size=ICON_SIZE):
+    """アイコンの元画像を読む（RGB・size角にそろえる）。読めなければ描画アイコンに戻す。
+
+    iOS の AppIcon は透過を持てないので、元画像が透過PNGでも白背景に合成してRGBにする。
+    """
+    if ICON_SOURCE.exists():
+        try:
+            src = Image.open(ICON_SOURCE)
+            if src.mode in ("RGBA", "LA") or "transparency" in src.info:
+                src = src.convert("RGBA")
+                flat = Image.new("RGB", src.size, WHITE)
+                flat.paste(src, (0, 0), src)
+                src = flat
+            else:
+                src = src.convert("RGB")
+            if src.size != (size, size):
+                src = src.resize((size, size), Image.LANCZOS)
+            return src
+        except Exception as exc:  # 壊れた画像でもビルドを止めない
+            print(f"[assets] {ICON_SOURCE} を読めませんでした（{exc}）。描画アイコンで作ります。", file=sys.stderr)
+    return draw_icon(size)
+
+
+def write_web_icons(icon):
+    """Web・PWA・ホーム画面用のPNGと、ファビコン用のSVGを書き出す。"""
+    written = []
+    for name, px in WEB_ICONS.items():
+        icon.resize((px, px), Image.LANCZOS).save(OUT_ROOT / name, "PNG", optimize=True)
+        written.append(name)
+    # SVG は 192px のPNGを埋め込む（元の図柄をそのまま使い、古いアイコンを残さない）
+    buf = io.BytesIO()
+    icon.resize((192, 192), Image.LANCZOS).save(buf, "PNG", optimize=True)
+    encoded = base64.b64encode(buf.getvalue()).decode("ascii")
+    svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">\n'
+        '  <title>アトリコ</title>\n'
+        f'  <image href="data:image/png;base64,{encoded}" width="192" height="192"/>\n'
+        '</svg>\n'
+    )
+    (OUT_ROOT / "icon.svg").write_text(svg, encoding="utf-8")
+    written.append("icon.svg")
+    return written
+
+
 def main():
     RES_DIR.mkdir(parents=True, exist_ok=True)
     APPICON_DIR.mkdir(parents=True, exist_ok=True)
-    icon = draw_icon()
+    icon = load_icon()
     files = write_appiconset(icon)
     splash = write_splash(icon)
+    web = write_web_icons(icon)
+    source = ICON_SOURCE if ICON_SOURCE.exists() else "（描画アイコン）"
+    print(f"元画像: {source}")
     print(f"作成: {APPICON_DIR / 'AppIcon-1024x1024@1x.png'}（{ICON_SIZE}x{ICON_SIZE}）")
     print(f"作成: {APPICON_DIR / 'Contents.json'}（{len(files)}種）")
     print(f"作成: {splash}（{SPLASH_SIZE}x{SPLASH_SIZE}）")
+    print(f"作成: {', '.join(web)}")
 
 
 if __name__ == "__main__":

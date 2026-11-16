@@ -68,9 +68,9 @@ test('切り替えは「カメラを止めてから開き直す」順で、連�
   assert.match(app, /async function restartScanner\(\) \{\s*await stopScanner\(\);/);
   assert.match(app, /await startScanner\(\);\s*\}/);
   // 開き直す前に、古いストリームを止めて片付ける
-  assert.match(app, /function stopScanner\(\) \{[\s\S]{0,900}return Promise\.resolve\(s\.stop\(\)\)/);
+  assert.match(app, /function stopScanner\(\) \{[\s\S]{0,1200}return Promise\.resolve\(stopping\)/);
   // 起動時も前のストリームを待ってから開く
-  assert.match(app, /async function startScanner\(\) \{\s*await stopScanner\(\);/);
+  assert.match(app, /async function startScanner\(\) \{\s*const token = \(scanStartToken \+= 1\);\s*await stopScanner\(\);/);
   // 向きは getUserMedia と同梱スキャナの両方に効く
   assert.match(app, /getUserMedia\(\{ video: facingConstraints\(scanFacing\) \}\)/);
   assert.match(app, /inst\.start\(scannerFacingConfig\(scanFacing\)/);
@@ -88,6 +88,15 @@ test('カメラを開けなかったときは外カメラへ戻して一度だ�
   const app = read('app.js');
   assert.match(app, /if \(scanFacing !== DEFAULT_FACING\) \{\s*scanFacing = DEFAULT_FACING;/);
   assert.match(app, /return startScanner\(\);/);
+});
+
+test('重なった起動・停止は、古い処理があとから画面を書き換えない', () => {
+  const app = read('app.js');
+  assert.match(app, /let scanStartToken = 0;/);
+  assert.match(app, /const token = \(scanStartToken \+= 1\);/);
+  assert.ok((app.match(/if \(token !== scanStartToken\) return;/g) || []).length >= 3, '起動の各待ち合わせ後に番号を確かめる');
+  // 停止は同期的に投げる実装でも落ちないように包む
+  assert.match(app, /try \{\s*stopping = s\.stop\(\);[\s\S]{0,120}catch \(e\) \{\s*stopping = Promise\.reject\(e\);/);
 });
 
 test('375pxで1行に収まらないときは折り返す（はみ出さない）', () => {

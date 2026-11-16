@@ -1649,8 +1649,16 @@ function showScanMsg(msg) {
   $('scanMsg').textContent = msg;
 }
 
+/**
+ * 起動の通し番号。カメラの切り替えや再起動が重なったとき、古い起動の続きが
+ * 画面の案内や向きの表示をあとから書き換えないようにする（最後の1回だけが有効）。
+ */
+let scanStartToken = 0;
+
 async function startScanner() {
+  const token = (scanStartToken += 1);
   await stopScanner();
+  if (token !== scanStartToken) return; // もっと新しい起動が始まっていたら降りる
   const video = $('scanVideo');
   video.hidden = true;
   $('scanReticle').hidden = true;
@@ -1735,6 +1743,7 @@ async function startScanner() {
   try {
     const Html5Qrcode = await loadVendorScanner(document, VENDOR_SCANNER_PATH);
     if (!Html5Qrcode) throw new Error('スキャナを読み込めません');
+    if (token !== scanStartToken) return; // 待っている間に切り替えが始まった
     $('scanMsg').hidden = true;
     const holder = document.createElement('div');
     holder.id = 'qrReader';
@@ -1744,15 +1753,18 @@ async function startScanner() {
     scanner = inst;
     await inst.start(scannerFacingConfig(scanFacing), { fps: 10, qrbox: { width: 240, height: 140 } },
       (text) => { onScan(text); }, () => {});
+    if (token !== scanStartToken) return;
     scannerLive = true;
     hideScanStatus();
   } catch (e) {
     console.warn('html5-qrcode失敗', e);
+    document.getElementById('qrReader')?.remove();
+    if (token !== scanStartToken) return; // 古い起動の失敗で新しい表示を壊さない
     // 内カメラしか無い端末などで開けなかったときは、外カメラへ戻して一度だけ試す
     if (scanFacing !== DEFAULT_FACING) {
       scanFacing = DEFAULT_FACING;
       renderScanFacing();
-      document.getElementById('qrReader')?.remove();
+      showScanStatus('内カメラを開けませんでした（外カメラに戻しました）', 'warn');
       return startScanner();
     }
     showScanMsg('カメラを起動できません。手入力をどうぞ');
@@ -1781,7 +1793,13 @@ function stopScanner() {
     holder?.remove();
     return Promise.resolve();
   }
-  return Promise.resolve(s.stop())
+  let stopping;
+  try {
+    stopping = s.stop(); // まだ開始していない等で同期的に投げる版もある
+  } catch (e) {
+    stopping = Promise.reject(e);
+  }
+  return Promise.resolve(stopping)
     .then(() => { s.clear?.(); holder?.remove(); })
     .catch(() => { holder?.remove(); });
 }

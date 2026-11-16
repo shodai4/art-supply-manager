@@ -68,7 +68,7 @@ python3 -m http.server 8080      # または任意の静的サーバー
 | `images.js` | 手元写真の圧縮（canvas）・IndexedDB保存と、中継サーバー（楽天・Yahoo!）経由の商品画像取得 |
 | `jan-database.js` | 実在確認済みJAN辞書＋メーカープレフィックス表 |
 | `sw.js` / `manifest.webmanifest` | PWA（オフラインキャッシュ・ホーム画面追加） |
-| `icon.svg` / `icon-192.png` / `icon-512.png` | アプリアイコン（manifest の192/512px用PNGを含む） |
+| `resources/icon-1024.png` / `icon.svg` / `icon-192.png` / `icon-512.png` / `apple-touch-icon.png` | アプリアイコン（元画像から `scripts/generate-ios-assets.py` で全サイズを生成） |
 | `tests/core.test.js` | ロジックの単体テスト |
 | `tests/pro.test.js` | 無料上限（100点・3フォルダ）・Pro判定・枠の表示・Pro機能・購入結果の反映のテスト |
 | `tests/cost.test.js` | 画材費の2軸集計・購入ログ・CSV生成／エスケープ・バックアップのマージのテスト |

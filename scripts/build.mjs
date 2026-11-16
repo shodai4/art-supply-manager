@@ -31,6 +31,7 @@ export const WEB_ASSETS = [
   'icon.svg',
   'icon-192.png',
   'icon-512.png',
+  'apple-touch-icon.png',
   'vendor/html5-qrcode.min.js',
 ];
 

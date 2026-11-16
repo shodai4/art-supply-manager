@@ -155,11 +155,11 @@ WKWebView では `target="_blank"` が開けないため、`@capacitor/browser`�
 
 ### 4.5 アプリアイコンと起動画面（フォント非依存）
 
-`scripts/generate-ios-assets.py` が Pillow の図形描画だけで 1024px のアイコンと 2732px の起動画面を作ります。**文字を描かないのでフォントを一切使わず**、`date-15` で踏んだ「macOSランナーにLinuxのフォントパスが無い」エラーを構造的に避けています。4倍で描いて縮小するため輪郭も滑らかです。
+`scripts/generate-ios-assets.py` が `resources/icon-1024.png`（アトリコのアイコン）から 1024px のアイコン・Web用アイコン・2732px の起動画面を作ります（元画像が無いときだけ、Pillow の図形描画に戻ります）。**文字を描かないのでフォントを一切使わず**、`date-15` で踏んだ「macOSランナーにLinuxのフォントパスが無い」エラーを構造的に避けています。4倍で描いて縮小するため輪郭も滑らかです。
 
 - AppIcon: iPhone（20/29/40/60）・iPad（20/29/40/76/83.5）・App Store（1024）の計20種を `Contents.json` ごと生成し、`setup-ios-assets.mjs` が Xcode のアセットカタログへ反映（Capacitor の初期アイコンは残さない）
 - 起動画面: `resources/splash.png` を `Splash.imageset` の全 png に上書き（ファイル名が変わっても追従）
-- 図柄は Web版 `icon.svg` と同じ（青→紫のグラデーションに白い一筆と絵具の粒3つ）。絵文字は不使用
+- 図柄は絵の具パレットに5色のフォルダ（黄・青・赤・橙・緑）。`resources/icon-1024.png` を唯一の元にして `icon-192.png` / `icon-512.png` / `apple-touch-icon.png` / `icon.svg` も同じ絵で作り直す。絵文字は不使用
 
 ---
 
