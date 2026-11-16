@@ -2412,6 +2412,6 @@ if (typeof window !== 'undefined') {
   window.addEventListener('online', () => { fillMissingImages(); });
 }
 
-// iOSアプリの最下部に AdMob バナー（テスト広告）。Webブラウザでは何もしない。
+// iOSアプリの最下部に AdMob バナー（本番ID）。Webブラウザでは何もしない。
 // バナーの高さは CSS 変数 --ad-h に入り、タブバー・ドック・FAB・一覧の下端を押し上げる。
 const adBanner = setupAdBanner();

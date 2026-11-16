@@ -1,7 +1,7 @@
 /**
- * 最下部の AdMob バナー（テスト広告）と、バナー分の余白。
+ * 最下部の AdMob バナー（本番ID）と、バナー分の余白。
  *
- *   1) いまはテスト広告だけ（USE_TEST_ADS・Google公式テストID）。本番IDは使わない
+ *   1) 本番IDで配信中（テストIDは実機確認用に残す。USE_TEST_ADS で切替）
  *   2) iOSアプリのネイティブ起動時だけ出す（Webブラウザ／GitHub Pagesでは何もしない）
  *   3) 読み込めた実測の高さを CSS 変数 --ad-h に入れ、タブバー・FAB・一覧の下端を押し上げる
  *   4) Info.plist の GADApplicationIdentifier と admob.js のアプリIDが一致する
@@ -15,7 +15,8 @@ import os from 'node:os';
 const require_os = os;
 import { fileURLToPath } from 'node:url';
 import {
-  USE_TEST_ADS, ADMOB_TEST_APP_ID, ADMOB_TEST_BANNER_ID, ADMOB_APP_ID, ADMOB_BANNER_ID,
+  USE_TEST_ADS, ADMOB_TEST_APP_ID, ADMOB_TEST_BANNER_ID, ADMOB_PROD_APP_ID, ADMOB_PROD_BANNER_ID,
+  ADMOB_APP_ID, ADMOB_BANNER_ID,
   ADMOB_BANNER_FALLBACK_HEIGHT, AD_HEIGHT_VAR, adMobPlugin, shouldShowAdBanner, bannerLiftHeight,
   bannerShowOptions, bannerInitializeOptions, applyBannerLift, clearBannerLift, AdBanner, setupAdBanner,
 } from '../admob.js';
@@ -29,22 +30,25 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (name) => fs.readFileSync(path.join(ROOT, name), 'utf8');
 const EMOJI = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/u;
 
-/* ---------------- テスト広告の設定 ---------------- */
+/* ---------------- 本番IDの設定 ---------------- */
 
-test('いまはGoogle公式のテスト広告だけを使う（本番ID・収益はまだ無し）', () => {
-  assert.equal(USE_TEST_ADS, true);
+test('本番IDで配信中（テストIDは実機確認用に残す）', () => {
+  assert.equal(USE_TEST_ADS, false);
+  assert.equal(ADMOB_PROD_APP_ID, 'ca-app-pub-5739782559889389~2686704558');
+  assert.equal(ADMOB_PROD_BANNER_ID, 'ca-app-pub-5739782559889389/1132135646');
+  assert.equal(ADMOB_APP_ID, ADMOB_PROD_APP_ID);
+  assert.equal(ADMOB_BANNER_ID, ADMOB_PROD_BANNER_ID);
+  // テストIDは消さない（USE_TEST_ADS を true に戻すだけで実機確認できる）
   assert.equal(ADMOB_TEST_APP_ID, 'ca-app-pub-3940256099942544~1458002511');
   assert.equal(ADMOB_TEST_BANNER_ID, 'ca-app-pub-3940256099942544/2934735716');
-  assert.equal(ADMOB_APP_ID, ADMOB_TEST_APP_ID);
-  assert.equal(ADMOB_BANNER_ID, ADMOB_TEST_BANNER_ID);
-  // テスト中は isTesting を必ず添える（実機の誤クリックを無効トラフィックにしない）
+  // 本番のあいだは isTesting を添えない（テスト広告としては扱わせない）
   const show = bannerShowOptions();
-  assert.equal(show.isTesting, true);
-  assert.equal(show.adId, ADMOB_TEST_BANNER_ID);
+  assert.equal(show.isTesting, false);
+  assert.equal(show.adId, ADMOB_PROD_BANNER_ID);
   assert.equal(show.position, 'BOTTOM_CENTER');
   assert.equal(show.margin, 0);
   assert.equal(show.adSize, 'ADAPTIVE_BANNER');
-  assert.equal(bannerInitializeOptions().initializeForTesting, true);
+  assert.equal(bannerInitializeOptions().initializeForTesting, false);
 });
 
 test('出すのはiOSアプリのネイティブ起動時だけ（Webでは広告枠も余白も出さない）', () => {
@@ -117,9 +121,10 @@ test('ネイティブでは初期化→バナー表示。読み込めた大き�
   assert.equal(banner.enabled, true);
   assert.equal(await banner.init(), true);
   assert.equal(env.calls.initialize.length, 1);
-  assert.equal(env.calls.initialize[0].initializeForTesting, true);
+  assert.equal(env.calls.initialize[0].initializeForTesting, false);
   assert.equal(env.calls.showBanner.length, 1);
-  assert.equal(env.calls.showBanner[0].isTesting, true);
+  assert.equal(env.calls.showBanner[0].isTesting, false);
+  assert.equal(env.calls.showBanner[0].adId, ADMOB_PROD_BANNER_ID);
 
   // 読み込めたら予備の高さで先に余白を確保し、実測が来たら合わせる
   env.listeners.get('bannerAdLoaded')();

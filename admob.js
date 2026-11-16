@@ -1,12 +1,13 @@
 // アトリコ AdMob バナー（iOSアプリのネイティブ起動時だけ、画面の最下部に出す）
 //
-// 【いまはテスト広告だけ】
-//   USE_TEST_ADS = true の間は、Google が公開している「公式テストID」しか使いません。
-//   テスト広告は収益が発生せず、自分の広告を押してしまう「無効トラフィック」にもなりません。
-//     アプリID : ca-app-pub-3940256099942544~1458002511（Info.plist の GADApplicationIdentifier）
-//     バナー   : ca-app-pub-3940256099942544/2934735716
-//   本番IDを発行したら、このファイルの定数と scripts/configure-ios.mjs のアプリIDを差し替え、
-//   USE_TEST_ADS を false にする（画面側の作りは変えなくてよい）。
+// 【本番IDで配信中（2026-11-17に切替）】
+//   本番のアプリID・バナー広告ユニット（アトリコ_バナー）を発行して、テスト広告から切り替えました。
+//     アプリID : ca-app-pub-5739782559889389~2686704558（Info.plist の GADApplicationIdentifier）
+//     バナー   : ca-app-pub-5739782559889389/1132135646（アトリコ_バナー）
+//   scripts/configure-ios.mjs の ADMOB_APP_ID も同じアプリIDにしてあります（tests/admob.test.js が一致を検査）。
+//   App Store 公開までは AdMob 側が「要審査」のことがあり、その間は広告が出ないだけでアプリの動作は変わりません。
+//   公開前に実機で自分の広告を押すと「無効トラフィック」になるので、動作確認するときは下の
+//   USE_TEST_ADS を true に戻してください（Google 公式のテストIDに切り替わります）。
 //
 // 【広告枠の場所】
 //   画面の最下部（タブバーのさらに下・セーフエリアの上）。ネイティブのバナーは Web の上に
@@ -16,16 +17,20 @@
 //   Webブラウザ／GitHub Pages では何もしない（広告枠も余白も出さない）。
 import { isNativeShell } from './scanner.js';
 
-/** 広告枠のスイッチ（テスト広告の間は true） */
-export const USE_TEST_ADS = true;
+/** 広告枠のスイッチ（実機で動作確認するときだけ true に戻す） */
+export const USE_TEST_ADS = false;
 
 /** Google の公式テスト用ID（テスト広告以外では使わない） */
 export const ADMOB_TEST_APP_ID = 'ca-app-pub-3940256099942544~1458002511';
 export const ADMOB_TEST_BANNER_ID = 'ca-app-pub-3940256099942544/2934735716';
 
-/** いま使うID（テスト中は空にしない。本番IDが未発行なのでテストIDのまま） */
-export const ADMOB_APP_ID = USE_TEST_ADS ? ADMOB_TEST_APP_ID : '';
-export const ADMOB_BANNER_ID = USE_TEST_ADS ? ADMOB_TEST_BANNER_ID : '';
+/** 本番ID（AdMob で発行済み。アプリ名「アトリコ」） */
+export const ADMOB_PROD_APP_ID = 'ca-app-pub-5739782559889389~2686704558';
+export const ADMOB_PROD_BANNER_ID = 'ca-app-pub-5739782559889389/1132135646';
+
+/** いま使うID（テストに戻すときは USE_TEST_ADS を true にするだけ） */
+export const ADMOB_APP_ID = USE_TEST_ADS ? ADMOB_TEST_APP_ID : ADMOB_PROD_APP_ID;
+export const ADMOB_BANNER_ID = USE_TEST_ADS ? ADMOB_TEST_BANNER_ID : ADMOB_PROD_BANNER_ID;
 
 /** バナーの高さ（実測できないときの予備。約50〜60px） */
 export const ADMOB_BANNER_FALLBACK_HEIGHT = 56;
@@ -58,7 +63,7 @@ export function bannerLiftHeight(height, fallback = ADMOB_BANNER_FALLBACK_HEIGHT
   return Math.min(ADMOB_BANNER_MAX_HEIGHT, Math.max(ADMOB_BANNER_MIN_HEIGHT, h));
 }
 
-/** initialize に渡すオプション（テスト中はテスト端末として登録する） */
+/** initialize に渡すオプション（テスト広告の間だけテスト端末として登録する） */
 export function bannerInitializeOptions() {
   return {
     initializeForTesting: USE_TEST_ADS,
@@ -69,7 +74,8 @@ export function bannerInitializeOptions() {
 /**
  * showBanner に渡すオプション。
  * 最下部（BOTTOM_CENTER）・余白0・画面幅いっぱいのアダプティブバナー。
- * isTesting を必ず添えて、実機テスト中の誤クリックが本番広告の無効トラフィックにならないようにする。
+ * isTesting は USE_TEST_ADS と同じ値。本番IDのあいだは false で、Google に「テスト広告です」とは伝えない
+ * （テストに戻したときだけ true になり、実機テスト中の誤クリックが無効トラフィックにならない）。
  */
 export function bannerShowOptions() {
   return {

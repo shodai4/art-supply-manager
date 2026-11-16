@@ -32,9 +32,9 @@ export const APP_BUNDLE_NAME = '画材管理';
 export const MINIMUM_IOS_VERSION = '15.0';
 
 // AdMob のアプリID（Info.plist の GADApplicationIdentifier）。
-// いまはテスト広告の間なので、Google の公式テストアプリIDを使う（admob.js の USE_TEST_ADS と対）。
-// 本番IDを発行したら、admob.js とこの1行を同じ値に差し替える。
-export const ADMOB_APP_ID = 'ca-app-pub-3940256099942544~1458002511';
+// 2026-11-17 に本番IDへ切替済み（admob.js の ADMOB_PROD_APP_ID と同じ値。USE_TEST_ADS は false）。
+// 実機でテスト広告に戻すときは、admob.js と同じくテストID 'ca-app-pub-3940256099942544~1458002511' にする。
+export const ADMOB_APP_ID = 'ca-app-pub-5739782559889389~2686704558';
 
 const CAMERA_USAGE = 'バーコード（JANコード）を読み取るためにカメラを使用します。映像は端末内だけで処理し、外部へ送信しません。';
 const PHOTO_USAGE = '画材の実物写真を登録するために、写真を選択します。選んだ写真は端末内にのみ保存します。';
