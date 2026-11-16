@@ -15,6 +15,9 @@ export const PLIST_PATH = process.env.IOS_PLIST_PATH
 export const PODFILE_PATH = process.env.IOS_PODFILE_PATH
   ? path.resolve(process.env.IOS_PODFILE_PATH)
   : path.join(ROOT, 'ios', 'App', 'Podfile');
+export const PODFILE_LOCK_PATH = process.env.IOS_PODFILE_LOCK_PATH
+  ? path.resolve(process.env.IOS_PODFILE_LOCK_PATH)
+  : path.join(ROOT, 'ios', 'App', 'Podfile.lock');
 export const PROJECT_PATH = process.env.IOS_PROJECT_PATH
   ? path.resolve(process.env.IOS_PROJECT_PATH)
   : path.join(ROOT, 'ios', 'App', 'App.xcodeproj', 'project.pbxproj');
@@ -266,6 +269,20 @@ export function verifyPodfileContent(content, minimum = MINIMUM_IOS_VERSION) {
   return [];
 }
 
+/**
+ * Podfile.lock を作り直すべきか。
+ * cap sync が先に pod install して UMP 3.x をロックしていると、Podfile の 2.x 固定とぶつかって
+ * pod install が失敗する（CocoaPods はロックを下限として扱う）。そのときはロックを消して解決し直す。
+ */
+export function lockNeedsRefresh(lockText) {
+  const text = String(lockText == null ? '' : lockText);
+  if (!text) return false;
+  const found = /GoogleUserMessagingPlatform \(([0-9.]+)/.exec(text);
+  if (!found) return false;
+  const version = found[1];
+  return compareVersions(version, '2.0') < 0 || compareVersions(version, '3.0') >= 0;
+}
+
 /** Xcode プロジェクトの IPHONEOS_DEPLOYMENT_TARGET を引き上げる */
 export function configureProjectContent(input, minimum = MINIMUM_IOS_VERSION) {
   const source = String(input == null ? '' : input);
@@ -291,7 +308,9 @@ export function verifyProjectContent(content, minimum = MINIMUM_IOS_VERSION) {
 }
 
 /** 実ファイルに適用（存在しないファイルは黙って飛ばす） */
-export function applyAll({ plistPath = PLIST_PATH, podfilePath = PODFILE_PATH, projectPath = PROJECT_PATH } = {}) {
+export function applyAll({
+  plistPath = PLIST_PATH, podfilePath = PODFILE_PATH, projectPath = PROJECT_PATH, lockPath = PODFILE_LOCK_PATH,
+} = {}) {
   const results = [];
   if (fs.existsSync(plistPath)) {
     const before = fs.readFileSync(plistPath, 'utf8');
@@ -301,11 +320,23 @@ export function applyAll({ plistPath = PLIST_PATH, podfilePath = PODFILE_PATH, p
   } else {
     results.push({ file: 'Info.plist', action: 'missing' });
   }
+  let podfileChanged = false;
   if (fs.existsSync(podfilePath)) {
     const before = fs.readFileSync(podfilePath, 'utf8');
     const { content, modified } = configurePodfileContent(before);
     if (modified) fs.writeFileSync(podfilePath, content, 'utf8');
+    podfileChanged = modified;
     results.push({ file: 'Podfile', action: modified ? 'updated' : 'verified', problems: verifyPodfileContent(content) });
+  }
+  // AdMob の UMP を 2.x に固定したので、3.x をロックしている Podfile.lock は捨てて解決し直す
+  if (fs.existsSync(lockPath)) {
+    const lock = fs.readFileSync(lockPath, 'utf8');
+    if (podfileChanged || lockNeedsRefresh(lock)) {
+      fs.rmSync(lockPath, { force: true });
+      results.push({ file: 'Podfile.lock', action: 'removed', problems: [] });
+    } else {
+      results.push({ file: 'Podfile.lock', action: 'kept', problems: [] });
+    }
   }
   if (fs.existsSync(projectPath)) {
     const before = fs.readFileSync(projectPath, 'utf8');

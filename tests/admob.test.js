@@ -11,6 +11,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
+const require_os = os;
 import { fileURLToPath } from 'node:url';
 import {
   USE_TEST_ADS, ADMOB_TEST_APP_ID, ADMOB_TEST_BANNER_ID, ADMOB_APP_ID, ADMOB_BANNER_ID,
@@ -20,6 +22,7 @@ import {
 import {
   CONFIG_ENTRIES, ADMOB_APP_ID as PLIST_APP_ID, configureContent, verifyContent,
   configurePodfileContent, verifyPodfileContent, ADMOB_UMP_POD,
+  lockNeedsRefresh, applyAll,
 } from '../scripts/configure-ios.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -218,4 +221,35 @@ test('Podfile で UMP を 2.x に固定する（プラグインのSwiftが新し
   assert.equal(twice.modified, false);
   assert.equal((twice.content.match(/GoogleUserMessagingPlatform/g) || []).length, 1);
   assert.deepEqual(verifyPodfileContent(out.content), []);
+});
+
+test('Podfile.lock が UMP 3.x を持っていたら作り直す（cap sync が先に解決した分）', () => {
+  // cap sync は configure-ios より先に pod install するため、Podfile.lock に 3.x が入っている。
+  // CocoaPods はロックを下限として扱うので、そのままでは 2.7 固定とぶつかって失敗する。
+  assert.equal(lockNeedsRefresh('- GoogleUserMessagingPlatform (2.7.0)\n'), false);
+  assert.equal(lockNeedsRefresh('- GoogleUserMessagingPlatform (3.1.0):\n'), true);
+  assert.equal(lockNeedsRefresh('- GoogleUserMessagingPlatform (3.0.0):\n'), true);
+  assert.equal(lockNeedsRefresh('- GoogleUserMessagingPlatform (1.1.0):\n'), true);
+  assert.equal(lockNeedsRefresh('- Capacitor (6.2.0)\n'), false);
+  assert.equal(lockNeedsRefresh(''), false);
+
+  // 実ファイルでも、Podfile を直したとき／ロックが 3.x のときは消して解決し直す
+  const dir = fs.mkdtempSync(path.join(require_os.tmpdir(), 'asm-lock-'));
+  try {
+    const podfile = path.join(dir, 'Podfile');
+    const lock = path.join(dir, 'Podfile.lock');
+    fs.writeFileSync(podfile, "platform :ios, '13.0'\nuse_frameworks!\n\ntarget 'App' do\n  capacitor_pods\nend\n");
+    fs.writeFileSync(lock, 'PODS:\n  - Capacitor (6.2.0)\n  - GoogleUserMessagingPlatform (3.1.0)\n');
+    const results = applyAll({ plistPath: path.join(dir, 'none.plist'), podfilePath: podfile, projectPath: path.join(dir, 'none.pbxproj'), lockPath: lock });
+    assert.equal(fs.existsSync(lock), false, 'Podfile.lock を消していない');
+    assert.ok(results.some((r) => r.file === 'Podfile.lock' && r.action === 'removed'));
+
+    // 2回目（Podfile が直っていて、ロックも無い）は何もしない
+    fs.writeFileSync(lock, 'PODS:\n  - GoogleUserMessagingPlatform (2.7.0)\n');
+    const again = applyAll({ plistPath: path.join(dir, 'none.plist'), podfilePath: podfile, projectPath: path.join(dir, 'none.pbxproj'), lockPath: lock });
+    assert.equal(fs.existsSync(lock), true, '2.x のロックは残す');
+    assert.ok(again.some((r) => r.file === 'Podfile.lock' && r.action === 'kept'));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
