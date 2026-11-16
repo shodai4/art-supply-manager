@@ -211,7 +211,14 @@ export function compareVersions(a, b) {
   return 0;
 }
 
-/** Podfile の platform :ios を最低バージョンに揃える */
+// AdMob プラグイン（@capacitor-community/admob 6.2.0）は Google-Mobile-Ads-SDK 11.3.0 を指定し、
+// その依存は GoogleUserMessagingPlatform を「>= 1.1」としか縛らないため、
+// 何も指定しないと 3.x が入り、Swift の API 名が変わって ConsentExecutor.swift がコンパイルできない
+// （UMPConsentStatus → ConsentStatus、sharedInstance → shared）。
+// プラグインが想定する 2.x 系に固定して、CI のビルドを通す。
+export const ADMOB_UMP_POD = "pod 'GoogleUserMessagingPlatform', '~> 2.7'";
+
+/** Podfile の platform :ios を最低バージョンに揃え、AdMob の UMP を 2.x に固定する */
 export function configurePodfileContent(input, minimum = MINIMUM_IOS_VERSION) {
   const source = String(input == null ? '' : input);
   const line = `platform :ios, '${minimum}'`;
@@ -221,18 +228,41 @@ export function configurePodfileContent(input, minimum = MINIMUM_IOS_VERSION) {
     const content = anchor.test(source)
       ? source.replace(anchor, (_m, keep) => `${line}\n${keep}`)
       : `${line}\n${source}`;
-    return { content, modified: content !== source, added: true };
+    const withPin = addUmpPin(content);
+    return { content: withPin, modified: withPin !== source, added: true };
   }
-  const content = source.replace(pattern, (_m, head, tail) => `${head}${minimum}${tail}`);
+  const upgraded = source.replace(pattern, (_m, head, tail) => `${head}${minimum}${tail}`);
+  const content = addUmpPin(upgraded);
   return { content, modified: content !== source, added: false };
 }
 
+/** AdMob の UMP 固定行を、target ブロックの中（無ければ capacitor_pods の後ろ）に1行だけ入れる */
+export function addUmpPin(content) {
+  const source = String(content == null ? '' : content);
+  if (source.includes(ADMOB_UMP_POD)) return source;
+  const target = /^([ \t]*)target[ \t]+['"]App['"][ \t]+do[ \t]*$/m.exec(source);
+  if (target) {
+    const at = target.index + target[0].length;
+    return `${source.slice(0, at)}\n${target[1]}  ${ADMOB_UMP_POD}${source.slice(at)}`;
+  }
+  // target がまだ無い（--no-ios の素の Podfile）ときは、関数の末尾に置いておく
+  const fn = /^([ \t]*)def[ \t]+capacitor_pods[ \t]*$/m.exec(source);
+  if (fn) {
+    const end = source.indexOf('end', fn.index);
+    if (end > 0) return `${source.slice(0, end)}  ${ADMOB_UMP_POD}\n${source.slice(end)}`;
+  }
+  return `${source.replace(/\s*$/, '')}\n${ADMOB_UMP_POD}\n`;
+}
+
 export function verifyPodfileContent(content, minimum = MINIMUM_IOS_VERSION) {
-  const found = /^[ \t]*platform[ \t]+:ios[ \t]*,[ \t]*['"]([0-9.]+)['"]/m.exec(String(content == null ? '' : content));
+  const source = String(content == null ? '' : content);
+  const found = /^[ \t]*platform[ \t]+:ios[ \t]*,[ \t]*['"]([0-9.]+)['"]/m.exec(source);
   if (!found) return ['Podfile に platform :ios の指定がありません'];
   if (compareVersions(found[1], minimum) < 0) {
     return [`Podfile の platform は iOS ${found[1]} です（iOS ${minimum} 以上にしてください）`];
   }
+  const pins = (source.match(/pod 'GoogleUserMessagingPlatform'/g) || []).length;
+  if (pins !== 1) return [`GoogleUserMessagingPlatform の指定が ${pins} 件あります（1件であるべき）`];
   return [];
 }
 

@@ -17,7 +17,10 @@ import {
   ADMOB_BANNER_FALLBACK_HEIGHT, AD_HEIGHT_VAR, adMobPlugin, shouldShowAdBanner, bannerLiftHeight,
   bannerShowOptions, bannerInitializeOptions, applyBannerLift, clearBannerLift, AdBanner, setupAdBanner,
 } from '../admob.js';
-import { CONFIG_ENTRIES, ADMOB_APP_ID as PLIST_APP_ID, configureContent, verifyContent } from '../scripts/configure-ios.mjs';
+import {
+  CONFIG_ENTRIES, ADMOB_APP_ID as PLIST_APP_ID, configureContent, verifyContent,
+  configurePodfileContent, verifyPodfileContent, ADMOB_UMP_POD,
+} from '../scripts/configure-ios.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (name) => fs.readFileSync(path.join(ROOT, name), 'utf8');
@@ -198,4 +201,21 @@ test('admob.js は配布物（www/・Service Worker）に入り、絵文字を�
   // バージョン（キャッシュの更新）
   assert.match(sw, /art-supply-manager-v30/);
   assert.equal(pkg.version, '1.11.0');
+});
+
+test('Podfile で UMP を 2.x に固定する（プラグインのSwiftが新しいSDKの改名で壊れるため）', () => {
+  // @capacitor-community/admob 6.2.0 は Google-Mobile-Ads-SDK 11.3.0 を指定し、
+  // その UMP の依存は >= 1.1 なので、何もしないと 3.x が入ってコンパイルできない
+  const podfile = `platform :ios, '13.0'\nuse_frameworks!\n\ndef capacitor_pods\n  pod 'Capacitor'\nend\n\ntarget 'App' do\n  capacitor_pods\nend\n`;
+  const out = configurePodfileContent(podfile);
+  assert.equal(ADMOB_UMP_POD, "pod 'GoogleUserMessagingPlatform', '~> 2.7'");
+  assert.ok(out.content.includes(ADMOB_UMP_POD), 'UMP の固定行がありません');
+  // target ブロックの中に入れる
+  const targetAt = out.content.indexOf("target 'App' do");
+  assert.ok(out.content.indexOf(ADMOB_UMP_POD) > targetAt);
+  // 2回目は何も変えない（1行だけ）
+  const twice = configurePodfileContent(out.content);
+  assert.equal(twice.modified, false);
+  assert.equal((twice.content.match(/GoogleUserMessagingPlatform/g) || []).length, 1);
+  assert.deepEqual(verifyPodfileContent(out.content), []);
 });
