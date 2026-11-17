@@ -174,6 +174,8 @@ test('ルートは「お気に入り / すべての画材」を横に2つ、下�
 
   // フォルダ欄を出さないとき（特別フォルダ・検索中）は見出しの行ごと畳む
   assert.match(app, /\$\('folderSecHead'\)\.hidden = !show;/);
+  // display: flex の見出しでも hidden で畳めるようにしておく
+  assert.match(css, /\.sechead\[hidden\]\s*\{[^}]*display:\s*none/);
 
   // ルートの一覧は未分類だけ。0件なら節ごと出さない
   assert.match(app, /if \(root && !ui\.query\) list = unfiledItems\(list, state\.folders\);/);

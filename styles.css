@@ -183,6 +183,8 @@ button, a, select, label, summary, .hbtn, .vpill, .fab, .tabbar button { touch-a
   background: var(--surface-3); border-radius: 999px; padding: 0 6px; line-height: 15px;
 }
 .sechead .ic:first-child { flex: 0 0 auto; }
+/* hidden で畳めるようにする（.sechead は display: flex なので、指定しないと隠れない） */
+.sechead[hidden] { display: none; }
 /* お気に入りは在庫一覧の先頭の固定フォルダになったので、横並びの帯は使わない */
 
 /* 在庫タブの見方の切り替え（見出しの右横に置く小さなチップ） */
