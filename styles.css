@@ -158,8 +158,10 @@ button, a, select, label, summary, .hbtn, .vpill, .fab, .tabbar button { touch-a
 .crumb .cbtn:active { background: var(--surface-2); }
 /* 階層の並び。画面幅に収まらないときは折り返して全階層を見せる（横スクロールで隠さない） */
 .crumb .trail { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; flex: 1 1 140px; min-width: 0; }
+/* 「› 名前」を1つのまとまりにして、折り返しで区切りと名前が離れないようにする */
+.crumb .step { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
 .crumb .cbtn.name {
-  width: auto; max-width: 100%; padding: 0 10px; display: block;
+  width: auto; max-width: 100%; flex: 0 1 auto; min-width: 0; padding: 0 10px; display: block;
   font-size: 15px; font-weight: 800; color: var(--ink); line-height: 40px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left;
 }

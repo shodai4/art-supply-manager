@@ -49,6 +49,9 @@ test('画面: パンくず欄に階層を並べ、各階層をタップで移動
   assert.match(app, /const chain = open \? folderChain\(state\.folders, ui\.folderId\) : \[\];/);
   assert.match(app, /data-crumb="\$\{esc\(f\.id\)\}"/);
   assert.match(app, /aria-current="page"/);
+  // 家アイコンの後ろにも区切り（›）が入り、区切りと名前は1つのまとまり（折り返しで離れない）
+  assert.match(app, /'<span class="step"><span class="sep" aria-hidden="true">›<\/span>'/);
+  assert.match(css, /^\.crumb \.step\s*\{[^}]*display:\s*flex[^}]*max-width:\s*100%/m);
   // タップでその階層へ（ui.folderId を切り替えて描き直す）
   assert.match(app, /\$\('crumbTrail'\)\.addEventListener\('click', \(e\) => \{[\s\S]{0,400}ui\.folderId = id;[\s\S]{0,200}render\(\);/);
   // 古い1行表示（#crumbName）は残っていない

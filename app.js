@@ -509,9 +509,10 @@ function renderCrumb() {
   const chain = open ? folderChain(state.folders, ui.folderId) : [];
   $('crumbTrail').innerHTML = chain.map((f, i) => {
     const here = i === chain.length - 1;
-    const sep = i ? '<span class="sep" aria-hidden="true">›</span>' : '';
     const label = here ? ' aria-current="page"' : ` aria-label="${esc(f.name)}へ移動"`;
-    return `${sep}<button class="cbtn name${here ? ' here' : ''}" data-crumb="${esc(f.id)}"${label}>${esc(f.name)}</button>`;
+    // 区切りの › と階層名は1つのまとまりにして、折り返しで離ればなれにならないようにする
+    return '<span class="step"><span class="sep" aria-hidden="true">›</span>'
+      + `<button class="cbtn name${here ? ' here' : ''}" data-crumb="${esc(f.id)}"${label}>${esc(f.name)}</button></span>`;
   }).join('');
   // 残り枠は数字だけ（例: 12 / 100点）
   const q = itemQuota(state, state.settings);
