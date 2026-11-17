@@ -67,7 +67,7 @@ test('画面: メーカー見出しで分けて描き、見出しはタップで
   const css = read('styles.css');
   // メーカー未選択でも選択中でも、メーカー見出しごとにまとめる（同じ条件の描き直しは集計を使い回す）
   assert.match(app, /dictGroups = groupDictionarySearch\(mergedDict, dictTabQuery, \{/);
-  assert.match(app, /const groupsKey = `\$\{dictTabQuery\}\\u0000\$\{dictTabMaker\}\\u0000\$\{dictTabCategory\}`;/);
+  assert.match(app, /const groupsKey = `\$\{dictTabQuery\}\\u0000\$\{dictTabMaker\}\\u0000\$\{dictTabCategory\}\\u0000\$\{dictTabSeries\}`;/);
   assert.match(app, /if \(groupsKey !== dictGroupsKey \|\| dictGroupsDict !== mergedDict\) \{/);
   assert.match(app, /const plan = planDictGroups\(groups, \{/);
   // 見出しはボタン（▶/▼ の印つき）で、開閉状態を aria-expanded で持つ

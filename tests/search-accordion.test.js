@@ -165,7 +165,7 @@ test('画面: 見出しをタップで開け閉めし、条件が変わったら
   assert.match(app, /const more = e\.target\.closest\('\[data-dict-more\]'\);/);
   assert.match(app, /dictMoreShown\.set\(maker, \(dictMoreShown\.get\(maker\) \|\| 0\) \+ DICT_MAKER_PAGE\);/);
   // 検索条件が変わったら、手で開け閉めした状態は捨てて自動展開し直す
-  assert.match(app, /const scope = `\$\{dictTabQuery\}\\u0000\$\{dictTabMaker\}\\u0000\$\{dictTabCategory\}`;/);
+  assert.match(app, /const scope = `\$\{dictTabQuery\}\\u0000\$\{dictTabMaker\}\\u0000\$\{dictTabCategory\}\\u0000\$\{dictTabSeries\}`;/);
   assert.match(app, /if \(scope !== dictOpenScope\) \{\s*dictOpenScope = scope;\s*dictOpenMakers\.clear\(\);\s*dictClosedMakers\.clear\(\);\s*dictMoreShown\.clear\(\);/);
   // メーカーのプルダウンも五十音順
   assert.match(app, /\.sort\(\(a, b\) => compareMakerName\(a\[0\], b\[0\]\)\)/);

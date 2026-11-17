@@ -219,8 +219,10 @@ button, a, select, label, summary, .hbtn, .vpill, .fab, .tabbar button { touch-a
 
 /* ---------- 画材タイル（3〜4列グリッド） ---------- */
 .tgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px 8px; padding: 8px 12px 6px; }
-/* カード（画像＋名前のボタン）と、星・−/＋ を同じ枠に並べる */
-.tilewrap { position: relative; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+/* カード（画像＋名前のボタン）と、星・−/＋ を同じ枠に並べる。
+   左スワイプで「削除」を出すため、中身は .swipe-inner の1枚にまとめる */
+.tilewrap { position: relative; display: block; min-width: 0; border-radius: 13px; overflow: hidden; }
+.tilewrap > .swipe-inner { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .tile { display: flex; flex-direction: column; gap: 5px; border: none; background: none; padding: 0; min-width: 0; text-align: left; }
 .tile .sw {
   position: relative; display: block; width: 100%; aspect-ratio: 1 / 1; border-radius: 13px; overflow: hidden;
@@ -356,9 +358,10 @@ button, a, select, label, summary, .hbtn, .vpill, .fab, .tabbar button { touch-a
 /* ---------- 高密度リスト（切替時） ---------- */
 .item {
   background: var(--card); border: 1px solid var(--line); border-radius: 12px;
-  padding: 6px 8px; margin: 6px 12px; display: flex; align-items: center; gap: 8px;
+  margin: 6px 12px; display: block; position: relative; overflow: hidden;
   box-shadow: var(--shadow-2);
 }
+.item > .swipe-inner { display: flex; align-items: center; gap: 8px; padding: 6px 8px; }
 .it-main { flex: 1 1 auto; min-width: 0; }
 .it-name { display: block; font-size: 14px; font-weight: 700; margin: 0; line-height: 1.35; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .it-sub { display: flex; align-items: center; gap: 5px; margin-top: 1px; min-width: 0; }
@@ -378,6 +381,12 @@ button, a, select, label, summary, .hbtn, .vpill, .fab, .tabbar button { touch-a
 .badge.good { background: var(--good-soft); color: var(--good); }
 .badge.warn { background: var(--warn-soft); color: var(--warn); }
 .badge.bad { background: var(--bad-soft); color: var(--bad); }
+/* 補充リストで「どのフォルダの分か」を示す小さな場所バッジ */
+.badge.place {
+  display: inline-flex; align-items: center; gap: 3px; max-width: 45%;
+  background: var(--surface-2); color: var(--ink-2); overflow: hidden; text-overflow: ellipsis;
+}
+.badge.place .pdot { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; }
 
 /* ---------- 同じ画材が複数の場所にあるときのまとめ（計 N点 ＋ ┣/└ の行） ---------- */
 /* 親カードは1枚だけ出し、中にフォルダごとの行を縦に並べる。
@@ -400,7 +409,8 @@ button, a, select, label, summary, .hbtn, .vpill, .fab, .tabbar button { touch-a
 .jg-total { background: var(--accent-soft); color: var(--on-accent-soft); }
 .jg-places { flex: 0 0 auto; font-size: 10.5px; font-weight: 700; color: var(--muted-ink); }
 .jg-tree { margin-top: 4px; padding-top: 3px; border-top: 1px dashed var(--line); }
-.jg-row { display: flex; align-items: center; gap: 4px; padding: 1px 0; min-width: 0; }
+.jg-row { display: block; position: relative; overflow: hidden; border-radius: 7px; min-width: 0; }
+.jg-row > .swipe-inner { display: flex; align-items: center; gap: 4px; padding: 1px 0; min-width: 0; }
 .jg-branch { flex: 0 0 auto; width: 12px; font-size: 12px; color: var(--ink-3); }
 .jg-folder { max-width: 40%; }
 .jg-pen {
@@ -864,6 +874,30 @@ details.advanced > .hint:first-of-type { margin-top: 0; }
   -webkit-touch-callout: none; -webkit-user-select: none; user-select: none;
 }
 .tilewrap.pressing .tile, .item.pressing, .jg-row.pressing { filter: brightness(.96); }
+
+/* ---------- 左スワイプで右端から出る赤い「削除」（iOS標準の一覧と同じ） ---------- */
+/* 行（.swipe）の中身を左へずらし、後ろに置いた赤いボタンを見せる。
+   中身は z-index でボタンの上に載るので、閉じているときは赤が出ない。
+   横のスワイプは自前で受け、縦スクロール（touch-action: pan-y）はブラウザに任せる。 */
+.swipe { --swipe-w: 76px; -webkit-touch-callout: none; touch-action: pan-y; }
+.swipe > .swipe-inner {
+  position: relative; z-index: 1; transform: translateX(0);
+  transition: transform .18s cubic-bezier(.22, .61, .36, 1);
+}
+.swipe.dragging > .swipe-inner { transition: none; }
+.swipe-del {
+  position: absolute; top: 0; right: 0; bottom: 0; z-index: 0; width: var(--swipe-w);
+  border: 0; border-radius: 0; padding: 0; margin: 0;
+  background: #dc2626; color: #fff;
+  font-size: 13px; font-weight: 800; letter-spacing: .04em;
+  display: flex; align-items: center; justify-content: center;
+  visibility: hidden;
+}
+.swipe.open > .swipe-del, .swipe.dragging > .swipe-del { visibility: visible; }
+.swipe-del:active { background: #b91c1c; }
+/* グリッドのタイルは幅が狭いので、削除ボタンも細くする */
+.tilewrap.swipe { --swipe-w: 46px; }
+.tilewrap > .swipe-del { font-size: 11px; letter-spacing: 0; }
 
 /* ---------- 法務・サポート（同梱ページをアプリ内で読む） ---------- */
 /* 見出しと閉じるは固定し、本文だけをスクロールさせる（長い規約でも閉じられる） */

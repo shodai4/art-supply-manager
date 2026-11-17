@@ -729,18 +729,20 @@ export function dictionaryHaystack(dict = []) {
  * 検索語と絞り込みから「この1件はヒットするか」を返す判定器。
  * 検索（上位だけ描く）とメーカー別の集計（全件を数える）で同じ条件を使うため、ここにまとめる。
  */
-function dictionaryHitTester(dict = [], query = '', { hay, maker = '', category = '' } = {}) {
+function dictionaryHitTester(dict = [], query = '', { hay, maker = '', category = '', series = '' } = {}) {
   const tokens = searchTokens(query);
   const qJan = normalizeJAN(query ?? '');
   const janQuery = tokens.length === 1 && /^\d{4,13}$/.test(qJan) ? qJan : '';
   const wantMaker = String(maker ?? '').trim();
   const wantCategory = String(category ?? '').trim();
+  const wantSeries = String(series ?? '').trim();
   const stack = Array.isArray(hay) && hay.length === dict.length ? hay : dictionaryHaystack(dict);
   const onlyOne = tokens.length === 1 ? tokens[0] : '';
   return (d, i) => {
     if (!d) return false;
     if (wantMaker && String(d.maker || '') !== wantMaker) return false;
     if (wantCategory && String(d.category || 'other') !== wantCategory) return false;
+    if (wantSeries && String(d.series || '').trim() !== wantSeries) return false;
     if (!tokens.length) return true;
     if (onlyOne) return stack[i].includes(onlyOne) || (janQuery !== '' && String(d.jan || '').includes(janQuery));
     return matchesAllTokens(tokens, stack[i], normalizeJAN(d.jan || ''));
@@ -753,8 +755,8 @@ function dictionaryHitTester(dict = [], query = '', { hay, maker = '', category 
  * ひらがな・カタカナ、全角・半角、大文字・小文字のゆらぎは吸収する。
  * 数字だけの入力はJANの部分一致としても探す（4桁以上）。
  */
-export function searchDictionary(dict = [], query = '', { limit = 40, hay, maker = '', category = '' } = {}) {
-  const hit = dictionaryHitTester(dict, query, { hay, maker, category });
+export function searchDictionary(dict = [], query = '', { limit = 40, hay, maker = '', category = '', series = '' } = {}) {
+  const hit = dictionaryHitTester(dict, query, { hay, maker, category, series });
   const max = Math.max(0, Math.trunc(Number(limit) || 0));
   const items = [];
   let total = 0;
@@ -792,6 +794,30 @@ export function groupDictionarySearch(dict = [], query = '', opts = {}) {
   }
   groups.sort((a, b) => compareMakerName(a.maker, b.maker));
   return { groups, total };
+}
+
+/**
+ * いまの条件（検索語・メーカー・カテゴリ）に当てはまる辞書から、シリーズ名を集計する。
+ * シリーズが入っていない商品は数えない（並ぶのは名前のあるシリーズだけ）。
+ * シリーズ自身の選択は見ないので、選択肢は絞り込んでも減らない。
+ * 並びはメーカーと同じ読みの五十音順、件数は全件。
+ *
+ * @returns {Array<{name:string, count:number}>}
+ */
+export function dictionarySeriesList(dict = [], query = '', { hay, maker = '', category = '' } = {}) {
+  if (!Array.isArray(dict)) return [];
+  const hit = dictionaryHitTester(dict, query, { hay, maker, category });
+  const counts = new Map();
+  for (let i = 0; i < dict.length; i += 1) {
+    const d = dict[i];
+    if (!hit(d, i)) continue;
+    const name = String(d.series || '').trim();
+    if (!name) continue;
+    counts.set(name, (counts.get(name) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((a, b) => compareMakerName(a[0], b[0]))
+    .map(([name, count]) => ({ name, count }));
 }
 
 /**

@@ -6,7 +6,7 @@ import {
   exportState, importState, summarize, blankState, isEmptyStock, toggleFavorite, favoritesFirst,
   isValidJAN, normalizeJAN, detectMaker, lookupJAN, itemMaker, listMakers, groupByMaker,
   groupDictionarySearch, planDictGroups, compareMakerName, DICT_MAKER_PAGE,
-  dictionaryRowDetail,
+  dictionaryRowDetail, dictionarySeriesList,
   splitSeriesFromName,
   normalizeImageUrl, recordPurchase, costSummary, costRows, buildItemsCsvText, mergeStates,
   folderParentId, folderChildren, folderChain, folderDepth, folderPathLabel, folderSubtreeIds,
@@ -725,6 +725,15 @@ document.addEventListener('load', (e) => {
 }, true);
 
 /**
+ * 左スワイプで右端から出る赤い「削除」ボタン。
+ * 行の中身（.swipe-inner）より前に置き、中身が左へずれた分だけ見えるようにする（重なりはCSS）。
+ * 押すと編集シート・長押しメニューの削除と同じ removeItem（確認＋写真の削除）を通す。
+ */
+function swipeDeleteButton(id) {
+  return `<button type="button" class="swipe-del" data-swipe-del="${esc(id)}" tabindex="-1" aria-label="この画材を削除">削除</button>`;
+}
+
+/**
  * 画材タイル1枚（在庫切れはグレー表示。操作は通常どおり）。
  * カードの下に「お気に入りの星」と「− 数 ＋」を並べる（編集シートを開かずにその場で増減できる）。
  * 画像の上には何も載せない（星は写真を隠さず、下のボタンで押す）。
@@ -760,7 +769,9 @@ function itemTile(it, opts = {}) {
       <button type="button" class="step" data-step="1" data-id="${esc(it.id)}" aria-label="1増やす"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></button>
     </span>`;
   return `
-  <div class="tilewrap${low ? ' low' : ''}${out ? ' out' : ''}${ui.selectMode ? ' selecting' : ''}" style="--c:${esc(base)};--c2:${esc(shade(base))};--cs:${rgba(base, 0.1)}">
+  <div class="tilewrap swipe${low ? ' low' : ''}${out ? ' out' : ''}${ui.selectMode ? ' selecting' : ''}" data-swipe-id="${esc(it.id)}" data-swipe-kind="item" style="--c:${esc(base)};--c2:${esc(shade(base))};--cs:${rgba(base, 0.1)}">
+    ${swipeDeleteButton(it.id)}
+    <div class="swipe-inner">
     <button class="tile${low ? ' low' : ''}${out ? ' out' : ''}${isEmpty ? ' item-card--empty' : ''}${ui.selectMode ? ' selecting' : ''}${selected ? ' sel' : ''}" data-empty="${isEmpty ? '1' : '0'}"${selectAttrs} aria-label="${esc(label)}">
       <span class="sw">
         ${dot}
@@ -772,6 +783,7 @@ function itemTile(it, opts = {}) {
       ${otherNote ? `<span class="tother" title="${esc(otherPlaceSummary(state.items, it, state.folders))}">${esc(otherNote)}</span>` : ''}
     </button>
     ${ui.selectMode ? '' : `<span class="tilefoot">${star}${stepper}</span>`}
+    </div>
   </div>`;
 }
 
@@ -783,18 +795,25 @@ function itemRow(it, opts = {}) {
   const glyph = GLYPH[it.category];
   const thumbColor = glyph ? glyph.color : guessColor(it);
   const thumbIcon = glyph ? glyph.icon : 'i-tube';
-  const first = opts.shopChip
-    ? `<button class="folder-tag shop-chip" data-shop-for="${esc(it.id)}">通販</button>`
-    : `<button class="folder-tag" data-move="${esc(it.id)}">${esc(f.name)} ▾</button>`;
   const selected = ui.selectMode && isSelected(ui.selected, it.id);
   const selectAttrs = ui.selectMode ? ` data-select="${esc(it.id)}" aria-pressed="${selected ? 'true' : 'false'}"` : '';
   const fav = it.favorite === true;
+  // 補充リスト（通販ボタンでフォルダチップの場所を使う行）は、どのフォルダの分が足りないのかが
+  // 分かるよう、場所の名前を小さなバッジで出す（同じ画材が複数フォルダにあっても見分けられる）。
+  const placeChip = opts.shopChip
+    ? `<span class="badge place" title="${esc(folderPathLabel(state.folders, it.folderId, ' › '))}"><span class="pdot" style="background:${esc(f.color)}"></span>${esc(f.name)}</span>`
+    : '';
+  const first = opts.shopChip
+    ? `${placeChip}<button class="folder-tag shop-chip" data-shop-for="${esc(it.id)}">通販</button>`
+    : `<button class="folder-tag" data-move="${esc(it.id)}">${esc(f.name)} ▾</button>`;
   // 右端のボタンは鉛筆（編集）ではなくお気に入りの星。編集は商品名のタップから開く
   const star = ui.selectMode ? '' : `<button type="button" class="icon-btn favbtn${fav ? ' on' : ''}" data-fav="${esc(it.id)}" aria-pressed="${fav ? 'true' : 'false'}" aria-label="${fav ? 'お気に入りをはずす' : 'お気に入りにする'}"><svg class="ic" aria-hidden="true"><use href="#${fav ? 'i-star-solid' : 'i-star'}"/></svg></button>`;
   // フォルダを1つだけ開いているときの「他：アトリエ 1点」（行の幅は使わず、次の行に小さく）
   const others = opts.otherPlaces ? otherPlaceSummary(state.items, it, state.folders) : '';
   return `
-  <article class="item${isEmpty ? ' item-card--empty' : ''}${ui.selectMode ? ' selecting' : ''}${selected ? ' sel' : ''}" data-empty="${isEmpty ? '1' : '0'}" data-id="${esc(it.id)}"${selectAttrs}>
+  <article class="item swipe${isEmpty ? ' item-card--empty' : ''}${ui.selectMode ? ' selecting' : ''}${selected ? ' sel' : ''}" data-empty="${isEmpty ? '1' : '0'}" data-id="${esc(it.id)}" data-swipe-id="${esc(it.id)}" data-swipe-kind="item"${selectAttrs}>
+    ${swipeDeleteButton(it.id)}
+    <div class="swipe-inner">
     <span class="thumb"><svg class="ic" aria-hidden="true" style="color:${esc(thumbColor)}"><use href="#${thumbIcon}"/></svg>${shelfImage(it)}${ui.selectMode ? '<span class="selmark" aria-hidden="true"></span>' : ''}</span>
     <div class="it-main" data-edit="${esc(it.id)}">
       <h3 class="it-name" title="タップで編集">${esc(displayName(it))}</h3>
@@ -809,6 +828,7 @@ function itemRow(it, opts = {}) {
       <span class="qty">${Number(it.qty) || 0}<small>点</small></span>
       <button class="step" data-step="1" data-id="${esc(it.id)}" aria-label="1増やす">＋</button>
       ${star}
+    </div>
     </div>
   </article>`;
 }
@@ -849,7 +869,9 @@ function janGroupCard(g, opts = {}) {
     const last = i === g.items.length - 1;
     const qty = Number(m.qty) || 0;
     return `
-      <div class="jg-row${qty === 0 ? ' zero' : ''}">
+      <div class="jg-row swipe${qty === 0 ? ' zero' : ''}" data-swipe-id="${esc(m.id)}" data-swipe-kind="place">
+        ${swipeDeleteButton(m.id)}
+        <div class="swipe-inner">
         <span class="jg-branch" aria-hidden="true">${last ? '└' : '┣'}</span>
         <button type="button" class="folder-tag jg-folder" data-move="${esc(m.id)}" aria-label="${esc(f.name)}から別のフォルダへ移す">${esc(f.name)} ▾</button>
         <button type="button" class="icon-btn jg-pen" data-edit="${esc(m.id)}" aria-label="詳細を編集"><svg class="ic" aria-hidden="true"><use href="#i-pen"/></svg></button>
@@ -858,6 +880,7 @@ function janGroupCard(g, opts = {}) {
           <b class="qty">${qty}<small>点</small></b>
           <button type="button" class="step" data-step="1" data-id="${esc(m.id)}" aria-label="1増やす">＋</button>
         </span>
+        </div>
       </div>`;
   }).join('');
   const name = displayName({ ...it, name: g.name || it.name });
@@ -2074,10 +2097,160 @@ document.addEventListener('contextmenu', (e) => {
 // （打ち消すのは長押しした要素の1回だけ。別のフォルダのタップはそのまま通す）
 document.addEventListener('click', (e) => {
   if (Date.now() >= suppressClickUntil) { suppressClickEl = null; return; }
+  // スワイプで出た赤い削除ボタンのタップは、長押し直後でもそのまま通す
+  if (e.target.closest('[data-swipe-del]')) { suppressClickEl = null; return; }
   if (!suppressClickEl || !suppressClickEl.contains(e.target)) return;
   suppressClickEl = null;
   e.preventDefault();
   e.stopPropagation();
+}, true);
+
+/* ---------------- 左スワイプで出る赤い「削除」（iOS標準の一覧と同じ） ---------------- */
+// 在庫のタイル・リストの行・まとめカードの各場所行を左へ横に払うと、右端から赤い「削除」が
+// スッと出てそのまま止まる（右へ戻す・別のところをタップ・スクロールで閉じる）。
+// 押すと編集シート・長押しメニューの削除と同じ removeItem（確認＋写真の削除）を通す。
+// 縦スクロール（touch-action: pan-y）・−/＋・星・フォルダチップ・480msの長押しメニュー
+// （横に動き始めたら長押しタイマーを止める）とは競合させない。選択モード中は使わない。
+const SWIPE_START_PX = 10;   // これ以上横へ動いたら「横スワイプ」（縦スクロールとは分ける）
+const SWIPE_OPEN_PX = 30;    // これ以上左へ払って離したら「削除ボタンを出したまま」
+const SWIPE_DEFAULT_W = 76;  // 削除ボタンの幅（CSS の --swipe-w が無いとき）
+// この上でスワイプを始めない（タップはこれまでどおり効く）
+const SWIPE_BLOCKED = '[data-step], [data-fav], [data-fav-group], [data-move], [data-addplace], [data-shop-for], [data-select], .step, .jg-pen, .jg-add, .folder-tag, .swipe-del';
+let swipeEl = null;      // いま指を置いている行
+let swipeOpenEl = null;  // 削除ボタンを出している行（同時に1行だけ）
+let swipeStart = null;   // 指を置いた位置
+let swipeBase = 0;       // 掴んだときの位置（閉じていれば0、出ていれば -幅）
+let swipeDx = 0;         // 掴んでからの横の移動
+let swipeMoved = false;  // 横スワイプとして動き始めたか
+
+/** 行の中身（左へずらす層） */
+function swipeInner(el) {
+  return el ? el.querySelector(':scope > .swipe-inner') : null;
+}
+
+/** 削除ボタンの幅（タイルはCSSで狭くしてある） */
+function swipeWidth(el) {
+  const raw = parseFloat(getComputedStyle(el).getPropertyValue('--swipe-w'));
+  return Number.isFinite(raw) && raw > 0 ? raw : SWIPE_DEFAULT_W;
+}
+
+/** 中身を x px だけずらす（transition はCSS。.dragging の間だけ切る） */
+function swipeSetX(el, x) {
+  const inner = swipeInner(el);
+  if (inner) inner.style.transform = `translateX(${x}px)`;
+}
+
+function swipeClose(el) {
+  if (!el) return;
+  el.classList.remove('open', 'dragging');
+  swipeSetX(el, 0);
+  if (swipeOpenEl === el) swipeOpenEl = null;
+}
+
+function swipeCloseAll(except = null) {
+  document.querySelectorAll('.swipe.open, .swipe.dragging').forEach((el) => {
+    if (el !== except) swipeClose(el);
+  });
+  if (swipeOpenEl && !swipeOpenEl.isConnected) swipeOpenEl = null;
+}
+
+function swipeOpen(el) {
+  if (!el) return;
+  swipeCloseAll(el);
+  el.classList.add('open');
+  el.classList.remove('dragging');
+  swipeSetX(el, -swipeWidth(el));
+  swipeOpenEl = el;
+}
+
+/** スワイプ対象の行（操作ボタンの上・選択モード中は何もしない） */
+function swipeRowAt(target) {
+  if (!target || typeof target.closest !== 'function') return null;
+  if (ui.selectMode) return null;
+  const el = target.closest('[data-swipe-id]');
+  if (!el) return null;
+  if (target.closest(SWIPE_BLOCKED)) return null;
+  return el;
+}
+
+function swipeReset() {
+  if (swipeEl) swipeEl.classList.remove('dragging');
+  swipeEl = null;
+  swipeStart = null;
+  swipeDx = 0;
+  swipeMoved = false;
+}
+
+document.addEventListener('pointerdown', (e) => {
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  const el = swipeRowAt(e.target);
+  if (!el) {
+    // 出したままの行の外を押したら閉じる（削除ボタン自身は除く）
+    if (swipeOpenEl && !swipeOpenEl.contains(e.target)) swipeClose(swipeOpenEl);
+    return;
+  }
+  swipeEl = el;
+  swipeStart = { x: e.clientX, y: e.clientY };
+  swipeBase = el.classList.contains('open') ? -swipeWidth(el) : 0;
+  swipeDx = 0;
+  swipeMoved = false;
+}, { passive: true });
+
+document.addEventListener('pointermove', (e) => {
+  if (!swipeEl || !swipeStart) return;
+  const dx = e.clientX - swipeStart.x;
+  const dy = e.clientY - swipeStart.y;
+  if (!swipeMoved) {
+    if (Math.abs(dx) < SWIPE_START_PX) return;
+    if (Math.abs(dy) > Math.abs(dx)) { swipeReset(); return; } // 縦スクロールに任せる
+    if (dx > 0 && swipeBase === 0) { swipeReset(); return; }    // 閉じている行を右へ＝何もしない
+    swipeMoved = true;
+    swipeEl.classList.add('dragging');
+    endPress(); // 480msの長押しメニューとは競合させない（タイマーを止める）
+  }
+  swipeDx = dx;
+  const w = swipeWidth(swipeEl);
+  swipeSetX(swipeEl, Math.min(0, Math.max(-w, swipeBase + dx)));
+}, { passive: true });
+
+/** 指を離したときの後始末（払った距離で出したまま／閉じるを決める） */
+function swipeEnd(commit = true) {
+  if (!swipeEl) return;
+  const el = swipeEl;
+  const moved = swipeMoved;
+  const at = swipeBase + swipeDx;
+  swipeReset();
+  if (!moved) return;
+  if (commit && at <= -SWIPE_OPEN_PX) swipeOpen(el);
+  else swipeClose(el);
+  // スワイプ直後の「タップ」で編集シートやフォルダ移動が開かないよう、1回だけ打ち消す
+  suppressClickUntil = Date.now() + 400;
+  suppressClickEl = el;
+}
+
+document.addEventListener('pointerup', () => swipeEnd(true), { passive: true });
+document.addEventListener('pointercancel', () => swipeEnd(false), { passive: true });
+
+// スクロールし始めたら閉じる（開いたまま画面が動いて残らないように）
+window.addEventListener('scroll', () => { if (swipeOpenEl) swipeCloseAll(); }, { passive: true });
+
+// 赤い「削除」→ 共通の削除処理（確認＋写真の削除＋再描画）。
+// 出したままの行をタップしたときは、まず閉じるだけ（編集シートは開かない）。
+document.addEventListener('click', (e) => {
+  const del = e.target.closest('[data-swipe-del]');
+  if (del) {
+    e.preventDefault();
+    const id = del.dataset.swipeDel || '';
+    swipeCloseAll();
+    if (id) removeItem(id);
+    return;
+  }
+  const open = swipeOpenEl && swipeOpenEl.isConnected ? swipeOpenEl : null;
+  if (open && open.contains(e.target)) {
+    e.preventDefault();
+    e.stopPropagation();
+    swipeClose(open);
+  }
 }, true);
 
 /** フォルダの長押しメニューを開く */
@@ -2953,6 +3126,7 @@ const DICT_AUTO_OPEN_ROWS = 250; // 検索語やメーカー選択で自動展�
 let dictTabQuery = '';
 let dictTabMaker = '';
 let dictTabCategory = '';
+let dictTabSeries = '';
 let dictTabTimer = 0;
 let dictTabBuiltFor = null; // メーカーの選択肢を作った辞書（辞書が変わったら作り直す）
 let dictOpenScope = ''; // 手で開け閉めした状態を覚えている検索条件（条件が変わったら捨てる）
@@ -2963,6 +3137,10 @@ const dictMoreShown = new Map(); // 「もっと見る」で足した件数（�
 let dictGroups = { groups: [], total: 0 };
 let dictGroupsKey = null;
 let dictGroupsDict = null;
+// シリーズの選択肢（検索語・メーカー・カテゴリで決まる。シリーズ自身の選択は見ない）
+let dictSeriesRows = [];
+let dictSeriesKey = null;
+let dictSeriesDict = null;
 
 /** 検索タブで選べるメーカー（五十音順） */
 function dictMakerList() {
@@ -2985,6 +3163,22 @@ function dictCategoryList() {
     counts.set(id, (counts.get(id) || 0) + 1);
   }
   return CATEGORIES.filter((c) => counts.get(c.id)).map((c) => ({ id: c.id, label: c.label, count: counts.get(c.id) }));
+}
+
+/**
+ * いまの条件（検索語・メーカー・カテゴリ）で選べるシリーズと件数。
+ * 数万件を毎描画で数え直さないよう、条件が変わったときだけ作る。
+ */
+function dictSeriesList() {
+  const key = `${dictTabQuery}\u0000${dictTabMaker}\u0000${dictTabCategory}`;
+  if (key !== dictSeriesKey || dictSeriesDict !== mergedDict) {
+    dictSeriesRows = dictionarySeriesList(mergedDict, dictTabQuery, {
+      hay: dictionaryHaystack(mergedDict), maker: dictTabMaker, category: dictTabCategory,
+    });
+    dictSeriesKey = key;
+    dictSeriesDict = mergedDict;
+  }
+  return dictSeriesRows;
 }
 
 /** 辞書の1件を、画材の登録フォーム／在庫に使う形へ */
@@ -3045,8 +3239,29 @@ function renderSearchTab() {
     if (dictTabCategory && !cats.some((c) => c.id === dictTabCategory)) dictTabCategory = '';
   }
 
+  // シリーズでも絞れる（メーカー・カテゴリ・検索語で絞ったときのシリーズを、縦につぶさないプルダウンで）
+  // 何も絞っていないときは数万件を数えずに隠す（絞り込んでから出す）
+  const narrowed = Boolean(dictTabQuery || dictTabMaker || dictTabCategory);
+  const seriesRows = narrowed ? dictSeriesList() : [];
+  // メーカー・カテゴリ・検索語を変えて、もう無いシリーズが選ばれていたら「すべて」へ戻す
+  if (dictTabSeries && !seriesRows.some((s) => s.name === dictTabSeries)) dictTabSeries = '';
+  const showSeries = seriesRows.length > 1;
+  $('dictSeriesSec').hidden = !showSeries;
+  if (showSeries) {
+    const selSeries = $('dictSeriesSel');
+    const seriesKey = `${dictTabMaker}\u0000${dictTabCategory}\u0000${dictTabQuery}`;
+    if (selSeries.dataset.built !== seriesKey) {
+      const sum = seriesRows.reduce((n, s) => n + s.count, 0);
+      selSeries.innerHTML = `<option value="">すべてのシリーズ（${sum.toLocaleString('ja-JP')}）</option>`
+        + seriesRows.map((s) => `<option value="${esc(s.name)}">${esc(s.name)}（${s.count.toLocaleString('ja-JP')}）</option>`).join('');
+      selSeries.dataset.built = seriesKey;
+    }
+    selSeries.value = dictTabSeries;
+    if (selSeries.value !== dictTabSeries) dictTabSeries = '';
+  }
+
   // 検索条件が変わったら、手で開け閉めした状態と「もっと見る」は捨てる（新しい条件で自動展開し直す）
-  const scope = `${dictTabQuery}\u0000${dictTabMaker}\u0000${dictTabCategory}`;
+  const scope = `${dictTabQuery}\u0000${dictTabMaker}\u0000${dictTabCategory}\u0000${dictTabSeries}`;
   if (scope !== dictOpenScope) {
     dictOpenScope = scope;
     dictOpenMakers.clear();
@@ -3055,16 +3270,16 @@ function renderSearchTab() {
   }
 
   // ヒットした全件をメーカー見出しにまとめる（50件で打ち切らないので、全メーカーが見渡せる）
-  const groupsKey = `${dictTabQuery}\u0000${dictTabMaker}\u0000${dictTabCategory}`;
+  const groupsKey = `${dictTabQuery}\u0000${dictTabMaker}\u0000${dictTabCategory}\u0000${dictTabSeries}`;
   if (groupsKey !== dictGroupsKey || dictGroupsDict !== mergedDict) {
     dictGroups = groupDictionarySearch(mergedDict, dictTabQuery, {
-      hay: dictionaryHaystack(mergedDict), maker: dictTabMaker, category: dictTabCategory,
+      hay: dictionaryHaystack(mergedDict), maker: dictTabMaker, category: dictTabCategory, series: dictTabSeries,
     });
     dictGroupsKey = groupsKey;
     dictGroupsDict = mergedDict;
   }
   const { groups, total } = dictGroups;
-  const cond = [dictTabMaker, dictTabCategory ? (CATEGORIES.find((c) => c.id === dictTabCategory)?.label || '') : ''].filter(Boolean).join(' / ');
+  const cond = [dictTabMaker, dictTabCategory ? (CATEGORIES.find((c) => c.id === dictTabCategory)?.label || '') : '', dictTabSeries].filter(Boolean).join(' / ');
   $('dictTabNote').textContent = `内蔵辞書 ${mergedDict.length.toLocaleString('ja-JP')}件から探して、そのまま在庫に追加できます${cond ? `（${cond}）` : ''}`;
   $('dictResCount').textContent = `${total.toLocaleString('ja-JP')}件`;
 
@@ -3130,14 +3345,21 @@ $('dictQTabClear').addEventListener('click', () => {
 });
 $('dictMakerSel').addEventListener('change', (e) => {
   dictTabMaker = e.target.value;
+  // メーカーが変わるとカテゴリもシリーズも別物になるので、選んでいたものは捨てる
   dictTabCategory = '';
-  render(); // カテゴリ欄の出し分けも含めて描き直す
+  dictTabSeries = '';
+  render(); // カテゴリ・シリーズ欄の出し分けも含めて描き直す
   window.scrollTo({ top: 0 });
 });
 $('dictCatChips').addEventListener('click', (e) => {
   const b = e.target.closest('[data-dict-cat]');
   if (!b) return;
   dictTabCategory = b.dataset.dictCat || '';
+  dictTabSeries = ''; // カテゴリを変えたら、そのカテゴリに無いシリーズの選択は残さない
+  renderSearchTab();
+});
+$('dictSeriesSel').addEventListener('change', (e) => {
+  dictTabSeries = e.target.value;
   renderSearchTab();
 });
 $('dictResults').addEventListener('click', (e) => {
