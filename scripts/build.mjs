@@ -26,6 +26,7 @@ export const WEB_ASSETS = [
   'jan-extra.json',
   'shops.js',
   'scanner.js',
+  'scan-guard.js',
   'scan-flow.js',
   'auto-image.js',
   'admob.js',

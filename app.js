@@ -45,8 +45,8 @@ import {
   chooseScanStrategy, isNativeShell, nativeScannerPlugin, loadVendorScanner, VENDOR_SCANNER_PATH,
   DEFAULT_FACING, toggleFacing, facingLabel, facingConstraints, scannerFacingConfig, canChooseFacing,
   nativeScanOptions, vendorScannerOptions, vendorStartConfig,
-  withTimeout, NATIVE_SCAN_OPEN_TIMEOUT_MS,
 } from './scanner.js';
+import { withTimeout, NATIVE_SCAN_OPEN_TIMEOUT_MS } from './scan-guard.js';
 import {
   createScanSession, resetScanSession, checkCooldown, markScanned, applyScan, scanFolderId,
   scanLogCount, describeScanLog,

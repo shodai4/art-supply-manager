@@ -6,8 +6,8 @@ import { fileURLToPath } from 'node:url';
 import {
   NATIVE_SCAN_FORMATS, nativeScanOptions, vendorScannerOptions, vendorStartConfig,
   vendorSupportedFormats, WEB_SCAN_FPS, chooseScanStrategy,
-  withTimeout, NATIVE_SCAN_OPEN_TIMEOUT_MS,
 } from '../scanner.js';
+import { withTimeout, NATIVE_SCAN_OPEN_TIMEOUT_MS } from '../scan-guard.js';
 import {
   SCANNER_POD, SCANNER_PLUGIN_CLASS, addScannerPod, verifyPodfileContent, configurePodfileContent,
   configureCapConfigContent, verifyCapConfigContent,
@@ -137,6 +137,26 @@ test('カメラ画面は WebView の画面から直接出し、出なければ�
   assert.match(swift, /self\.rejectActive\("読み取りをやめました", code: "cancelled"\)/);
   // 閉じるときはカメラ画面そのものを閉じる
   assert.match(swift, /vc\.dismiss\(animated: false, completion: nil\)/);
+});
+
+test('新しく足した部品は版を付けたURLか別ファイルに置き、古いキャッシュで起動しなくならないようにする', async () => {
+  const app = read('app.js');
+  const sw = read('sw.js');
+  const { WEB_ASSETS } = await import('../scripts/build.mjs');
+  // ネイティブ起動の打ち切りは scan-guard.js（新しい URL なので古い写しが無い）から取る。
+  // scanner.js は URL に版が付かないので、そこへ新しい名前を足すと古い写しでアプリが起動しなくなる。
+  assert.match(app, /import \{ withTimeout, NATIVE_SCAN_OPEN_TIMEOUT_MS \} from '\.\/scan-guard\.js';/);
+  assert.equal(/withTimeout[^;]*from '\.\/scanner\.js'/.test(app), false, 'scanner.js から新しい名前を取っている');
+  assert.ok(WEB_ASSETS.includes('scan-guard.js'), 'scan-guard.js が www/ に入らない');
+  assert.ok(sw.includes("'./scan-guard.js'"), 'scan-guard.js がキャッシュに入らない');
+  // app.js が読む自分の部品は、すべて www/ の一覧にある（入れ忘れるとアプリ内で固まる）
+  const imports = [...app.matchAll(/from '\.\/([\w.-]+\.js)'/g)].map((m) => m[1]);
+  assert.ok(imports.length > 5, `app.js の import が足りない: ${imports.length}`);
+  for (const rel of new Set(imports)) {
+    assert.ok(WEB_ASSETS.includes(rel), `${rel} が WEB_ASSETS にありません`);
+  }
+  // Service Worker は毎回サーバーに確かめる（max-age=600 の古い部品を掴まない）
+  assert.match(sw, /fetch\(req, \{ cache: 'no-cache' \}\)/);
 });
 
 test('プラグインはリポジトリ内のローカル Pod（外部の CocoaPods 依存なし）', () => {
