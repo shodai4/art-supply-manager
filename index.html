@@ -15,7 +15,7 @@ try {
 } catch (e) { /* 保存が読めないときはライト */ }
 </script>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="styles.css?v=1.16.0">
+<link rel="stylesheet" href="styles.css?v=1.17.0">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 </head>
@@ -219,8 +219,12 @@ try {
         <button class="btn" id="btnAddSamples" data-sample-toggle>サンプルを入れる</button>
       </div>
     </div>
-    <div class="card">
+    <div class="card" id="dictCard">
       <p class="dict-one" id="dictInfo">JAN辞書：—</p>
+      <div class="actions">
+        <button class="btn" id="btnSyncItems">画材名を最新にする</button>
+      </div>
+      <p class="micro dict-sync-note" id="dictSyncNote">※ 数量やメモは消えません</p>
     </div>
     <div class="card" id="guideCard">
       <h2 class="card-t">使い方</h2>
@@ -575,6 +579,6 @@ try {
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<script type="module" src="app.js?v=1.16.0"></script>
+<script type="module" src="app.js?v=1.17.0"></script>
 </body>
 </html>

@@ -597,6 +597,90 @@ export function dictionaryRowDetail(entry = {}) {
   return [...new Set(parts)].join(' ・ ');
 }
 
+/* ---------------- 登録済みの表記を最新の辞書に揃える ---------------- */
+
+/**
+ * 辞書から在庫へ写す「表記」の対応表（在庫側の項目名 ← 辞書側の項目名）。
+ * 数量・メモ・フォルダ・写真・価格・購入ログ・お気に入り・ID・作成日は写さない。
+ */
+export const DICT_SYNC_FIELDS = [
+  { item: 'name', dict: 'name' },
+  { item: 'maker', dict: 'maker' },
+  { item: 'brand', dict: 'brand' },
+  { item: 'category', dict: 'category' },
+  { item: 'colorName', dict: 'colorName' },
+  { item: 'colorCode', dict: 'code' },
+  { item: 'size', dict: 'size' },
+];
+
+/** 表記の更新の前に出す確認の文言（数量・メモ・フォルダ・写真が残ることを伝える） */
+export const SYNC_ITEMS_CONFIRM_TEXT = 'JANが一致する画材の商品名・メーカー名等を最新の辞書表記に更新します（数量・メモ・フォルダ・写真はそのまま残ります）';
+
+/** 表記を揃えたあとの結果の文言（0件のときは「すべて最新」） */
+export function describeSyncItemsResult(updatedCount) {
+  const n = Math.max(0, Math.trunc(Number(updatedCount) || 0));
+  return n ? `${n}件の表記を最新辞書に揃えました` : 'すべて最新の表記です';
+}
+
+/**
+ * 辞書の1件から、在庫のその項目に入れる値を作る（空・不正なら空文字＝更新しない）。
+ * 商品名は辞書に name が無いとき colorName で補う（辞書から登録するときと同じ扱い）。
+ */
+function dictionaryFieldValue(entry, key) {
+  if (key === 'name') return String(entry?.name || entry?.colorName || '').trim();
+  if (key === 'category') {
+    const id = String(entry?.category || '').trim();
+    return CATEGORIES.some((c) => c.id === id) ? id : '';
+  }
+  return String(entry?.[key] ?? '').trim();
+}
+
+/**
+ * 登録済みアイテムの表記を、最新の内蔵辞書の内容へ揃える。
+ *
+ * - 対象は JAN が入っていて、辞書に同じ JAN がある在庫だけ（JAN が空の画材は触らない）。
+ * - 更新するのは表記系の項目（商品名・メーカー・ブランド・カテゴリ・色名・色番号・号数）だけで、
+ *   辞書側が空の項目は今の値を残す。
+ * - id・folderId・数量(qty)・補充しきい値・お気に入り・メモ・価格・購入ログ・写真・画像URL・
+ *   作成日は絶対に変えない（数量・メモ・フォルダ・写真は利用者のもの）。
+ * - 実際に値が変わったアイテムだけ updatedAt を now に更新する。
+ *
+ * @returns {{ items: object[], updatedCount: number }} 新しい配列と、表記を直した件数
+ */
+export function syncItemsWithDictionary(items = [], dict = [], { now = new Date().toISOString() } = {}) {
+  const list = Array.isArray(items) ? items : [];
+  // JAN ごとの辞書1件（同じ JAN が複数あっても先頭を使う）
+  const entries = new Map();
+  for (const entry of Array.isArray(dict) ? dict : []) {
+    const jan = normalizeJAN(entry?.jan);
+    if (!jan || entries.has(jan)) continue;
+    entries.set(jan, entry);
+  }
+  if (!entries.size) return { items: list, updatedCount: 0 };
+
+  let updatedCount = 0;
+  const next = list.map((item) => {
+    const jan = normalizeJAN(item?.jan);
+    if (!jan) return item;
+    const entry = entries.get(jan);
+    if (!entry) return item;
+
+    const patch = {};
+    for (const { item: field, dict: key } of DICT_SYNC_FIELDS) {
+      const value = dictionaryFieldValue(entry, key);
+      if (!value) continue; // 辞書が空の項目は今の値を残す
+      if (String(item?.[field] ?? '').trim() === value) continue;
+      patch[field] = value;
+    }
+    if (!Object.keys(patch).length) return item;
+
+    updatedCount += 1;
+    return { ...item, ...patch, updatedAt: now };
+  });
+
+  return { items: updatedCount ? next : list, updatedCount };
+}
+
 /* ---------------- メーカー名の五十音順 ---------------- */
 
 // 小書きの仮名は、同じ行の普通の仮名として並べる（っ＝つ、ゃ＝や、ゕ＝か…）

@@ -14,6 +14,7 @@ import {
   toggleSelection, isSelected, selectAllIds, pruneSelection, searchDictionary, dictionaryHaystack,
   isMakerGroupOn, withSortMode,
   groupByFolder, findItemByJanInFolder, itemsByJanInOtherFolders,
+  syncItemsWithDictionary, describeSyncItemsResult, SYNC_ITEMS_CONFIRM_TEXT,
 } from './core.js';
 import {
   FREE_ITEM_LIMIT, FREE_FOLDER_LIMIT, PRO_BENEFITS, isPro, itemQuota, folderQuota,
@@ -356,6 +357,23 @@ function renderSampleCard() {
   btn.textContent = has ? 'サンプルを消す' : 'サンプルを入れる';
   btn.dataset.sampleMode = has ? 'remove' : 'add';
   btn.setAttribute('aria-label', has ? 'サンプルを消す（自分で登録した画材はそのまま残ります）' : 'サンプルを入れる');
+}
+
+/**
+ * 設定の「画材名を最新にする」: JANが一致する在庫の表記（商品名・メーカー・色名など）を
+ * 最新の辞書の内容へ揃える。数量・メモ・フォルダ・写真・価格は触らない（core.js の純粋関数）。
+ */
+function syncItemNamesWithDictionary() {
+  const preview = syncItemsWithDictionary(state.items, mergedDict);
+  if (!preview.updatedCount) {
+    toast(describeSyncItemsResult(0));
+    return;
+  }
+  if (!confirm(SYNC_ITEMS_CONFIRM_TEXT)) return;
+  state = { ...state, items: preview.items };
+  save();
+  render();
+  toast(describeSyncItemsResult(preview.updatedCount));
 }
 
 /* ---------------- storage ---------------- */
@@ -1062,6 +1080,9 @@ async function downloadCsv() {
 }
 
 $('btnCsv').addEventListener('click', downloadCsv);
+
+// 設定の「画材名を最新にする」（JAN辞書カード）
+$('btnSyncItems').addEventListener('click', syncItemNamesWithDictionary);
 
 /* ---------------- 画像取得の設定（画面からは外した。値はバックアップから引き継げる） ---------------- */
 // 設定画面の「商品画像」カードは廃止したので、保存ボタンは無い版がある。

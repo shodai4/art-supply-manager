@@ -776,6 +776,8 @@ body[data-ad-banner="true"] .tabbar {
 .bar.rest .bv { color: var(--ink-3); }
 
 .dict-one { margin: 0; font-size: 12.5px; font-weight: 700; color: var(--ink-2); }
+/* 辞書カードの「画材名を最新にする」のすぐ下に添える補足 */
+.dict-sync-note { margin: 8px 0 0; }
 
 /* ---------- 極小の注記（法務・規約） ---------- */
 .micro { font-size: 10.5px; line-height: 1.5; color: var(--ink-3); margin: 0; }
