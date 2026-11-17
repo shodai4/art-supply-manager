@@ -148,6 +148,7 @@ WKWebView では `target="_blank"` が開けないため、`@capacitor/browser`�
 - プラグインが無い環境では `window.open` → 失敗したら URL をコピーして知らせる、の順に退避
 - Web版では同じサイト内のリンク（`privacy.html` など）はそのまま開く（別サイトだけ外部へ）
 - アプリ内では Service Worker を登録しない（`capacitor://` では失敗するだけなので）
+- **同梱の法務・サポート3ページ（`terms.html` / `privacy.html` / `support.html`）だけは Safari へ出さず、アプリ内の読み物シートで読む**（`links.js` の `legalDocKey()` でリンクを見分け、`app.js` の `openLegalDoc()` が同梱HTMLを `fetch` して本文だけを `sheetLegal` に入れる。見出しと「閉じる」は固定で本文だけスクロールする。読めないときは `https://shodai4.com/art-supply-manager/` の同じページを Safari で開く）。設定下部のフッターとプランカードの中のリンクが対象
 
 ### 4.4 追加辞書の同期先（アプリ内だけ本番URL）
 
@@ -305,3 +306,4 @@ App Store 審査で必要なこと:
 4. iCloud Drive へのJSON自動保存を入れる（§8.2）。
 5. 必要なら `@capacitor-mlkit/barcode-scanning` へ切り替えて読取速度を上げる。
 6. 追加辞書が数十件を超えたら、`jan-extra.json` を月1回まとめて追記する運用にする。
+7. **App Store 審査提出の直前に、`admob.js` の `USE_TEST_ADS` を `false` に戻す**（本番の広告ユニットへ）。TestFlight では `true` のままで Google 公式のテスト広告を出し、バナーの位置（タブバー・FAB・一覧の下端が隠れないこと）と Pro にしたときの非表示を、無効トラフィックを気にせず確認する。`tests/admob.test.js` も、いまの `true` を前提にしている
