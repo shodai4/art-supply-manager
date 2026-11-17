@@ -182,10 +182,7 @@ button, a, select, label, summary, .hbtn, .vpill, .fab, .tabbar button { touch-a
   background: var(--surface-3); border-radius: 999px; padding: 0 6px; line-height: 15px;
 }
 .sechead .ic:first-child { flex: 0 0 auto; }
-/* お気に入りは横に並べて、よく使うものをすぐ押せるようにする */
-.favstrip { display: flex; gap: 8px; padding: 6px 12px 6px; overflow-x: auto; scrollbar-width: none; }
-.favstrip::-webkit-scrollbar { display: none; }
-.favstrip > .tilewrap { flex: 0 0 84px; }
+/* お気に入りは在庫一覧の先頭の固定フォルダになったので、横並びの帯は使わない */
 
 /* ---------- フォルダグリッド（保管場所） ---------- */
 .fgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px 8px; padding: 12px 12px 6px; }
@@ -214,6 +211,7 @@ button, a, select, label, summary, .hbtn, .vpill, .fab, .tabbar button { touch-a
 }
 .ftile:active .fico { filter: brightness(.96); }
 
+.ftile.fav-folder .fico .ic { width: 44%; height: auto; aspect-ratio: 1 / 1; }
 /* フォルダを作るタイル（グリッドの最後に置く） */
 .ftile.add .fico { background: var(--surface-3); color: var(--ink-3); box-shadow: inset 0 0 0 1.5px var(--line); }
 .ftile.add .fico .ic { width: 38%; height: auto; aspect-ratio: 1 / 1; }
@@ -260,19 +258,21 @@ button, a, select, label, summary, .hbtn, .vpill, .fab, .tabbar button { touch-a
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word;
 }
 
-/* ---------- カード上のお気に入り（星）と在庫の −/＋ ---------- */
-/* 星は画像の右上。押すとお気に入りの入/切が入れ替わる（お気に入りは一覧の先頭にまとまる） */
+/* ---------- カード下のお気に入り（星）と在庫の −/＋ ---------- */
+/* 星とステッパーは画像の下の1行に並べる（画像の上には何も載せない）。
+   星を押すとお気に入りの入/切が入れ替わり、「お気に入り」フォルダにも入る */
+.tilefoot { display: flex; align-items: center; gap: 3px; height: 22px; }
+.tilefoot .tstep { flex: 1 1 auto; min-width: 0; }
 .fav {
-  position: absolute; top: 3px; right: 3px; z-index: 4;
-  width: 24px; height: 24px; padding: 0; border: none; border-radius: 50%;
+  flex: 0 0 auto; width: 20px; height: 22px; padding: 0;
+  border: 1px solid var(--line); border-radius: 7px;
   display: grid; place-items: center;
-  background: var(--badge-bg); color: var(--muted-ink);
-  box-shadow: 0 0 0 1px rgba(15, 25, 40, .09), var(--shadow-2);
+  background: var(--surface); color: var(--ink-3);
 }
-.fav .ic { width: 15px; height: 15px; }
-.fav.on { color: #c98a12; }
+.fav .ic { width: 12px; height: 12px; }
+.fav.on { color: #c98a12; border-color: rgba(201, 138, 18, .45); background: rgba(201, 138, 18, .1); }
 .fav:active { transform: scale(.94); }
-/* 在庫の −/＋（カードの名前の下）。幅を等分して375pxでもはみ出さない */
+/* 在庫の −/＋（カードの下）。幅を等分して375pxでもはみ出さない */
 .tstep { display: flex; align-items: center; gap: 2px; height: 22px; }
 .tstep .step {
   flex: 1 1 0; min-width: 0; height: 22px; padding: 0; border-radius: 7px;
@@ -282,18 +282,15 @@ button, a, select, label, summary, .hbtn, .vpill, .fab, .tabbar button { touch-a
 .tstep .step .ic { width: 11px; height: 11px; }
 .tstep .step:active { background: var(--accent-soft); color: var(--on-accent-soft); }
 .tstep .n {
-  flex: 0 0 auto; min-width: 15px; text-align: center; font-size: 11px; font-weight: 800;
+  flex: 0 0 auto; min-width: 12px; text-align: center; font-size: 11px; font-weight: 800;
   color: var(--tile-ink); font-variant-numeric: tabular-nums;
 }
 .tilewrap.low .tstep .n { color: var(--warn); }
 .tilewrap.out .tstep .n { color: var(--bad); }
-/* リストの星はサムネイルの右下に重ねる（名前・メタの幅を削らない小さいボタン） */
-.item .thumb .fav.sm {
-  position: absolute; right: 0; bottom: 0; z-index: 3;
-  width: 18px; height: 18px; border-radius: 8px 0 8px 0;
-  background: var(--badge-bg); box-shadow: 0 0 0 1px rgba(15, 25, 40, .08);
-}
-.item .thumb .fav.sm .ic { width: 12px; height: 12px; }
+/* リストの右端はお気に入りの星。鉛筆（編集）は商品名のタップに任せる */
+.it-side .favbtn { color: var(--muted-ink); }
+.it-side .favbtn .ic { width: 14px; height: 14px; }
+.it-side .favbtn.on { color: #c98a12; border-color: rgba(201, 138, 18, .45); background: rgba(201, 138, 18, .1); }
 
 /* ---------- 複数選択（タイル・行のチェックと操作バー） ---------- */
 .selmark {
@@ -452,6 +449,15 @@ body[data-ad-banner="true"] .tabbar {
 .field-row { display: flex; gap: 8px; }
 .field-row .field { flex: 1 1 0; min-width: 0; }
 .stepper { display: flex; gap: 6px; align-items: center; }
+/* 編集シートの「お気に入り」トグル（押すたびに入/切） */
+.favtoggle {
+  display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; height: 40px;
+  border-radius: 10px; border: 1px solid var(--line); background: var(--surface);
+  font-size: 13px; font-weight: 700; color: var(--ink-2);
+}
+.favtoggle .ic { width: 15px; height: 15px; }
+.favtoggle[aria-pressed="true"] { color: #a06f0c; border-color: rgba(201, 138, 18, .5); background: rgba(201, 138, 18, .12); }
+.favtoggle:active { filter: brightness(.97); }
 .stepper button {
   flex: 0 0 auto; width: 40px; height: 42px; border-radius: 10px; border: 1px solid var(--line);
   background: var(--surface); font-size: 19px; font-weight: 700; line-height: 1;
@@ -522,7 +528,18 @@ body[data-ad-banner="true"] .tabbar {
 .dres-main { flex: 1 1 auto; min-width: 0; text-align: left; background: none; border: none; padding: 0; color: var(--ink); }
 .dres-name { display: block; font-size: 13.5px; font-weight: 700; line-height: 1.35; }
 .dres-sub { display: block; font-size: 11.5px; color: var(--ink-2); margin-top: 2px; }
-.dres-jan { display: block; font-family: ui-monospace, monospace; font-size: 10.5px; color: var(--ink-3); margin-top: 2px; }
+/* 検索結果のメーカー見出し（「すべてのメーカー」のときだけ） */
+.dgroup { border-top: 1px solid var(--line); }
+.dgroup:first-child { border-top: 0; }
+.dgrouphead {
+  display: flex; align-items: center; gap: 6px; padding: 9px 12px 3px;
+  font-size: 11.5px; font-weight: 800; color: var(--soft-ink); letter-spacing: .02em;
+  background: var(--surface-2);
+}
+.dgrouphead b {
+  font-size: 10px; font-weight: 700; color: var(--muted-ink);
+  background: var(--surface-3); border-radius: 999px; padding: 0 6px; line-height: 15px;
+}
 .dres-add {
   flex: 0 0 auto; min-height: 40px; padding: 0 12px; border-radius: 10px;
   border: 1px solid var(--accent-line); background: var(--accent-soft); color: var(--on-accent-soft);

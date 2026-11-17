@@ -46,7 +46,9 @@ test('画面: パンくず欄に階層を並べ、各階層をタップで移動
     assert.ok(html.includes(`id="${id}"`), `#${id} がありません`);
   }
   // 現在地の階層は folderChain で組み立て、行ごとに data-crumb を持たせる
-  assert.match(app, /const chain = open \? folderChain\(state\.folders, ui\.folderId\) : \[\];/);
+  // （特別フォルダ「お気に入り」だけは階層を持たないので現在地のみ）
+  assert.match(app, /const chain = open && !fav \? folderChain\(state\.folders, ui\.folderId\) : \[\];/);
+  assert.match(app, /isFavoriteFolder\(ui\.folderId\)[\s\S]{0,400}FAVORITE_FOLDER\.name/);
   assert.match(app, /data-crumb="\$\{esc\(f\.id\)\}"/);
   assert.match(app, /aria-current="page"/);
   // 家アイコンの後ろにも区切り（›）が入り、区切りと名前は1つのまとまり（折り返しで離れない）

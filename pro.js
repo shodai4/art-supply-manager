@@ -3,6 +3,8 @@
 // いまは設定の「Proプレビュー」で同じ状態を再現して動作確認できる。
 // StoreKit を繋ぐときは、購入済みかどうかを applyProEntitlement(settings, owned) に渡すだけでよい。
 
+import { FAVORITE_FOLDER_ID } from './core.js';
+
 /** 無料プランの登録上限（点数） */
 export const FREE_ITEM_LIMIT = 100;
 /**
@@ -39,9 +41,13 @@ export function folderLimit(settings = {}) {
   return isPro(settings) ? UNLIMITED : FREE_FOLDER_LIMIT;
 }
 
-/** 最初からある保管場所か（既定の4つ。無料枠に数えない） */
+/**
+ * 最初からある保管場所か（既定の4つ。無料枠に数えない）。
+ * 削除できない特別フォルダ「お気に入り」も、フォルダ数を数える対象から外す。
+ */
 export function isBaseFolder(folder = {}) {
-  return BASE_FOLDER_IDS.includes(String(folder?.id ?? ''));
+  const id = String(folder?.id ?? '');
+  return BASE_FOLDER_IDS.includes(id) || id === FAVORITE_FOLDER_ID;
 }
 
 /** あとから作った自分のフォルダの数（子フォルダ・孫フォルダも1つとして数える） */

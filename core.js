@@ -295,6 +295,31 @@ export function countFavorites(items = []) {
   return (Array.isArray(items) ? items : []).filter((it) => it?.favorite === true).length;
 }
 
+/* ---------------- 削除できない特別フォルダ「お気に入り」 ---------------- */
+
+/**
+ * 特別フォルダ「お気に入り」のID。
+ * state.folders には入れない「仮想フォルダ」で、星を付けた画材をその場でまとめて見せる。
+ * そのため、フォルダの作成数（無料枠）・削除・改名・移動の対象にはならない。
+ */
+export const FAVORITE_FOLDER_ID = 'favorites';
+
+/** 特別フォルダ「お気に入り」の見た目（名前・色）。フォルダとしては保存しない */
+export const FAVORITE_FOLDER = { id: FAVORITE_FOLDER_ID, name: 'お気に入り', color: '#c98a12', parentId: null };
+
+/** 特別フォルダ「お気に入り」か（削除・移動・改名できない） */
+export function isFavoriteFolder(id) {
+  return String(id ?? '') === FAVORITE_FOLDER_ID;
+}
+
+/**
+ * 特別フォルダ「お気に入り」の中身（星の付いた画材）。
+ * 画材の folderId は変えないので、元のフォルダにもそのまま残る（実体は1つ・複製しない）。
+ */
+export function favoriteItems(items = []) {
+  return (Array.isArray(items) ? items : []).filter((it) => it?.favorite === true);
+}
+
 /** お気に入りを先頭に集める（それぞれの中の並びは渡された順のまま） */
 export function favoritesFirst(items = []) {
   const list = Array.isArray(items) ? items : [];
@@ -484,7 +509,26 @@ export function searchDictionary(dict = [], query = '', { limit = 40, hay, maker
   return { items, total, limit: max };
 }
 
-/** 絞り込み用のメーカー一覧（登録済みアイテムから・あいうえお順） */
+/**
+ * 検索タブの行に添える補足（色・容量）。
+ * 商品名にすでに入っているものは繰り返さない（例:「... 59ml ウルトラマリンブルー」に
+ * 色名と容量をもう一度並べない）。残るものが無ければ空文字。
+ */
+export function dictionaryRowDetail(entry = {}) {
+  // 空白の有無でも同じ色名と見なす（「ウルトラマリン ブルー」と「ウルトラマリンブルー」）
+  const key = (value) => normalizeSearchText(value).replace(/\s+/g, '');
+  const name = key(entry?.name || '');
+  const parts = [entry?.colorName, entry?.size].filter(Boolean)
+    .filter((value) => {
+      const k = key(value);
+      return k !== '' && !name.includes(k);
+    })
+    .map((value) => String(value).trim());
+  return [...new Set(parts)].join(' ・ ');
+}
+
+/**
+ * 絞り込み用のメーカー一覧（登録済みアイテムから・あいうえお順） */
 export function listMakers(items) {
   return [...new Set(items.map(itemMaker).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja'));
 }
@@ -502,6 +546,24 @@ export function groupByMaker(items) {
     groups[index.get(key)].items.push(it);
   }
   return groups;
+}
+
+/**
+ * 内蔵辞書の検索結果をメーカー見出しごとにまとめる（検索タブの「すべてのメーカー」用）。
+ * 見出しはメーカー名のあいうえお順（メーカータブと同じ並び）。中の並び（検索の当たり順）は変えない。
+ */
+export function groupDictionaryByMaker(entries = []) {
+  const groups = [];
+  const at = new Map();
+  for (const d of Array.isArray(entries) ? entries : []) {
+    const maker = String(d?.maker || 'メーカー不明');
+    if (!at.has(maker)) {
+      at.set(maker, groups.length);
+      groups.push({ maker, items: [] });
+    }
+    groups[at.get(maker)].items.push(d);
+  }
+  return groups.sort((a, b) => a.maker.localeCompare(b.maker, 'ja'));
 }
 
 export function sortItems(items, mode = 'updated') {

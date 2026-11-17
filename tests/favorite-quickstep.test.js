@@ -101,14 +101,17 @@ test('一覧のカードに星と −/＋ があり、カードのタップ（�
   const cardEnd = tile.indexOf('</button>', cardAt);
   assert.ok(cardAt > 0 && cardEnd > cardAt, 'カードのボタンが見つかりません');
   assert.equal(/<button/.test(tile.slice(cardAt + 20, cardEnd)), false, 'カードの中にボタンが入れ子になっている');
-  // 星とステッパーはカードの外（同じ枠の中のきょうだい）に差し込む
+  // 星とステッパーはカードの外（同じ枠の中のきょうだい）に、1行にまとめて差し込む
   const tpl = tile.slice(tile.indexOf('return `'));
-  assert.match(tpl, /<\/button>\s*\$\{ui\.selectMode \? '' : star\}/, '星はカードの外に置く');
-  assert.match(tpl, /\$\{ui\.selectMode \? '' : stepper\}/, 'ステッパーはカードの外に置く');
-  // リスト表示でも星を出す
+  assert.match(tpl, /<\/button>\s*\$\{ui\.selectMode \? '' : `<span class="tilefoot">\$\{star\}\$\{stepper\}<\/span>`\}/, '星とステッパーはカードの外の1行に置く');
+  // 画像（.sw）の上に星を重ねない（写真を隠さない）
+  assert.equal(/\.sw[\s\S]{0,120}\$\{star\}/.test(tpl), false, '星が画像の上に重なっている');
+  assert.equal(/class="qbadge"[^`]*\$\{star\}/.test(tpl), false, '星が画像の上に重なっている');
+  // リスト表示でも星を出し、右端の鉛筆（編集）は星に置き換える
   const row = app.slice(app.indexOf('function itemRow('), app.indexOf('/**\n * 一覧の見出しのまとまり'));
   assert.match(row, /data-fav=/);
-  assert.match(row, /class="fav sm/);
+  assert.match(row, /class="icon-btn favbtn/);
+  assert.equal(/<svg class="pencil"/.test(row), false, 'リストの鉛筆（編集）が残っている');
 });
 
 test('星と −/＋ のタップは編集シートに伝わらない（stopPropagation）', () => {
@@ -144,15 +147,17 @@ test('お気に入りだけを絞れる入口が絞込シートにある（専�
 test('星とステッパーは375pxのカードに収まる（等分・小さいボタン）', () => {
   const css = read('styles.css');
   assert.match(css, /\.tilewrap\s*\{[^}]*position:\s*relative[^}]*min-width:\s*0/);
-  // 星は画像の右上に重ねる（幅を取らない）
-  assert.match(css, /\.fav\s*\{[^}]*position:\s*absolute[^}]*width:\s*24px/);
+  // 星とステッパーは画像の下の1行（tilefoot）に並べる
+  assert.match(css, /\.tilefoot\s*\{[^}]*display:\s*flex[^}]*align-items:\s*center/);
+  assert.match(css, /\.tilefoot \.tstep\s*\{[^}]*flex:\s*1 1 auto[^}]*min-width:\s*0/);
+  // 星は画像に重ねず、小さな枠のボタン（−/＋ の幅を残すため横は控えめ）
+  assert.match(css, /\.fav\s*\{[^}]*width:\s*20px[^}]*height:\s*22px/);
+  assert.equal(/\.fav\s*\{[^}]*position:\s*absolute/.test(css), false, '星が画像の上に重なっている');
   assert.match(css, /\.fav\.on\s*\{[^}]*color:/);
   // −/＋は等分・折り返さない
   assert.match(css, /\.tstep\s*\{[^}]*display:\s*flex[^}]*height:\s*22px/);
   assert.match(css, /\.tstep \.step\s*\{[^}]*flex:\s*1 1 0[^}]*min-width:\s*0/);
   assert.match(css, /\.tstep \.n\s*\{[^}]*font-variant-numeric:\s*tabular-nums/);
-  // リストの星はサムネイルの右下に重ねて、名前・メタの幅を削らない
-  assert.match(css, /\.item \.thumb \.fav\.sm\s*\{[^}]*position:\s*absolute[^}]*width:\s*18px/);
   // 在庫切れの色
   assert.match(css, /\.tilewrap\.out \.tstep \.n\s*\{[^}]*color:\s*var\(--bad\)/);
 });

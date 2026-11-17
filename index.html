@@ -140,17 +140,8 @@ try {
 </header>
 
 <main>
-  <!-- 在庫（お気に入り → フォルダ → 画材の順に1つの流れで並べる） -->
+  <!-- 在庫（フォルダ → 画材の順に1つの流れで並べる。お気に入りは先頭の固定フォルダ） -->
   <section id="view-stock">
-    <div class="fsec" id="favSec" hidden>
-      <div class="sechead">
-        <svg class="ic" aria-hidden="true"><use href="#i-star-solid"/></svg>
-        <span>お気に入り</span>
-        <b id="favCount">0</b>
-      </div>
-      <div class="favstrip" id="favStrip"></div>
-    </div>
-
     <div class="fsec" id="folderSec">
       <div class="sechead">
         <svg class="ic" aria-hidden="true"><use href="#i-folder"/></svg>
@@ -380,6 +371,12 @@ try {
     </div>
     <div class="field"><label for="fStatusInput">残量</label><select id="fStatusInput"></select></div>
     <div class="field"><label for="fFolderInput">保管場所</label><select id="fFolderInput"></select></div>
+    <div class="field">
+      <label>お気に入り</label>
+      <button type="button" class="favtoggle" id="fFav" aria-pressed="false">
+        <svg class="ic" aria-hidden="true"><use href="#i-star"/></svg><span id="fFavLabel">お気に入りにする</span>
+      </button>
+    </div>
     <div class="field"><label for="fJan">JANコード</label><input id="fJan" inputmode="numeric" placeholder="13桁（読取ボタンでも可）">
       <p class="hint" id="janHint" style="margin:4px 0 0"></p>
       <button type="button" class="btn mini wide" id="btnFetchImage">画像を取得</button>
@@ -519,7 +516,7 @@ try {
     <div class="gstep"><b>続けて読み取る（連続スキャン）</b><span>読取画面の「連続スキャン」をONにすると、カメラを閉じずに読み続けられます。辞書にある画材は自動で登録され、画像も後から入ります。</span></div>
     <div class="gstep"><b>辞書から選んで登録</b><span>編集シートの「辞書から探す」で色名・メーカー・品番から選ぶと、商品名やJANが自動で入ります。</span></div>
     <div class="gstep"><b>在庫の＋と−</b><span>一覧のカードにある「−」「＋」で、編集を開かずに在庫数を増減できます。0になると「要補充」に切り替わります。</span></div>
-    <div class="gstep"><b>お気に入り</b><span>カードの星を押すと、お気に入りが在庫タブのいちばん上にまとまります。もう一度押すと外れます。</span></div>
+    <div class="gstep"><b>お気に入り</b><span>カードの星を押すと、フォルダの先頭にある「お気に入り」に入ります。もう一度押すと外れます（元のフォルダにもそのまま残ります）。編集シートの中でも入/切できます。</span></div>
     <div class="gstep"><b>フォルダ（保管場所）</b><span>在庫タブのフォルダをタップして中へ。フォルダを長押しすると、編集・移動・削除ができます。フォルダの中では上の家アイコンで戻れます。フォルダの中に子フォルダも作れます。</span></div>
     <div class="gstep"><b>まとめて移動する</b><span>右上の⋯から「複数選択」を選び、画材を選んで「移動」を押すと、別のフォルダへまとめて移せます。</span></div>
     <div class="gstep"><b>メーカー別に見る</b><span>下の「メーカー」タブで、メーカーごとのまとまりを開いて見られます。</span></div>

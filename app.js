@@ -4,10 +4,12 @@ import {
   createItem, adjustStock, computeShoppingList, filterItems, moveItems, sortItems, countByFolder,
   addFolder, updateFolder, moveFolder, reorderFolders, deleteFolder, upsertItem, deleteItems,
   exportState, importState, summarize, blankState, isEmptyStock, toggleFavorite, favoritesFirst,
-  isValidJAN, normalizeJAN, detectMaker, lookupJAN, itemMaker, listMakers, groupByMaker,
+  isValidJAN, normalizeJAN, detectMaker, lookupJAN, itemMaker, listMakers, groupByMaker, groupDictionaryByMaker,
+  dictionaryRowDetail,
   normalizeImageUrl, recordPurchase, costSummary, costRows, buildItemsCsvText, mergeStates,
   folderParentId, folderChildren, folderChain, folderDepth, folderPathLabel, folderSubtreeIds,
   folderTree, folderOptions, countByFolderDeep,
+  FAVORITE_FOLDER_ID, FAVORITE_FOLDER, isFavoriteFolder, favoriteItems, countFavorites,
   toggleSelection, isSelected, selectAllIds, pruneSelection, searchDictionary, dictionaryHaystack,
   isMakerGroupOn, withSortMode,
   groupByFolder,
@@ -464,7 +466,6 @@ function render() {
   renderHeader();
   renderHeaderActions();
   renderCrumb();
-  renderFavorites();
   renderFolderGrid();
   renderItemSection();
   renderMakerView();
@@ -524,12 +525,17 @@ function hasFilters() {
 
 /** フォルダを開いているときだけ、ヘッダーの下に現在地のパンくず（家 › 親 › 子 › 孫）を出す */
 function renderCrumb() {
+  const fav = isFavoriteFolder(ui.folderId);
   const open = ui.folderId !== 'all';
   $('crumb').hidden = !open || ui.tab !== 'stock';
   // 途中の階層をタップすると、そこへ一気に移動できる（幅が足りないときはCSSで折り返す）
-  const chain = open ? folderChain(state.folders, ui.folderId) : [];
-  $('crumbTrail').innerHTML = chain.map((f, i) => {
-    const here = i === chain.length - 1;
+  const chain = open && !fav ? folderChain(state.folders, ui.folderId) : [];
+  // 特別フォルダ「お気に入り」は階層を持たないので、現在地だけを出す
+  $('crumbTrail').innerHTML = (fav
+    ? [{ id: FAVORITE_FOLDER_ID, name: FAVORITE_FOLDER.name }]
+    : chain
+  ).map((f, i, arr) => {
+    const here = i === arr.length - 1;
     const label = here ? ' aria-current="page"' : ` aria-label="${esc(f.name)}へ移動"`;
     // 区切りの › と階層名は1つのまとまりにして、折り返しで離ればなれにならないようにする
     return '<span class="step"><span class="sep" aria-hidden="true">›</span>'
@@ -552,14 +558,30 @@ function goUp() {
 
 /** 今いる場所のフォルダ（ルートなら最上位、フォルダの中ならその子フォルダ）＋「＋ フォルダ」 */
 function renderFolderGrid() {
-  const show = ui.tab === 'stock' && !ui.query && !hasFilters();
+  // 特別フォルダ「お気に入り」の中にはフォルダを作らない（子フォルダは持たない）
+  const fav = isFavoriteFolder(ui.folderId);
+  const show = ui.tab === 'stock' && !ui.query && !hasFilters() && !fav;
   $('folderSec').hidden = !show;
   if (!show) { $('folderGrid').innerHTML = ''; return; }
   const parentId = ui.folderId === 'all' ? '' : ui.folderId;
   const kids = folderChildren(state.folders, parentId);
   const counts = countByFolderDeep(state.folders, state.items);
   $('folderSecTitle').textContent = parentId ? 'この中のフォルダ' : 'フォルダ';
-  const tiles = kids.map((f) => {
+  // トップでは、削除できない固定フォルダ「お気に入り」を先頭に置く
+  // （星を付けた画材がここに入る。実体は各フォルダのままなので元のフォルダにも残る）
+  const tiles = [];
+  if (!parentId) {
+    const favCount = countFavorites(state.items);
+    tiles.push(`
+    <button class="ftile fav-folder" data-folder="${esc(FAVORITE_FOLDER_ID)}">
+      <span class="fico" style="--c:${esc(FAVORITE_FOLDER.color)};--cs:${rgba(FAVORITE_FOLDER.color, 0.13)}">
+        <svg class="ic" aria-hidden="true"><use href="#i-star-solid"/></svg>
+        <span class="fcnt">${favCount}</span>
+      </span>
+      <span class="fname">${esc(FAVORITE_FOLDER.name)}</span>
+    </button>`);
+  }
+  tiles.push(...kids.map((f) => {
     const color = f.color || '#5b6b7c';
     const children = folderChildren(state.folders, f.id).length;
     return `
@@ -571,7 +593,7 @@ function renderFolderGrid() {
       </span>
       <span class="fname">${esc(f.name)}</span>
     </button>`;
-  });
+  }));
   // フォルダが無くても「＋ フォルダ」だけは出す（作り始められるように）
   tiles.push(`
     <button class="ftile add" data-add-folder="1" aria-label="フォルダを作る">
@@ -581,23 +603,17 @@ function renderFolderGrid() {
   $('folderGrid').innerHTML = tiles.join('');
 }
 
-/** お気に入り（星を付けた画材）を上にまとめる。無いときは出さない */
-function renderFavorites() {
-  const favs = state.items.filter((it) => it.favorite === true);
-  const show = favs.length > 0 && ui.tab === 'stock' && !ui.query && !hasFilters();
-  $('favSec').hidden = !show;
-  if (!show) { $('favStrip').innerHTML = ''; return; }
-  $('favCount').textContent = String(favs.length);
-  const list = favoritesFirst(sortItems(favs, state.settings.sort));
-  $('favStrip').innerHTML = list.map((it) => itemTile(it, { showFolder: true })).join('');
-}
-
 /** 画材一覧（今いる場所のすべて。検索中は全体から探す） */
 function renderItemSection() {
+  const fav = isFavoriteFolder(ui.folderId);
   const list = currentList();
-  $('itemSecTitle').textContent = ui.query ? '検索結果' : (ui.folderId === 'all' ? 'すべての画材' : folderOf(ui.folderId).name);
+  $('itemSecTitle').textContent = ui.query ? '検索結果' : (fav ? FAVORITE_FOLDER.name : (ui.folderId === 'all' ? 'すべての画材' : folderOf(ui.folderId).name));
   $('itemCount').textContent = String(list.length);
-  renderTilesInto($('itemList'), list, { emptyKey: 'items', showFolder: ui.folderId === 'all' });
+  // 「お気に入り」はどのフォルダから来たかが分かるよう、フォルダの色の点を出す
+  renderTilesInto($('itemList'), list, {
+    emptyKey: fav ? 'favorites' : 'items',
+    showFolder: ui.folderId === 'all' || fav,
+  });
 }
 
 /** メーカー別タブ: メーカーごとに開いて中を見る（見出しに件数） */
@@ -657,8 +673,9 @@ document.addEventListener('load', (e) => {
 
 /**
  * 画材タイル1枚（在庫切れはグレー表示。操作は通常どおり）。
- * カードの中に「− 数 ＋」とお気に入りの星を置く（編集シートを開かずにその場で増減できる）。
- * HTML のボタンは入れ子にできないので、カード（編集を開くボタン）と星・ステッパーは
+ * カードの下に「お気に入りの星」と「− 数 ＋」を並べる（編集シートを開かずにその場で増減できる）。
+ * 画像の上には何も載せない（星は写真を隠さず、下のボタンで押す）。
+ * HTML のボタンは入れ子にできないので、カード（タップで編集を開くボタン）と星・ステッパーは
  * 同じ枠（.tilewrap）の中できょうだいとして並べる。
  */
 function itemTile(it, opts = {}) {
@@ -697,8 +714,7 @@ function itemTile(it, opts = {}) {
       </span>
       <span class="tname">${esc(displayName(it))}</span>
     </button>
-    ${ui.selectMode ? '' : star}
-    ${ui.selectMode ? '' : stepper}
+    ${ui.selectMode ? '' : `<span class="tilefoot">${star}${stepper}</span>`}
   </div>`;
 }
 
@@ -707,7 +723,6 @@ function itemRow(it, opts = {}) {
   const st = statusMeta(it.status);
   const isEmpty = isEmptyStock(it);
   const f = folderOf(it.folderId);
-  const meta = [itemMaker(it), it.colorName, it.size, it.colorCode].filter(Boolean).map(esc).join(' ・ ');
   const glyph = GLYPH[it.category];
   const thumbColor = glyph ? glyph.color : guessColor(it);
   const thumbIcon = glyph ? glyph.icon : 'i-tube';
@@ -717,24 +732,23 @@ function itemRow(it, opts = {}) {
   const selected = ui.selectMode && isSelected(ui.selected, it.id);
   const selectAttrs = ui.selectMode ? ` data-select="${esc(it.id)}" aria-pressed="${selected ? 'true' : 'false'}"` : '';
   const fav = it.favorite === true;
-  // リストの星はサムネイルの右下に重ねる（名前とメタの幅を削らない）
-  const star = ui.selectMode ? '' : `<button type="button" class="fav sm${fav ? ' on' : ''}" data-fav="${esc(it.id)}" aria-pressed="${fav ? 'true' : 'false'}" aria-label="${fav ? 'お気に入りをはずす' : 'お気に入りにする'}"><svg class="ic" aria-hidden="true"><use href="#${fav ? 'i-star-solid' : 'i-star'}"/></svg></button>`;
+  // 右端のボタンは鉛筆（編集）ではなくお気に入りの星。編集は商品名のタップから開く
+  const star = ui.selectMode ? '' : `<button type="button" class="icon-btn favbtn${fav ? ' on' : ''}" data-fav="${esc(it.id)}" aria-pressed="${fav ? 'true' : 'false'}" aria-label="${fav ? 'お気に入りをはずす' : 'お気に入りにする'}"><svg class="ic" aria-hidden="true"><use href="#${fav ? 'i-star-solid' : 'i-star'}"/></svg></button>`;
   return `
   <article class="item${isEmpty ? ' item-card--empty' : ''}${ui.selectMode ? ' selecting' : ''}${selected ? ' sel' : ''}" data-empty="${isEmpty ? '1' : '0'}" data-id="${esc(it.id)}"${selectAttrs}>
-    <span class="thumb"><svg class="ic" aria-hidden="true" style="color:${esc(thumbColor)}"><use href="#${thumbIcon}"/></svg>${shelfImage(it)}${ui.selectMode ? '<span class="selmark" aria-hidden="true"></span>' : ''}${star}</span>
-    <div class="it-main">
-      <h3 class="it-name" data-edit="${esc(it.id)}" title="タップで編集">${esc(displayName(it))}</h3>
+    <span class="thumb"><svg class="ic" aria-hidden="true" style="color:${esc(thumbColor)}"><use href="#${thumbIcon}"/></svg>${shelfImage(it)}${ui.selectMode ? '<span class="selmark" aria-hidden="true"></span>' : ''}</span>
+    <div class="it-main" data-edit="${esc(it.id)}">
+      <h3 class="it-name" title="タップで編集">${esc(displayName(it))}</h3>
       <div class="it-sub">
         ${first}
         <span class="badge ${st.tone}" title="${esc(st.label)}">${esc(st.short || st.label)}</span>
-        ${meta ? `<span class="it-meta">${meta}</span>` : ''}
       </div>
     </div>
     <div class="it-side">
       <button class="step" data-step="-1" data-id="${esc(it.id)}" aria-label="1減らす">−</button>
       <span class="qty">${Number(it.qty) || 0}<small>点</small></span>
       <button class="step" data-step="1" data-id="${esc(it.id)}" aria-label="1増やす">＋</button>
-      <button class="icon-btn" data-edit="${esc(it.id)}" aria-label="編集"><svg class="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4l5 5-9.5 9.5L4 20l1.5-6.5z"/><path d="M13 6l5 5"/></svg></button>
+      ${star}
     </div>
   </article>`;
 }
@@ -760,9 +774,11 @@ function renderTilesInto(el, items, opts = {}) {
   if (!items.length) {
     el.innerHTML = opts.emptyKey === 'shopping'
       ? '<div class="empty"><b>補充はありません</b>残りわずか・使い切りがここに集まります</div>'
-      : (state.items.length
-        ? '<div class="empty"><b>見つかりません</b>検索や絞込を変えてみてください</div>'
-        : '<div class="empty"><b>まだ画材がありません</b>右下の＋ か 読取 から登録できます<button class="btn mini wide" data-add-samples>サンプルを入れる</button></div>');
+      : opts.emptyKey === 'favorites'
+        ? '<div class="empty"><b>お気に入りはまだありません</b>カードの星を押すと、ここに集まります（元のフォルダにも残ります）</div>'
+        : (state.items.length
+          ? '<div class="empty"><b>見つかりません</b>検索や絞込を変えてみてください</div>'
+          : '<div class="empty"><b>まだ画材がありません</b>右下の＋ か 読取 から登録できます<button class="btn mini wide" data-add-samples>サンプルを入れる</button></div>');
     return;
   }
   const blocks = viewBlocks(items, opts.group);
@@ -786,10 +802,14 @@ function renderShopping() {
 function currentList() {
   // 親フォルダを開くと、配下のフォルダの画材もまとめて見る（直感的な挙動）
   // 検索のときは場所をまたいで全体から探す
-  const scope = ui.query || ui.folderId === 'all' ? null : folderSubtreeIds(state.folders, ui.folderId);
+  // 「お気に入り」はどのフォルダにある画材でも、星の付いたものをその場で集める（実体は移動しない）
+  const fav = isFavoriteFolder(ui.folderId);
+  const anywhere = ui.query || ui.folderId === 'all' || fav;
+  const scope = anywhere ? null : folderSubtreeIds(state.folders, ui.folderId);
   return favoritesFirst(sortItems(filterItems(state.items, {
-    query: ui.query, folderId: ui.query ? 'all' : ui.folderId, folderIds: scope,
-    category: ui.category, status: ui.status, maker: ui.maker, favoriteOnly: ui.favoriteOnly,
+    query: ui.query, folderId: ui.query || fav ? 'all' : ui.folderId, folderIds: scope,
+    category: ui.category, status: ui.status, maker: ui.maker,
+    favoriteOnly: ui.favoriteOnly || fav,
   }), state.settings.sort));
 }
 
@@ -1205,7 +1225,7 @@ document.addEventListener('click', (e) => {
     state = upsertItem(state, next);
     save();
     render();
-    toast(next.favorite ? 'お気に入りにしました（一覧の上に出ます）' : 'お気に入りをはずしました');
+    toast(next.favorite ? 'お気に入りにしました（お気に入りフォルダに入ります）' : 'お気に入りをはずしました');
     return;
   }
   // 選択モード中は、タップで選択の切り替えだけ（編集・増減は開けない）
@@ -1233,7 +1253,7 @@ document.addEventListener('click', (e) => {
     return;
   }
   const edit = e.target.closest('[data-edit]');
-  if (edit) { openItemSheet(edit.dataset.edit); return; }
+  // フォルダ移動・通販のチップは、行全体のタップ（編集）より先に見る
   const mv = e.target.closest('[data-move]');
   if (mv) { openMoveSheet([mv.dataset.move]); return; }
   const shopBtn = e.target.closest('[data-shop-for]');
@@ -1242,6 +1262,7 @@ document.addEventListener('click', (e) => {
     if (item) openShopSheet(item);
     return;
   }
+  if (edit) { openItemSheet(edit.dataset.edit); return; }
 });
 
 function openItemSheet(id, preset = {}) {
@@ -1265,6 +1286,8 @@ function openItemSheet(id, preset = {}) {
   $('fFolderInput').innerHTML = folderOptions(state.folders, { noneLabel: null })
     .map((o) => `<option value="${esc(o.id)}">${'　'.repeat(o.depth)}${esc(o.label)}</option>`).join('');
   $('fFolderInput').value = data.folderId;
+  // お気に入り（特別フォルダ）への登録も編集シートから入/切できる
+  setFormFavorite(data.favorite === true);
   $('fJan').value = data.jan || '';
   ui.formBrand = data.brand || '';
   $('fShop').value = data.shop || '';
@@ -1286,6 +1309,20 @@ function openItemSheet(id, preset = {}) {
   // JANが入っていて画像・写真が未設定なら、そのまま画像を取りに行く（読取・辞書から開いたとき）
   autoFetchFormImage();
 }
+
+/** 編集シートの「お気に入り」ボタンの状態をそろえる */
+function setFormFavorite(on) {
+  const fav = on === true;
+  const btn = $('fFav');
+  if (!btn) return;
+  btn.setAttribute('aria-pressed', String(fav));
+  btn.classList.toggle('on', fav);
+  btn.querySelector('use').setAttribute('href', fav ? '#i-star-solid' : '#i-star');
+  $('fFavLabel').textContent = fav ? 'お気に入りをはずす' : 'お気に入りにする';
+}
+$('fFav').addEventListener('click', () => {
+  setFormFavorite($('fFav').getAttribute('aria-pressed') !== 'true');
+});
 
 // 数量ステッパー（編集シート内）
 $('sheetItem').addEventListener('click', (e) => {
@@ -1533,6 +1570,7 @@ $('itemForm').addEventListener('submit', async (e) => {
     price: $('fPrice').value,
     memo: $('fMemo').value,
     imageUrl,
+    favorite: $('fFav').getAttribute('aria-pressed') === 'true',
   };
   let savedFolder = partial.folderId;
   let targetId = '';
@@ -1728,7 +1766,8 @@ function startPress(e) {
   // 行の中の小さなボタン（並べ替え・編集）は普通のタップに任せる
   if (e.target.closest('[data-up], [data-down], [data-fedit]')) return;
   const id = folderIdFromPress(e.target);
-  if (!id) return;
+  // 特別フォルダ「お気に入り」は削除・移動・改名できないので、長押しメニューは出さない
+  if (!id || isFavoriteFolder(id)) return;
   endPress();
   pressStart = { x: e.clientX, y: e.clientY };
   pressEl = e.target.closest('[data-folder], [data-goto-folder], [data-fid], [data-folder-head]');
@@ -2537,21 +2576,29 @@ function renderSearchTab() {
   $('dictResCount').textContent = `${total.toLocaleString('ja-JP')}件`;
 
   const owned = new Set(state.items.map((i) => i.jan).filter(Boolean));
-  const rows = hit.map((d) => {
-    const sub = [d.maker, d.colorName && d.colorName !== d.name ? d.colorName : '', d.size, d.code].filter(Boolean).join(' ・ ');
+  // 1件の行は「商品名＋色・容量」だけ。メーカーは見出しに出すので繰り返さず、JANも出さない。
+  // 辞書の商品名の先頭に付いているメーカー名（例:「ホルベイン 油絵具 ウルトラマリン」）も落とす
+  const nameOf = (d) => displayName({ name: d.name || d.colorName || '', maker: d.maker || '', brand: d.brand || '' });
+  const rowOf = (d) => {
+    const sub = dictionaryRowDetail(d);
     const btn = owned.has(d.jan)
       ? '<span class="dres-have">登録済み</span>'
-      : `<button class="dres-add" data-dict-add="${esc(d.jan)}" aria-label="${esc(d.name || d.colorName || 'この商品')}を在庫に追加">追加</button>`;
+      : `<button class="dres-add" data-dict-add="${esc(d.jan)}" aria-label="${esc(nameOf(d) || 'この商品')}を在庫に追加">追加</button>`;
     return `
     <div class="dres">
       <button class="dres-main" data-dict-pick="${esc(d.jan)}">
-        <span class="dres-name">${esc(d.name || d.colorName)}</span>
-        <span class="dres-sub">${esc(sub)}</span>
-        <span class="dres-jan">${esc(d.jan)}</span>
+        <span class="dres-name">${esc(nameOf(d))}</span>
+        ${sub ? `<span class="dres-sub">${esc(sub)}</span>` : ''}
       </button>
       ${btn}
     </div>`;
-  }).join('');
+  };
+  // メーカーを選んでいないときは、メーカー見出しごとに分けて見せる（一覧性を上げる）
+  const rows = dictTabMaker ? hit.map(rowOf).join('') : groupDictionaryByMaker(hit).map((g) => `
+      <section class="dgroup">
+        <div class="dgrouphead"><span>${esc(g.maker)}</span><b>${g.items.length}</b></div>
+        ${g.items.map(rowOf).join('')}
+      </section>`).join('');
   $('dictResults').innerHTML = rows
     ? rows + (total > hit.length ? `<p class="hint" style="margin:10px 12px">ほか ${(total - hit.length).toLocaleString('ja-JP')}件（言葉を足すと絞れます）</p>` : '')
     : '<p class="hint" style="margin:12px">見つかりません。商品名・メーカー・JANの一部で探してみてください</p>';
