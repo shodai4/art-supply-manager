@@ -2221,7 +2221,10 @@ function swipeEnd(commit = true) {
   const at = swipeBase + swipeDx;
   swipeReset();
   if (!moved) return;
-  if (commit && at <= -SWIPE_OPEN_PX) swipeOpen(el);
+  const w = swipeWidth(el);
+  // 閉じている行は30px左へ払えば出し、出ている行は30px右へ戻せば閉じる
+  const open = commit && (swipeBase < 0 ? at <= -(w - SWIPE_OPEN_PX) : at <= -SWIPE_OPEN_PX);
+  if (open) swipeOpen(el);
   else swipeClose(el);
   // スワイプ直後の「タップ」で編集シートやフォルダ移動が開かないよう、1回だけ打ち消す
   suppressClickUntil = Date.now() + 400;

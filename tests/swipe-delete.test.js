@@ -63,7 +63,8 @@ test('削除ボタンは「削除」の白文字・赤（#dc2626）で、行の�
 test('30px以上左へ払って離すと削除ボタンが出たままになり、10px動いたら横スワイプとみなす', () => {
   assert.match(app, /const SWIPE_START_PX = 10;/);
   assert.match(app, /const SWIPE_OPEN_PX = 30;/);
-  assert.match(app, /if \(commit && at <= -SWIPE_OPEN_PX\) swipeOpen\(el\);\n  else swipeClose\(el\);/);
+  // 出ている行は、30px右へ戻せば閉じる（払った距離ではなく戻した距離で決める）
+  assert.match(app, /const open = commit && \(swipeBase < 0 \? at <= -\(w - SWIPE_OPEN_PX\) : at <= -SWIPE_OPEN_PX\);/);
   // 払った分だけ中身をずらす（右へは動かさず、行の幅で止める）
   assert.match(app, /swipeSetX\(swipeEl, Math\.min\(0, Math\.max\(-w, swipeBase \+ dx\)\)\);/);
   // 出したままの行は1行だけ
