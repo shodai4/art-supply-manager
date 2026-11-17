@@ -12,7 +12,26 @@ export const CATEGORIES = [
   { id: 'brush', label: '筆/ナイフ' },
   { id: 'canvas', label: 'キャンバス/パネル' },
   { id: 'paper', label: 'スケッチブック/紙' },
+  { id: 'pastel', label: 'パステル' },
+  { id: 'colored_pencil', label: '色鉛筆' },
+  { id: 'pencil', label: '鉛筆' },
+  { id: 'crayon', label: 'クレヨン' },
+  { id: 'charcoal', label: '木炭/コンテ' },
+  { id: 'pen', label: 'ペン' },
+  { id: 'copic', label: 'コピック' },
+  { id: 'marker', label: 'マーカー' },
+  { id: 'frame', label: '額縁' },
+  { id: 'nihonga', label: '日本画/墨' },
   { id: 'other', label: 'その他' },
+];
+
+/**
+ * 18カテゴリのうち「色名（色番）を持つ画材」のカテゴリ。
+ * 筆・紙・キャンバス・メディウム・額縁・その他は色名を持たないのが自然。
+ */
+export const COLOR_CATEGORIES = [
+  'oil', 'acrylic', 'watercolor', 'pastel', 'colored_pencil', 'crayon', 'charcoal',
+  'copic', 'marker', 'pen', 'nihonga',
 ];
 
 export const STATUSES = [
@@ -263,6 +282,7 @@ export function createItem(partial = {}) {
     maker: String(partial.maker || '').trim(),
     brand: String(partial.brand || '').trim(),
     category: CATEGORIES.some((c) => c.id === partial.category) ? partial.category : 'other',
+    series: String(partial.series || '').trim(),
     colorName: String(partial.colorName || '').trim(),
     colorCode: String(partial.colorCode || '').trim(),
     size: String(partial.size || '').trim(),
@@ -414,7 +434,7 @@ export function filterItems(items, filter = {}) {
     if (filter.shortageOnly && !(it.status === 'low' || it.status === 'empty' || Number(it.qty) === 0)) return false;
     if (filter.favoriteOnly && it.favorite !== true) return false;
     if (!tokens.length) return true;
-    const hay = normalizeSearchText([it.name, it.maker, it.brand, it.colorName, it.colorCode, it.size, it.jan, it.shop, it.memo]
+    const hay = normalizeSearchText([it.name, it.series, it.maker, it.brand, it.colorName, it.colorCode, it.size, it.jan, it.shop, it.memo]
       .join(' '));
     return matchesAllTokens(tokens, hay, normalizeJAN(it.jan));
   });
@@ -638,6 +658,7 @@ export function addItemToAnotherFolder(items = [], sourceId = '', folderId = '',
     maker: src.maker,
     brand: src.brand,
     category: src.category,
+    series: src.series,
     colorName: src.colorName,
     colorCode: src.colorCode,
     size: src.size,
@@ -691,7 +712,9 @@ export function dictionaryHaystack(dict = []) {
   if (!Array.isArray(dict)) return [];
   const cached = DICT_HAY_CACHE.get(dict);
   if (cached && cached.length === dict.length) return cached;
-  const hay = dict.map((d) => normalizeSearchText(`${d.name || ''} ${d.colorName || ''} ${d.maker || ''} ${d.brand || ''} ${d.size || ''} ${d.code || ''} ${d.jan || ''}`));
+  // 語の区切り（空白）は詰めて1本の文字列にする。日本語は空白を入れずに打つので、
+  // 「NEWトーナルカラー68色」のような詰めた語でもヒットさせる（スペース有りでも従来どおりヒットする）。
+  const hay = dict.map((d) => normalizeSearchText(`${d.name || ''} ${d.series || ''} ${d.colorName || ''} ${d.maker || ''} ${d.brand || ''} ${d.size || ''} ${d.code || ''} ${d.colorCode || ''} ${d.keywords || ''} ${d.jan || ''}`).replace(/\s+/g, ''));
   DICT_HAY_CACHE.set(dict, hay);
   return hay;
 }
@@ -789,6 +812,30 @@ export function dictionaryRowDetail(entry = {}) {
   return [...new Set(parts)].join(' ・ ');
 }
 
+/**
+ * 商品名の先頭にあるシリーズ名を切り分ける（検索タブでシリーズを淡く見せるため）。
+ * 商品名がシリーズ名で始まらないときは null（呼び出し側は商品名をそのまま出す）。
+ * @returns {{head:string, rest:string}|null}
+ */
+export function splitSeriesFromName(name = '', series = '') {
+  const full = String(name || '').trim();
+  const target = String(series || '').trim();
+  if (!full || !target) return null;
+  const bare = (s) => normalizeSearchText(s).replace(/[\s　・]/g, '');
+  const want = bare(target);
+  if (!want || !bare(full).startsWith(want)) return null;
+  const chars = [...full];
+  let acc = '';
+  let i = 0;
+  for (; i < chars.length; i += 1) {
+    acc += bare(chars[i]);
+    if (acc.length >= want.length) { i += 1; break; }
+  }
+  const head = chars.slice(0, i).join('').trim();
+  const rest = chars.slice(i).join('').replace(/^[\s　・]+/, '').trim();
+  return { head, rest };
+}
+
 /* ---------------- 登録済みの表記を最新の辞書に揃える ---------------- */
 
 /**
@@ -800,6 +847,7 @@ export const DICT_SYNC_FIELDS = [
   { item: 'maker', dict: 'maker' },
   { item: 'brand', dict: 'brand' },
   { item: 'category', dict: 'category' },
+  { item: 'series', dict: 'series' },
   { item: 'colorName', dict: 'colorName' },
   { item: 'colorCode', dict: 'code' },
   { item: 'size', dict: 'size' },
@@ -807,7 +855,6 @@ export const DICT_SYNC_FIELDS = [
 
 /** 表記の更新の前に出す確認の文言（数量・メモ・フォルダ・写真が残ることを伝える） */
 export const SYNC_ITEMS_CONFIRM_TEXT = 'JANが一致する画材の商品名・メーカー名等を最新の辞書表記に更新します（数量・メモ・フォルダ・写真はそのまま残ります）';
-
 /** 表記を揃えたあとの結果の文言（0件のときは「すべて最新」） */
 export function describeSyncItemsResult(updatedCount) {
   const n = Math.max(0, Math.trunc(Number(updatedCount) || 0));

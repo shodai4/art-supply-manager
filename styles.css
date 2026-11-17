@@ -580,6 +580,7 @@ body[data-ad-banner="true"] .tabbar {
 .dres { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
 .dres-main { flex: 1 1 auto; min-width: 0; text-align: left; background: none; border: none; padding: 0; color: var(--ink); }
 .dres-name { display: block; font-size: 13.5px; font-weight: 700; line-height: 1.35; }
+.dres-series { font-weight: 500; color: var(--ink-2); }
 .dres-sub { display: block; font-size: 11.5px; color: var(--ink-2); margin-top: 2px; }
 /* 検索結果のメーカー見出し（タップで開け閉め。閉じているあいだは中身をDOMに置かない） */
 .dgroup { border-top: 1px solid var(--line); }

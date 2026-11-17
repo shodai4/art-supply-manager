@@ -58,6 +58,7 @@ export function normalizeExtraEntry(raw) {
       maker,
       brand: clean(raw.brand),
       category,
+      series: clean(raw.series),
       colorName: clean(raw.colorName),
       size: clean(raw.size),
       code: clean(raw.code),

@@ -168,7 +168,7 @@ test('同じJANの辞書が複数あれば先頭を使う', () => {
 
 test('表記の更新対象は文字の項目だけ（数量・写真などの項目名が混ざっていない）', () => {
   const fields = DICT_SYNC_FIELDS.map((f) => f.item);
-  assert.deepEqual(fields, ['name', 'maker', 'brand', 'category', 'colorName', 'colorCode', 'size']);
+  assert.deepEqual(fields, ['name', 'maker', 'brand', 'category', 'series', 'colorName', 'colorCode', 'size']);
   for (const forbidden of [
     'id', 'folderId', 'qty', 'count', 'minCount', 'status', 'favorite', 'memo',
     'price', 'purchaseHistory', 'purchaseLog', 'photo', 'imageUrl', 'createdAt',

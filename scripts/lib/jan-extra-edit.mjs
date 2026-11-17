@@ -22,6 +22,7 @@ export function buildEntry(input = {}, { verifiedAt = '' } = {}) {
     maker: input.maker,
     brand: input.brand,
     category: input.category || 'other',
+    series: input.series,
     colorName: input.colorName,
     size: input.size,
     code: input.code,
@@ -34,7 +35,7 @@ export function buildEntry(input = {}, { verifiedAt = '' } = {}) {
 
 /** 既存項目と辞書レコードが同じ内容か（追記の重複判定用） */
 export function sameEntry(a, b) {
-  const keys = ['jan', 'name', 'maker', 'brand', 'category', 'colorName', 'size', 'code', 'source'];
+  const keys = ['jan', 'name', 'maker', 'brand', 'category', 'series', 'colorName', 'size', 'code', 'source'];
   return keys.every((k) => String(a?.[k] || '') === String(b?.[k] || ''));
 }
 

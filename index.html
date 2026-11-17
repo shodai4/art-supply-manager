@@ -15,7 +15,7 @@ try {
 } catch (e) { /* 保存が読めないときはライト */ }
 </script>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="styles.css?v=1.19.0">
+<link rel="stylesheet" href="styles.css?v=1.20.0">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 </head>
@@ -362,6 +362,7 @@ try {
       <div class="field"><label for="fMaker">メーカー</label><input id="fMaker" list="makerList" placeholder="ホルベイン"><datalist id="makerList"></datalist></div>
       <div class="field"><label for="fCategory">カテゴリ</label><select id="fCategoryInput"></select></div>
     </div>
+    <div class="field"><label for="fSeries">シリーズ</label><input id="fSeries" placeholder="油絵具（シリーズ名）"></div>
     <div class="field-row">
       <div class="field"><label for="fColorName">色名</label><input id="fColorName" placeholder="シルバー"></div>
       <div class="field"><label for="fColorCode">色番号</label><input id="fColorCode" placeholder="H191"></div>
@@ -611,6 +612,6 @@ try {
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<script type="module" src="app.js?v=1.19.0"></script>
+<script type="module" src="app.js?v=1.20.0"></script>
 </body>
 </html>

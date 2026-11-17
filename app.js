@@ -7,6 +7,7 @@ import {
   isValidJAN, normalizeJAN, detectMaker, lookupJAN, itemMaker, listMakers, groupByMaker,
   groupDictionarySearch, planDictGroups, compareMakerName, DICT_MAKER_PAGE,
   dictionaryRowDetail,
+  splitSeriesFromName,
   normalizeImageUrl, recordPurchase, costSummary, costRows, buildItemsCsvText, mergeStates,
   folderParentId, folderChildren, folderChain, folderDepth, folderPathLabel, folderSubtreeIds,
   folderTree, folderOptions, countByFolderDeep,
@@ -260,6 +261,7 @@ function formItem() {
     name: $('fName').value,
     maker: $('fMaker').value,
     category: $('fCategoryInput').value,
+    series: $('fSeries').value,
     colorName: $('fColorName').value,
     colorCode: $('fColorCode').value,
     size: $('fSize').value,
@@ -452,7 +454,11 @@ const COLOR_HINTS = [
 
 const CATEGORY_COLOR = {
   oil: '#c0703f', acrylic: '#3d8f8f', watercolor: '#5a86c4', medium: '#9a8f7a',
-  brush: '#8a6b4f', canvas: '#d8cbb4', paper: '#e4dccb', other: '#9aa3ad',
+  brush: '#8a6b4f', canvas: '#d8cbb4', paper: '#e4dccb',
+  pastel: '#c58fa8', colored_pencil: '#b0653d', pencil: '#8d949c', crayon: '#d08a2e',
+  charcoal: '#5b6066', pen: '#4a6f8f', copic: '#7b61c9', marker: '#c2543f',
+  frame: '#a8862f', nihonga: '#3f5d54',
+  other: '#9aa3ad',
 };
 
 // 絵の具はチューブ、それ以外は道具の形で棚に並べる
@@ -460,6 +466,16 @@ const GLYPH = {
   brush: { icon: 'i-brush', color: '#8a6b4f' },
   canvas: { icon: 'i-canvas', color: '#a88a5e' },
   paper: { icon: 'i-paper', color: '#8894a1' },
+  frame: { icon: 'i-paper', color: '#a8862f' },
+  pencil: { icon: 'i-pen', color: '#6f7780' },
+  colored_pencil: { icon: 'i-pen', color: '#b0653d' },
+  pen: { icon: 'i-pen', color: '#4a6f8f' },
+  copic: { icon: 'i-pen', color: '#7b61c9' },
+  marker: { icon: 'i-pen', color: '#c2543f' },
+  pastel: { icon: 'i-tube', color: '#c58fa8' },
+  crayon: { icon: 'i-tube', color: '#d08a2e' },
+  charcoal: { icon: 'i-tube', color: '#5b6066' },
+  nihonga: { icon: 'i-brush', color: '#3f5d54' },
 };
 
 function guessColor(item) {
@@ -1485,6 +1501,7 @@ function openItemSheet(id, preset = {}) {
   $('fMaker').value = data.maker || '';
   $('fCategoryInput').innerHTML = CATEGORIES.map((c) => `<option value="${c.id}">${c.label}</option>`).join('');
   $('fCategoryInput').value = data.category;
+  $('fSeries').value = data.series || '';
   $('fColorName').value = data.colorName || '';
   $('fColorCode').value = data.colorCode || '';
   $('fSize').value = data.size || '';
@@ -1770,6 +1787,7 @@ $('itemForm').addEventListener('submit', async (e) => {
     maker: $('fMaker').value,
     brand: ui.formBrand,
     category: $('fCategoryInput').value,
+    series: $('fSeries').value,
     colorName: $('fColorName').value,
     colorCode: $('fColorCode').value,
     size: $('fSize').value,
@@ -2666,7 +2684,7 @@ function applyJAN(jan) {
   if (hit) {
     toast(`辞書で見つかりました: ${hit.name}${elsewhereNote}`);
     openItemSheet(null, {
-      name: hit.name, maker: hit.maker, brand: hit.brand, category: hit.category,
+      name: hit.name, maker: hit.maker, brand: hit.brand, category: hit.category, series: hit.series,
       colorName: hit.colorName, colorCode: hit.code, size: hit.size, jan: hit.jan, qty: 1,
       folderId: targetFolder,
     });
@@ -2771,7 +2789,7 @@ function openProposeSheet(item) {
   const f = item || {};
   $('proposeSum').innerHTML = `
     <div><b>${esc(normalizeJAN(f.jan))}</b></div>
-    <div>${esc([f.maker, f.colorName || f.name, f.size].filter(Boolean).join(' ') || '商品名未入力')}</div>`;
+    <div>${esc([f.maker, f.series, f.colorName, f.size].filter(Boolean).join(' ') || f.name || '商品名未入力')}</div>`;
   openSheet('sheetPropose');
 }
 $('btnPropose').addEventListener('click', () => openProposeSheet(formItem()));
@@ -2857,7 +2875,7 @@ function renderDictList(query) {
   });
   $('dictList').innerHTML = hit.map((d) => `
     <div style="padding:8px 0;border-bottom:1px solid var(--line)">
-      <b>${esc(d.colorName || d.name)}</b> <span class="dic-meta">${esc(d.maker)} ${esc(d.size)}</span>
+      <b>${esc(d.name || d.colorName)}</b> <span class="dic-meta">${esc([d.maker, d.code].filter(Boolean).join(' '))}</span>
       ${extraJanSet.has(d.jan) ? '<span class="dict-badge">追加</span>' : ''}<br>
       <span class="dic-jan">${esc(d.jan)}</span>
       <a href="${esc(d.source)}" target="_blank" rel="noopener noreferrer" class="dic-src">出典</a>
@@ -2879,7 +2897,8 @@ function renderDictFind(query) {
     limit: DICT_FIND_LIMIT, hay: dictionaryHaystack(mergedDict),
   });
   const rows = hit.map((d) => {
-    const sub = [d.maker, d.colorName && d.colorName !== d.name ? d.colorName : '', d.size, d.code].filter(Boolean).join(' ');
+    // 商品名（シリーズ＋色名＋号数）はそのまま出し、下の行にメーカーと色番号・シリーズを添える
+    const sub = [d.maker, d.series && !String(d.name || '').includes(d.series) ? d.series : '', d.code].filter(Boolean).join(' ');
     return `
     <button type="button" class="dfind" data-dict-jan="${esc(d.jan)}">
       <span class="dfind-name">${esc(d.name || d.colorName)}</span>
@@ -2898,6 +2917,7 @@ function applyDictEntry(d) {
   $('fName').value = d.name || d.colorName || '';
   $('fMaker').value = d.maker || '';
   $('fCategoryInput').value = CATEGORIES.some((c) => c.id === d.category) ? d.category : 'other';
+  $('fSeries').value = d.series || '';
   $('fColorName').value = d.colorName || '';
   $('fColorCode').value = d.code || '';
   $('fSize').value = d.size || '';
@@ -2974,6 +2994,7 @@ function dictPreset(d) {
     maker: d.maker || '',
     brand: d.brand || '',
     category: CATEGORIES.some((c) => c.id === d.category) ? d.category : 'other',
+    series: d.series || '',
     colorName: d.colorName || '',
     colorCode: d.code || '',
     size: d.size || '',
@@ -3053,8 +3074,14 @@ function renderSearchTab() {
   // 同じJANが別のフォルダにあるか（このフォルダにも足せることを軽く伝えるためだけに使う）
   const elsewhere = new Set(state.items.filter((i) => ownedJan(i) && String(i.folderId) !== ownedFolder).map((i) => i.jan));
   // 1件の行は「商品名＋色・容量」だけ。メーカーは見出しに出すので繰り返さず、JANも出さない。
-  // 辞書の商品名の先頭に付いているメーカー名（例:「ホルベイン 油絵具 ウルトラマリン」）も落とす
+  // シリーズ名があるものは淡く（シリーズ名＋色名＋号数の順に読めるように）し、商品名の残りを濃く出す
   const nameOf = (d) => displayName({ name: d.name || d.colorName || '', maker: d.maker || '', brand: d.brand || '' });
+  const nameHtml = (d) => {
+    const full = nameOf(d);
+    const parts = splitSeriesFromName(full, d.series);
+    if (!parts) return esc(full);
+    return `<span class="dres-series">${esc(parts.head)}</span>${parts.rest ? ` ${esc(parts.rest)}` : ''}`;
+  };
   const rowOf = (d) => {
     const sub = dictionaryRowDetail(d);
     const btn = owned.has(d.jan)
@@ -3063,7 +3090,7 @@ function renderSearchTab() {
     return `
     <div class="dres">
       <button class="dres-main" data-dict-pick="${esc(d.jan)}">
-        <span class="dres-name">${esc(nameOf(d))}</span>
+        <span class="dres-name">${nameHtml(d)}</span>
         ${sub ? `<span class="dres-sub">${esc(sub)}</span>` : ''}
       </button>
       ${btn}

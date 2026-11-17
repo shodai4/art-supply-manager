@@ -94,7 +94,9 @@ test('画面: 結果の各行からメーカー名とJANのグレー表示を消
   assert.match(app, /const sub = dictionaryRowDetail\(d\);/);
   // 辞書の商品名の先頭に付くメーカー名も落とす（見出しと二重にならない）
   assert.match(app, /const nameOf = \(d\) => displayName\(\{ name: d\.name \|\| d\.colorName \|\| '', maker: d\.maker \|\| '', brand: d\.brand \|\| '' \}\)/);
-  assert.match(app, /<span class="dres-name">\$\{esc\(nameOf\(d\)\)\}<\/span>/);
+  // シリーズ名は淡く、色名・号数は濃く出す（「シリーズ名＋色名＋号数」で読める）
+  assert.match(app, /<span class="dres-name">\$\{nameHtml\(d\)\}<\/span>/);
+  assert.match(app, /const parts = splitSeriesFromName\(full, d\.series\)/);
   // 追加・登録済み・タップで登録フォームは今までどおり
   assert.match(app, /data-dict-add="\$\{esc\(d\.jan\)\}"/);
   assert.match(app, /<span class="dres-have">登録済み<\/span>/);

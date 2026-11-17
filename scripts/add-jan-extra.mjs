@@ -3,7 +3,7 @@
 //
 // 例:
 //   node scripts/add-jan-extra.mjs --jan 4900669001911 --name "ホルベイン 油絵具 シルバー 6号" \
-//     --maker ホルベイン --category oil --color シルバー --size 6号 --code H191 \
+//     --maker ホルベイン --category oil --series 油絵具 --color シルバー --size 6号 --code H191 \
 //     --source https://www.matueda.com/?pid=XXXX
 //
 // 検証:
@@ -31,7 +31,7 @@ const DEFAULT_FILE = path.join(ROOT, 'jan-extra.json');
 const FLAGS = new Set(['dry-run', 'update', 'list', 'json', 'help']);
 const ALIASES = {
   jan: 'jan', name: 'name', maker: 'maker', brand: 'brand', category: 'category',
-  color: 'colorName', colorName: 'colorName', size: 'size', code: 'code',
+  series: 'series', color: 'colorName', colorName: 'colorName', size: 'size', code: 'code',
   source: 'source', file: 'file',
 };
 
