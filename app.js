@@ -1640,6 +1640,7 @@ function openItemSheet(id, preset = {}) {
   $('sheetItemBody').scrollTop = 0;
   setTimeout(() => $('fName').focus({ preventScroll: true }), 120);
   // JANが入っていて画像・写真が未設定なら、そのまま画像を取りに行く（読取・辞書から開いたとき）
+  formImageJan = ''; // 開くたびに新しい世代から（前のシートの取得結果を入れない）
   autoFetchFormImage();
 }
 
@@ -1733,22 +1734,41 @@ $('btnPhotoClear').addEventListener('click', () => {
 });
 $('fImageUrl').addEventListener('input', renderPhotoPreview);
 
-/* ---------------- 商品画像の自動取得（読取・連続スキャン・辞書から） ---------------- */
+/* ---------------- 商品画像の自動取得（読取・カタログ・保存のあと） ---------------- */
 // 「画像を取得」ボタンを押さなくても、JANが入った時点で静かに画像を取りに行く。
-// 失敗（未ヒット・通信不可）は何も出さずにあきらめる（登録・読取・UI操作は止めない）。
+// さらに保存のあと、画像の無い画材（手入力のJAN・カタログから追加・「もっと詳しく」を閉じたまま保存）にも
+// 裏で画像を足す。失敗（未ヒット・通信不可）は何も出さずにあきらめる（登録・読取・UI操作は止めない）。
 let formImageToken = 0;              // 編集シートの自動取得が古くなっていないかを見る番号
-const autoImageInFlight = new Set(); // 同じJANを二重に取りにいかない
+let formImageJan = '';               // その番号を発行したJAN（同じJANの呼び直しで先行の取得を捨てない）
+let janFetchTimer = 0;               // JAN入力が止まってから取りに行くためのタイマー
+const autoImageInFlight = new Set(); // 後補完（起動時）で同じJANを二重に取りにいかない
+
+// シートの自動取得と、保存後の自動取得は同じ問い合わせを待ち合う。
+// （シートで取りに行っている最中に保存しても、その結果をそのまま使える）
+const autoImageWaiting = new Map(); // JAN → 進行中の取得
+function fetchSharedAutoImage(jan) {
+  const code = autoImageJan(jan);
+  if (!code) return Promise.resolve(null);
+  const running = autoImageWaiting.get(code);
+  if (running) return running;
+  const p = fetchAutoImage(code, { settings: state.settings })
+    .catch(() => null)
+    .finally(() => autoImageWaiting.delete(code));
+  autoImageWaiting.set(code, p);
+  return p;
+}
 
 /** 編集シートに画像を自動で入れる（JANがあり、画像URL・手元写真が未設定のときだけ） */
 async function autoFetchFormImage() {
-  formImageToken += 1;
-  const token = formImageToken;
   const jan = autoImageJan($('fJan').value);
-  if (!jan) return;
+  if (!jan) { formImageJan = ''; return; }
+  // JANが変わったときだけ世代を進める（打ち直しのたびに、取得中の結果を捨てない）
+  if (jan !== formImageJan) { formImageToken += 1; formImageJan = jan; }
+  const token = formImageToken;
   if (normalizeImageUrl($('fImageUrl').value)) return;
   if (pendingPhoto) return;
   if (ui.editingId && photoUrls.has(ui.editingId)) return;
-  const info = await fetchAutoImage(jan, { settings: state.settings, inFlight: autoImageInFlight });
+  const info = await fetchSharedAutoImage(jan);
   if (!info || !info.imageUrl) return; // 未ヒット・通信不可は静かにスキップ
   const ok = shouldApplyFormImage({
     requestJan: jan,
@@ -1765,10 +1785,15 @@ async function autoFetchFormImage() {
   renderPhotoPreview();
 }
 
-/** 連続スキャンで登録した画材へ、画像を後から静かに足す（一覧を描き直す） */
-async function autoFillScannedImage(item) {
+/**
+ * 登録した画材へ、商品画像を後から静かに足す（保存のあとに呼ぶ。一覧を描き直す）。
+ * バーコードの連続スキャン・単発の読取・カタログからの追加・編集シートの保存、どの導線でも同じ。
+ * JANがあり、画像URLも手元写真も無いときだけ取りに行く（自分で入れた画像・写真は触らない）。
+ * 通信できない・見つからないときは何もしない（登録した画材はそのまま残る）。
+ */
+async function autoFillItemImage(item) {
   if (!needsAutoImage(item, { photoIds: photoUrls })) return;
-  const info = await fetchAutoImage(item.jan, { settings: state.settings, inFlight: autoImageInFlight });
+  const info = await fetchSharedAutoImage(item.jan);
   if (!info || !info.imageUrl) return;
   const out = applyFetchedImage(state, {
     itemId: item.id, jan: item.jan, imageUrl: info.imageUrl, photoIds: photoUrls,
@@ -1897,7 +1922,12 @@ function updateJanHint() {
   hint.style.color = 'var(--good)';
   hint.textContent = `${maker ? `${maker.maker} ` : ''}${hit ? hit.colorName || hit.name : '辞書に未収録'}`;
 }
-$('fJan').addEventListener('input', () => { updateJanHint(); refreshFormShopLinks(); });
+$('fJan').addEventListener('input', () => {
+  updateJanHint(); refreshFormShopLinks();
+  // 13桁そろったら画像を取りに行く（手入力でJANを入れたときも、保存前に画像を出す）
+  clearTimeout(janFetchTimer);
+  janFetchTimer = setTimeout(() => { autoFetchFormImage(); }, 450);
+});
 for (const id of ['fName', 'fMaker', 'fColorName']) $(id).addEventListener('input', refreshFormShopLinks);
 // メーカーを自分で書き換えたら、辞書から入れたブランドは使わない
 $('fMaker').addEventListener('input', () => { ui.formBrand = ''; });
@@ -1932,6 +1962,7 @@ $('itemForm').addEventListener('submit', async (e) => {
   };
   let savedFolder = partial.folderId;
   let targetId = '';
+  const isNewItem = !ui.editingId;
   if (ui.editingId) {
     const prev = state.items.find((i) => i.id === ui.editingId);
     targetId = prev.id;
@@ -1953,6 +1984,11 @@ $('itemForm').addEventListener('submit', async (e) => {
   ui.tab = 'stock';
   ui.folderId = savedFolder;
   render();
+  // 追加した画材に商品画像が無ければ、保存のあとで静かに取りに行く
+  // （JANを手で入れた・「もっと詳しく」を閉じたまま保存した、など取得が間に合わなかった場合。
+  //   通信できない・見つからないときは何もしないので、登録は止まらない）
+  const savedItem = state.items.find((i) => i.id === targetId);
+  if (isNewItem && savedItem) autoFillItemImage(savedItem);
 });
 
 $('btnDeleteItem').addEventListener('click', async () => {
@@ -2007,6 +2043,8 @@ function closeSheet(id) {
   $(id).classList.remove('open');
   if (!openSheets.size) $('mask').classList.remove('open');
   if (id === 'sheetScan') stopScanner();
+  // 閉じたあとに、入力待ちの画像取得が走らないようにする
+  if (id === 'sheetItem') clearTimeout(janFetchTimer);
 }
 $('mask').addEventListener('click', () => [...openSheets].forEach(closeSheet));
 document.addEventListener('click', (e) => {
@@ -2953,7 +2991,7 @@ function continuousScan(jan, { skipCooldown = false } = {}) {
   renderScanLog();
   render();
   // 登録した画材に画像を後から足す（辞書ヒットの自動登録・未収録の仮登録が対象）
-  if (result.item && (result.kind === 'added' || result.kind === 'drafted')) autoFillScannedImage(result.item);
+  if (result.item && (result.kind === 'added' || result.kind === 'drafted')) autoFillItemImage(result.item);
   return true;
 }
 
@@ -3271,6 +3309,8 @@ function addDictToStock(d) {
   save();
   render();
   toast(`「${item.name}」を在庫に追加しました${others ? '（別のフォルダにもあり）' : ''}`);
+  // カタログからそのまま在庫に入れたときも、商品画像を静かに取りに行く
+  autoFillItemImage(item);
 }
 
 /** 検索タブ（カタログ）の描画（メーカー・カテゴリで絞り、結果からそのまま在庫へ追加） */

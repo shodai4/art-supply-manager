@@ -83,8 +83,13 @@ test('どこも商品名検索をしていない（問い合わせはJANだけ�
 
   // 画面側は JAN だけを渡す（商品名や色名で取り直さない）
   const app = read('app.js');
-  assert.match(app, /fetchAutoImage\(jan, \{ settings: state\.settings, inFlight: autoImageInFlight \}\)/);
-  assert.match(app, /fetchAutoImage\(item\.jan, \{ settings: state\.settings, inFlight: autoImageInFlight \}\)/);
+  // シート・保存後は、同じJANの問い合わせを共有して1本にまとめる（渡すのはJANだけ）
+  assert.match(app, /function fetchSharedAutoImage\(jan\) \{/);
+  assert.match(app, /fetchAutoImage\(code, \{ settings: state\.settings \}\)/);
+  assert.match(app, /await fetchSharedAutoImage\(jan\)/);
+  assert.match(app, /await fetchSharedAutoImage\(item\.jan\)/);
+  // 起動時の後補完もJANだけ
+  assert.match(app, /fetchAutoImage\(t\.jan, \{ settings: state\.settings, inFlight: autoImageInFlight \}\)/);
   assert.equal(/fetchAutoImage\([^)]*(item\.name|displayName|colorName)/.test(app), false);
 });
 

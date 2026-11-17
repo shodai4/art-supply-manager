@@ -223,12 +223,37 @@ test('3つの導線（単発の読取・連続スキャン・カタログから�
   // カタログから選んだとき（JAN入りのプリセットでシートを開く）
   assert.match(app, /openItemSheet\(null, dictPreset\(d\)\)/);
   // 連続スキャンで登録したとき
-  assert.match(app, /result\.kind === 'added' \|\| result\.kind === 'drafted'\)\) autoFillScannedImage\(result\.item\)/);
+  assert.match(app, /result\.kind === 'added' \|\| result\.kind === 'drafted'\)\) autoFillItemImage\(result\.item\)/);
   // 失敗は静かに（自動取得では toast を出さない）
   const autoBlock = app.slice(app.indexOf('async function autoFetchFormImage'), app.indexOf('function backfillSampleImagesInState'));
   assert.equal(/toast\(/.test(autoBlock), false, '自動取得でユーザー操作を止める通知を出さない');
   // 既存の「画像を取得」ボタンは残す（手動でも取り直せる）
   assert.match(app, /\$\('btnFetchImage'\)\.addEventListener\('click', async \(\) => \{/);
+});
+
+test('新しく追加した画材には、保存のあとで商品画像を自動で取りに行く', () => {
+  const app = read('app.js');
+  // 編集シートの保存（新規追加）：保存・写真の反映・描き直しのあとに取りに行く
+  assert.match(app, /\$\('itemForm'\)\.addEventListener\('submit', async \(e\) => \{[\s\S]*?if \(isNewItem && savedItem\) autoFillItemImage\(savedItem\);/);
+  // 編集（保存）のときは触らない（自分で外した画像を勝手に戻さない）
+  assert.match(app, /const isNewItem = !ui\.editingId;/);
+  // カタログの「在庫に追加」（フォームを開かずそのまま入る導線）
+  const dictAdd = app.slice(app.indexOf('function addDictToStock(d)'), app.indexOf('/** 検索タブ（カタログ）の描画'));
+  assert.ok(dictAdd.length > 100, 'addDictToStock が見つかりません');
+  assert.match(dictAdd, /autoFillItemImage\(item\)/);
+  // JANを手入力したとき（13桁そろったら、少し待って取りに行く）
+  assert.match(app, /\$\('fJan'\)\.addEventListener\('input', \(\) => \{[\s\S]{0,320}setTimeout\(\(\) => \{ autoFetchFormImage\(\); \}, 450\)/);
+  // 保存後の取得は、登録を止めない（対象の判定・上書きしない反映・通知なし）
+  const fill = app.slice(app.indexOf('async function autoFillItemImage'), app.indexOf('function backfillSampleImagesInState'));
+  assert.ok(fill.length > 200, 'autoFillItemImage が見つかりません');
+  assert.match(fill, /if \(!needsAutoImage\(item, \{ photoIds: photoUrls \}\)\) return;/);
+  assert.match(fill, /applyFetchedImage\(state, \{/);
+  assert.equal(/toast\(/.test(fill), false, '自動取得でユーザーを止める通知を出さない');
+  // 同じJANの問い合わせは、シートと保存後で共有する（取り合いで画像が入らないのを防ぐ）
+  assert.match(app, /function fetchSharedAutoImage\(jan\) \{/);
+  const form = app.slice(app.indexOf('async function autoFetchFormImage'), app.indexOf('async function autoFillItemImage'));
+  assert.match(form, /await fetchSharedAutoImage\(jan\)/);
+  assert.match(fill, /await fetchSharedAutoImage\(item\.jan\)/);
 });
 
 test('サンプルへの画像補完は、写真の読み込みが済んでから静かに行う', () => {

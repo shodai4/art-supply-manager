@@ -69,7 +69,12 @@ test('編集シート: 保存ボタンは下端に固定し、中身だけがス
 
   // セーフエリアと広告バナーに重ならせない（バナーが出ている間だけ持ち上げる）
   assert.match(css, /\.foot\s*\{[^}]*padding-bottom:\s*calc\([^)]*env\(safe-area-inset-bottom\)\)/);
-  assert.match(css, /body\[data-ad-banner="true"\]\s*\.foot\s*\{[^}]*padding-bottom:\s*calc\([^}]*var\(--ad-h\)/);
+  // iOS のバナーはセーフエリアの「上」に出るので、セーフエリア＋バナーの両方を足す
+  // （片方だけだと、足りない 34px ぶんボタンが広告に隠れる）
+  assert.match(
+    css,
+    /body\[data-ad-banner="true"\]\s*\.foot\s*\{[^}]*padding-bottom:\s*calc\([\s\S]{0,90}env\(safe-area-inset-bottom\)[\s\S]{0,40}var\(--ad-h\)/,
+  );
 });
 
 test('編集シート: 開いたときは先頭から・保存の文言は追加/編集で変わる', () => {
@@ -77,13 +82,15 @@ test('編集シート: 開いたときは先頭から・保存の文言は追加
   assert.match(app, /\$\('btnSaveItem'\)\.textContent = it \? '保存' : '追加する';/);
 });
 
-test('「もっと詳しく（購入店・メモ・写真など）」は閉じた状態から始まる', () => {
+test('「もっと詳しく（メモ・写真）」は閉じた状態から始まる', () => {
   assert.ok(MORE_AT > 0, '折りたたみ（#itemMore）がありません');
   assert.match(MORE, /<details class="more" id="itemMore">/);
   assert.equal(/<details[^>]*\sopen[\s>]/.test(MORE), false, '初期状態は閉じておく');
   const summary = MORE.slice(MORE.indexOf('<summary>'), MORE.indexOf('</summary>'));
   assert.match(summary, /▸/);
-  assert.match(summary, /もっと詳しく（購入店・メモ・写真など）/);
+  // 1行に収まる長さ（右のバッジと並んでも「な／ど」で割れない）
+  assert.match(summary, /もっと詳しく（メモ・写真）/);
+  assert.match(css, /\.more-label\s*\{[^}]*white-space:\s*nowrap/);
   // 開いたときだけ、入っている項目をバッジで知らせる
   assert.match(summary, /id="moreBadge"[^>]*hidden/);
   assert.match(app, /function refreshMoreBadge\(\)/);
