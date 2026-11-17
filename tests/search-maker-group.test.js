@@ -1,17 +1,17 @@
 /**
  * 検索タブをメーカー別に見やすくする。
  *
- *   1) メーカー絞り込みが「すべてのメーカー」のときは、結果をメーカー見出しごとにまとめる
- *   2) メーカーを選んでいるときは、これまでどおり平らに並べる
+ *   1) メーカー絞り込みが「すべてのメーカー」のときは、結果をメーカー見出しごとにまとめる（五十音順）
+ *   2) メーカーを選んでいるときも、そのメーカーの見出しの下にまとめる
  *   3) 各アイテムから、グレーのメーカー名・JANコードを消して「商品名＋色・容量」だけにする
- *   4) 件数（全件・「ほか N 件」）と在庫への追加は今までどおり
+ *   4) 件数（見出しの件数・「もっと見る」の残り）と在庫への追加は今までどおり
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { groupDictionaryByMaker, searchDictionary, dictionaryHaystack, dictionaryRowDetail } from '../core.js';
+import { groupDictionaryByMaker, searchDictionary, dictionaryHaystack, dictionaryRowDetail, compareMakerName } from '../core.js';
 import { JAN_DICTIONARY } from '../jan-database.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -57,18 +57,28 @@ test('内蔵辞書でも同じようにまとめられる（上位50件・合計
   // 同じメーカーが2つの見出しに分かれていない
   const makers = groups.map((g) => g.maker);
   assert.equal(new Set(makers).size, makers.length);
-  // 見出しはあいうえお順
-  const sorted = [...makers].sort((a, b) => a.localeCompare(b, 'ja'));
+  // 見出しは五十音順（カタカナ・ひらがなを混ぜてもあいうえお順）
+  const sorted = [...makers].sort(compareMakerName);
   assert.deepEqual(makers, sorted);
 });
 
-test('画面: 「すべてのメーカー」のときだけメーカー見出しで分けて描く', () => {
+test('画面: メーカー見出しで分けて描き、見出しはタップで開け閉めできる', () => {
   const app = read('app.js');
   const css = read('styles.css');
-  // メーカー未選択 → 見出しつき、選択中 → 平らに並べる
-  assert.match(app, /const rows = dictTabMaker \? hit\.map\(rowOf\)\.join\(''\) : groupDictionaryByMaker\(hit\)\.map/);
-  assert.match(app, /<section class="dgroup">\s*<div class="dgrouphead"><span>\$\{esc\(g\.maker\)\}<\/span><b>\$\{g\.items\.length\}<\/b>/);
+  // メーカー未選択でも選択中でも、メーカー見出しごとにまとめる（同じ条件の描き直しは集計を使い回す）
+  assert.match(app, /dictGroups = groupDictionarySearch\(mergedDict, dictTabQuery, \{/);
+  assert.match(app, /const groupsKey = `\$\{dictTabQuery\}\\u0000\$\{dictTabMaker\}\\u0000\$\{dictTabCategory\}`;/);
+  assert.match(app, /if \(groupsKey !== dictGroupsKey \|\| dictGroupsDict !== mergedDict\) \{/);
+  assert.match(app, /const plan = planDictGroups\(groups, \{/);
+  // 見出しはボタン（▶/▼ の印つき）で、開閉状態を aria-expanded で持つ
+  assert.match(app, /<section class="dgroup\$\{g\.open \? ' open' : ''\}">/);
+  assert.match(app, /<button type="button" class="dgrouphead" data-dict-group="\$\{esc\(g\.maker\)\}" aria-expanded="\$\{g\.open \? 'true' : 'false'\}">/);
+  assert.match(app, /<use href="#i-chevron"\/>/);
+  assert.match(app, /<span>\$\{esc\(g\.maker\)\}<\/span><b>\$\{g\.total\.toLocaleString\('ja-JP'\)\}<\/b>/);
+  // 閉じているメーカーの中身は描かない（見出しだけ）
+  assert.match(app, /\$\{g\.open \? `\$\{g\.shown\.map\(rowOf\)\.join\(''\)\}/);
   assert.match(css, /\.dgrouphead\s*\{[^}]*font-size:\s*11\.5px[^}]*font-weight:\s*800/);
+  assert.match(css, /\.dgroup\.open \.dgrouphead \.chev\s*\{[^}]*transform:\s*rotate\(90deg\)/);
   // 見出しの区切り線（最初の見出しには付けない）
   assert.match(css, /\.dgroup\s*\{[^}]*border-top:\s*1px solid var\(--line\)/);
   assert.match(css, /\.dgroup:first-child\s*\{[^}]*border-top:\s*0/);
@@ -89,8 +99,9 @@ test('画面: 結果の各行からメーカー名とJANのグレー表示を消
   assert.match(app, /data-dict-add="\$\{esc\(d\.jan\)\}"/);
   assert.match(app, /<span class="dres-have">登録済み<\/span>/);
   assert.match(app, /data-dict-pick="\$\{esc\(d\.jan\)\}"/);
-  // 全件数と「ほか N 件」も残す
-  assert.match(app, /ほか \$\{\(total - hit\.length\)\.toLocaleString\('ja-JP'\)\}件/);
+  // 見出しの件数と「もっと見る（残り N 件）」で、全件にたどれる
+  assert.match(app, /もっと見る（残り \$\{g\.rest\.toLocaleString\('ja-JP'\)\}件）/);
+  assert.match(app, /data-dict-more="\$\{esc\(g\.maker\)\}"/);
 });
 
 test('行の補足（色・容量）は、商品名にすでに入っているものを繰り返さない', () => {

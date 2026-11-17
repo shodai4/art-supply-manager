@@ -510,31 +510,73 @@ export function dictionaryHaystack(dict = []) {
  * ひらがな・カタカナ、全角・半角、大文字・小文字のゆらぎは吸収する。
  * 数字だけの入力はJANの部分一致としても探す（4桁以上）。
  */
-export function searchDictionary(dict = [], query = '', { limit = 40, hay, maker = '', category = '' } = {}) {
+/**
+ * 検索語と絞り込みから「この1件はヒットするか」を返す判定器。
+ * 検索（上位だけ描く）とメーカー別の集計（全件を数える）で同じ条件を使うため、ここにまとめる。
+ */
+function dictionaryHitTester(dict = [], query = '', { hay, maker = '', category = '' } = {}) {
   const tokens = searchTokens(query);
   const qJan = normalizeJAN(query ?? '');
   const janQuery = tokens.length === 1 && /^\d{4,13}$/.test(qJan) ? qJan : '';
   const wantMaker = String(maker ?? '').trim();
   const wantCategory = String(category ?? '').trim();
   const stack = Array.isArray(hay) && hay.length === dict.length ? hay : dictionaryHaystack(dict);
-  const max = Math.max(0, Math.trunc(Number(limit) || 0));
   const onlyOne = tokens.length === 1 ? tokens[0] : '';
+  return (d, i) => {
+    if (!d) return false;
+    if (wantMaker && String(d.maker || '') !== wantMaker) return false;
+    if (wantCategory && String(d.category || 'other') !== wantCategory) return false;
+    if (!tokens.length) return true;
+    if (onlyOne) return stack[i].includes(onlyOne) || (janQuery !== '' && String(d.jan || '').includes(janQuery));
+    return matchesAllTokens(tokens, stack[i], normalizeJAN(d.jan || ''));
+  };
+}
+
+/**
+ * 辞書を手動で検索する。描画する分だけ返し、全体の件数は total で返す。
+ * スペース（半角・全角）で区切った語はすべて含むものだけ（AND検索）。
+ * ひらがな・カタカナ、全角・半角、大文字・小文字のゆらぎは吸収する。
+ * 数字だけの入力はJANの部分一致としても探す（4桁以上）。
+ */
+export function searchDictionary(dict = [], query = '', { limit = 40, hay, maker = '', category = '' } = {}) {
+  const hit = dictionaryHitTester(dict, query, { hay, maker, category });
+  const max = Math.max(0, Math.trunc(Number(limit) || 0));
   const items = [];
   let total = 0;
   for (let i = 0; i < dict.length; i += 1) {
     const d = dict[i];
-    if (!d) continue;
-    if (wantMaker && String(d.maker || '') !== wantMaker) continue;
-    if (wantCategory && String(d.category || 'other') !== wantCategory) continue;
-    let hit;
-    if (!tokens.length) hit = true;
-    else if (onlyOne) hit = stack[i].includes(onlyOne) || (janQuery !== '' && String(d.jan || '').includes(janQuery));
-    else hit = matchesAllTokens(tokens, stack[i], normalizeJAN(d.jan || ''));
-    if (!hit) continue;
+    if (!hit(d, i)) continue;
     total += 1;
     if (items.length < max) items.push(d);
   }
   return { items, total, limit: max };
+}
+
+/**
+ * 検索にヒットした全件を、メーカー見出しごとにまとめる（検索タブ用）。
+ * 見出しは五十音順・件数は全件（50件などで打ち切らない）。
+ * 中身（items）はメーカーごとに持たせ、画面は開いたメーカーの分だけ描く。
+ */
+export function groupDictionarySearch(dict = [], query = '', opts = {}) {
+  const hit = dictionaryHitTester(dict, query, opts);
+  const at = new Map();
+  const groups = [];
+  let total = 0;
+  for (let i = 0; i < dict.length; i += 1) {
+    const d = dict[i];
+    if (!hit(d, i)) continue;
+    total += 1;
+    const maker = String(d.maker || 'メーカー不明');
+    let g = at.get(maker);
+    if (!g) {
+      g = { maker, items: [] };
+      at.set(maker, g);
+      groups.push(g);
+    }
+    g.items.push(d);
+  }
+  groups.sort((a, b) => compareMakerName(a.maker, b.maker));
+  return { groups, total };
 }
 
 /**
@@ -555,10 +597,107 @@ export function dictionaryRowDetail(entry = {}) {
   return [...new Set(parts)].join(' ・ ');
 }
 
+/* ---------------- メーカー名の五十音順 ---------------- */
+
+// 小書きの仮名は、同じ行の普通の仮名として並べる（っ＝つ、ゃ＝や、ゕ＝か…）
+const SMALL_KANA = {
+  'ぁ': 'あ', 'ぃ': 'い', 'ぅ': 'う', 'ぇ': 'え', 'ぉ': 'お',
+  'っ': 'つ', 'ゃ': 'や', 'ゅ': 'ゆ', 'ょ': 'よ', 'ゎ': 'わ', 'ゕ': 'か', 'ゖ': 'け',
+};
+
+// 長音「ー」は直前の仮名の母音として数える（カー＝かあ、キー＝きい…）
+const VOWEL_OF = new Map();
+for (const [chars, vowel] of [
+  ['あかさたなはまらや', 'あ'], ['いきしちにひみりゐ', 'い'], ['うくすつぬふむゆるゔ', 'う'],
+  ['えけせてねへめれゑ', 'え'], ['おこそとのほもよろを', 'お'],
+]) {
+  for (const ch of chars) VOWEL_OF.set(ch, vowel);
+}
+
 /**
- * 絞り込み用のメーカー一覧（登録済みアイテムから・あいうえお順） */
+ * メーカー名を五十音順に並べるためのキー（「あいうえお順」の文字列）。
+ * カタカナ→ひらがなに寄せ（両方が別々の固まりに分断されないように）、
+ * 全角半角・大文字小文字・濁点半濁点（が＝か・ぱ＝は）・小書き・長音のゆらぎを吸収する。
+ */
+export function makerSortKey(name) {
+  const katakana = String(name ?? '')
+    .normalize('NFKC') // 半角カナ・全角英数を普通の字に
+    .replace(/[\u30A1-\u30F6]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0x60)) // カタカナ→ひらがな
+    .replace(/\u30FD/g, '\u309D') // ヽ→ゝ
+    .replace(/\u30FE/g, '\u309E'); // ヾ→ゞ
+  // 濁点・半濁点を落とす（が→か、パ→は、ヴ→う）。区別は同じキーのときの元の名前で付ける
+  const plain = katakana.normalize('NFD').replace(/[\u3099\u309A]/g, '').normalize('NFC');
+  const chars = [...plain].map((ch) => SMALL_KANA[ch] || ch);
+  const out = [];
+  for (const ch of chars) {
+    out.push(ch === 'ー' ? (VOWEL_OF.get(out[out.length - 1]) || ch) : ch);
+  }
+  return out.join('').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * メーカー名の五十音順の比較。
+ * かなの並び（五十音）で比べ、同じ並び（は／ば／ぱ など）は名前的に決めて毎回同じ順にする。
+ */
+export function compareMakerName(a, b) {
+  const ka = makerSortKey(a);
+  const kb = makerSortKey(b);
+  if (ka !== kb) return ka < kb ? -1 : 1;
+  const sa = String(a ?? '');
+  const sb = String(b ?? '');
+  if (sa === sb) return 0;
+  return sa < sb ? -1 : 1;
+}
+
+/**
+ * 検索タブ：開いたメーカーの中で最初に描く件数と、自動展開で描く全体の上限。
+ * 1社に何千件あっても、画面に出るのはここまで（残りは「もっと見る」で足す）。
+ */
+export const DICT_MAKER_PAGE = 50;
+export const DICT_AUTO_OPEN_ROWS = 250;
+
+/**
+ * 検索タブのメーカー見出しを「どこを開いて何件描くか」の計画にする。
+ * - 検索文字もメーカー選択も無いとき：全部閉じる（見出しだけを五十音順で見渡せる）
+ * - 検索文字を入れた／メーカーを選んだとき：該当メーカーを自動で開く（手で閉じたものは閉じたまま）
+ * - 開いたメーカーは page 件ずつ描き、残りは rest として「もっと見る」に回す
+ * - 自動展開が何十社にも広がるときは budget 件で打ち切る（開いていない見出しは件数だけ出す）
+ */
+export function planDictGroups(groups = [], {
+  query = '', maker = '', category = '',
+  open = new Set(), closed = new Set(), more = new Map(),
+  page = DICT_MAKER_PAGE, budget = DICT_AUTO_OPEN_ROWS,
+} = {}) {
+  const autoOpen = String(query ?? '').trim() !== ''
+    || String(maker ?? '').trim() !== '' || String(category ?? '').trim() !== '';
+  const opened = open instanceof Set ? open : new Set(open || []);
+  const closedSet = closed instanceof Set ? closed : new Set(closed || []);
+  const moreMap = more instanceof Map ? more : new Map(Object.entries(more || {}));
+  const perPage = Math.max(1, Math.trunc(Number(page) || DICT_MAKER_PAGE));
+  let left = autoOpen ? Math.max(0, Math.trunc(Number(budget) || 0)) : 0;
+  return (Array.isArray(groups) ? groups : []).map((g) => {
+    const name = String(g?.maker ?? '');
+    const all = Array.isArray(g?.items) ? g.items : [];
+    const tapped = opened.has(name);
+    const auto = autoOpen && !closedSet.has(name);
+    // 「もっと見る」で足された分も含めた、このメーカーで見せたい件数
+    const extra = Math.max(0, Math.trunc(Number(moreMap.get(name)) || 0));
+    const want = Math.min(all.length, perPage + extra);
+    let show = 0;
+    if (closedSet.has(name) && !tapped) show = 0; // 手で閉じた見出しは、もっと見るを押していても閉じたまま
+    else if (tapped || extra > 0) show = want; // 自分で開いた・「もっと見る」を押したメーカーは予算で切らない
+    else if (auto && left > 0) {
+      show = Math.min(want, left);
+      left -= show;
+    }
+    return { maker: name, total: all.length, open: show > 0, shown: all.slice(0, show), rest: all.length - show };
+  });
+}
+
+/**
+ * 絞り込み用のメーカー一覧（登録済みアイテムから・五十音順） */
 export function listMakers(items) {
-  return [...new Set(items.map(itemMaker).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja'));
+  return [...new Set(items.map(itemMaker).filter(Boolean))].sort(compareMakerName);
 }
 
 /** メーカー見出し用のグルーピング（メーカー順に並べた配列を渡す） */
@@ -578,7 +717,8 @@ export function groupByMaker(items) {
 
 /**
  * 内蔵辞書の検索結果をメーカー見出しごとにまとめる（検索タブの「すべてのメーカー」用）。
- * 見出しはメーカー名のあいうえお順（メーカータブと同じ並び）。中の並び（検索の当たり順）は変えない。
+ * 見出しはメーカー名の五十音順（カタカナ・ひらがなを混ぜてもあいうえお順。メーカータブと同じ並び）。
+ * 中の並び（検索の当たり順）は変えない。
  */
 export function groupDictionaryByMaker(entries = []) {
   const groups = [];
@@ -591,7 +731,7 @@ export function groupDictionaryByMaker(entries = []) {
     }
     groups[at.get(maker)].items.push(d);
   }
-  return groups.sort((a, b) => a.maker.localeCompare(b.maker, 'ja'));
+  return groups.sort((a, b) => compareMakerName(a.maker, b.maker));
 }
 
 export function sortItems(items, mode = 'updated') {
@@ -603,7 +743,7 @@ export function sortItems(items, mode = 'updated') {
       const am = itemMaker(a);
       const bm = itemMaker(b);
       if (!am !== !bm) return am ? -1 : 1; // メーカー未設定は最後にまとめる
-      return am.localeCompare(bm, 'ja') || byName(a, b);
+      return compareMakerName(am, bm) || byName(a, b);
     });
   }
   if (mode === 'shortage') {

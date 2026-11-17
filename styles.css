@@ -528,18 +528,33 @@ body[data-ad-banner="true"] .tabbar {
 .dres-main { flex: 1 1 auto; min-width: 0; text-align: left; background: none; border: none; padding: 0; color: var(--ink); }
 .dres-name { display: block; font-size: 13.5px; font-weight: 700; line-height: 1.35; }
 .dres-sub { display: block; font-size: 11.5px; color: var(--ink-2); margin-top: 2px; }
-/* 検索結果のメーカー見出し（「すべてのメーカー」のときだけ） */
+/* 検索結果のメーカー見出し（タップで開け閉め。閉じているあいだは中身をDOMに置かない） */
 .dgroup { border-top: 1px solid var(--line); }
 .dgroup:first-child { border-top: 0; }
 .dgrouphead {
-  display: flex; align-items: center; gap: 6px; padding: 9px 12px 3px;
+  display: flex; align-items: center; gap: 6px; width: 100%; min-height: 38px; padding: 8px 12px;
   font-size: 11.5px; font-weight: 800; color: var(--soft-ink); letter-spacing: .02em;
-  background: var(--surface-2);
+  background: var(--surface-2); border: 0; text-align: left;
 }
+.dgrouphead .chev {
+  flex: 0 0 auto; width: 13px; height: 13px; color: var(--muted-ink);
+  transition: transform .15s ease;
+}
+.dgroup.open .dgrouphead .chev { transform: rotate(90deg); }
+.dgrouphead span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dgrouphead:active { opacity: .65; }
 .dgrouphead b {
+  flex: 0 0 auto;
   font-size: 10px; font-weight: 700; color: var(--muted-ink);
   background: var(--surface-3); border-radius: 999px; padding: 0 6px; line-height: 15px;
 }
+/* 開いたメーカーの中で、まだ描いていないぶんを足すボタン */
+.dgroupmore {
+  display: block; width: calc(100% - 24px); margin: 8px 12px 12px; min-height: 40px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--surface);
+  color: var(--ink-2); font-size: 12.5px; font-weight: 700;
+}
+.dgroupmore:active { opacity: .65; }
 .dres-add {
   flex: 0 0 auto; min-height: 40px; padding: 0 12px; border-radius: 10px;
   border: 1px solid var(--accent-line); background: var(--accent-soft); color: var(--on-accent-soft);

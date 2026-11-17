@@ -4,7 +4,8 @@ import {
   createItem, adjustStock, computeShoppingList, filterItems, moveItems, sortItems, countByFolder,
   addFolder, updateFolder, moveFolder, reorderFolders, deleteFolder, upsertItem, deleteItems,
   exportState, importState, summarize, blankState, isEmptyStock, toggleFavorite, favoritesFirst,
-  isValidJAN, normalizeJAN, detectMaker, lookupJAN, itemMaker, listMakers, groupByMaker, groupDictionaryByMaker,
+  isValidJAN, normalizeJAN, detectMaker, lookupJAN, itemMaker, listMakers, groupByMaker,
+  groupDictionarySearch, planDictGroups, compareMakerName, DICT_MAKER_PAGE,
   dictionaryRowDetail,
   normalizeImageUrl, recordPurchase, costSummary, costRows, buildItemsCsvText, mergeStates,
   folderParentId, folderChildren, folderChain, folderDepth, folderPathLabel, folderSubtreeIds,
@@ -771,7 +772,7 @@ function itemRow(it, opts = {}) {
  */
 function viewBlocks(items, group) {
   if (group === 'maker') {
-    return [...groupByMaker(items)].sort((a, b) => String(a.maker || '未設定').localeCompare(String(b.maker || '未設定'), 'ja'))
+    return [...groupByMaker(items)].sort((a, b) => compareMakerName(a.maker || '未設定', b.maker || '未設定'))
       .map((g) => ({ label: g.maker || '未設定', items: g.items }));
   }
   if (group === 'folder') {
@@ -2603,17 +2604,26 @@ $('dictFindList').addEventListener('click', (e) => {
 });
 
 /* ---------------- 検索タブ（内蔵JAN辞書のカタログ検索） ---------------- */
-// 3.7万件を相手にするので、入力は少し待ってから（デバウンス）絞り、
-// 描画するのは上位 DICT_TAB_LIMIT 件だけにする（件数は全件を数えて出す）。
-const DICT_TAB_LIMIT = 50;
+// 3.7万件を相手にするので、入力は少し待ってから（デバウンス）絞る。
+// 描くのは「メーカーの見出し（五十音順・全件）」と、「開いたメーカーの中身」だけ。
+// 閉じたメーカーの中身はDOMに置かないので、全メーカーの見出しを並べても軽い。
 const DICT_TAB_DEBOUNCE_MS = 180;
+const DICT_AUTO_OPEN_ROWS = 250; // 検索語やメーカー選択で自動展開するときに描く行の上限
 let dictTabQuery = '';
 let dictTabMaker = '';
 let dictTabCategory = '';
 let dictTabTimer = 0;
 let dictTabBuiltFor = null; // メーカーの選択肢を作った辞書（辞書が変わったら作り直す）
+let dictOpenScope = ''; // 手で開け閉めした状態を覚えている検索条件（条件が変わったら捨てる）
+const dictOpenMakers = new Set(); // タップで開いたメーカー
+const dictClosedMakers = new Set(); // タップで閉じたメーカー（自動展開より優先する）
+const dictMoreShown = new Map(); // 「もっと見る」で足した件数（メーカーごと）
+// 同じ条件の描き直し（見出しの開閉・もっと見る）で数万件を数え直さないよう、直前の集計を使い回す
+let dictGroups = { groups: [], total: 0 };
+let dictGroupsKey = null;
+let dictGroupsDict = null;
 
-/** 検索タブで選べるメーカー（件数の多い順） */
+/** 検索タブで選べるメーカー（五十音順） */
 function dictMakerList() {
   const counts = new Map();
   for (const d of mergedDict) {
@@ -2621,7 +2631,7 @@ function dictMakerList() {
     counts.set(name, (counts.get(name) || 0) + 1);
   }
   return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ja'))
+    .sort((a, b) => compareMakerName(a[0], b[0]))
     .map(([name, count]) => ({ name, count }));
 }
 
@@ -2693,9 +2703,25 @@ function renderSearchTab() {
     if (dictTabCategory && !cats.some((c) => c.id === dictTabCategory)) dictTabCategory = '';
   }
 
-  const { items: hit, total } = searchDictionary(mergedDict, dictTabQuery, {
-    limit: DICT_TAB_LIMIT, hay: dictionaryHaystack(mergedDict), maker: dictTabMaker, category: dictTabCategory,
-  });
+  // 検索条件が変わったら、手で開け閉めした状態と「もっと見る」は捨てる（新しい条件で自動展開し直す）
+  const scope = `${dictTabQuery}\u0000${dictTabMaker}\u0000${dictTabCategory}`;
+  if (scope !== dictOpenScope) {
+    dictOpenScope = scope;
+    dictOpenMakers.clear();
+    dictClosedMakers.clear();
+    dictMoreShown.clear();
+  }
+
+  // ヒットした全件をメーカー見出しにまとめる（50件で打ち切らないので、全メーカーが見渡せる）
+  const groupsKey = `${dictTabQuery}\u0000${dictTabMaker}\u0000${dictTabCategory}`;
+  if (groupsKey !== dictGroupsKey || dictGroupsDict !== mergedDict) {
+    dictGroups = groupDictionarySearch(mergedDict, dictTabQuery, {
+      hay: dictionaryHaystack(mergedDict), maker: dictTabMaker, category: dictTabCategory,
+    });
+    dictGroupsKey = groupsKey;
+    dictGroupsDict = mergedDict;
+  }
+  const { groups, total } = dictGroups;
   const cond = [dictTabMaker, dictTabCategory ? (CATEGORIES.find((c) => c.id === dictTabCategory)?.label || '') : ''].filter(Boolean).join(' / ');
   $('dictTabNote').textContent = `内蔵辞書 ${mergedDict.length.toLocaleString('ja-JP')}件から探して、そのまま在庫に追加できます${cond ? `（${cond}）` : ''}`;
   $('dictResCount').textContent = `${total.toLocaleString('ja-JP')}件`;
@@ -2722,14 +2748,24 @@ function renderSearchTab() {
       ${btn}
     </div>`;
   };
-  // メーカーを選んでいないときは、メーカー見出しごとに分けて見せる（一覧性を上げる）
-  const rows = dictTabMaker ? hit.map(rowOf).join('') : groupDictionaryByMaker(hit).map((g) => `
-      <section class="dgroup">
-        <div class="dgrouphead"><span>${esc(g.maker)}</span><b>${g.items.length}</b></div>
-        ${g.items.map(rowOf).join('')}
+  // メーカー見出しごとに、開いているメーカーだけ中身を描く（閉じている見出しは行をDOMに置かない）
+  const plan = planDictGroups(groups, {
+    query: dictTabQuery, maker: dictTabMaker, category: dictTabCategory,
+    open: dictOpenMakers, closed: dictClosedMakers, more: dictMoreShown,
+    page: DICT_MAKER_PAGE, budget: DICT_AUTO_OPEN_ROWS,
+  });
+  const rows = plan.map((g) => `
+      <section class="dgroup${g.open ? ' open' : ''}">
+        <button type="button" class="dgrouphead" data-dict-group="${esc(g.maker)}" aria-expanded="${g.open ? 'true' : 'false'}">
+          <svg class="ic chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+          <span>${esc(g.maker)}</span><b>${g.total.toLocaleString('ja-JP')}</b>
+        </button>
+        ${g.open ? `${g.shown.map(rowOf).join('')}${g.rest > 0
+          ? `<button type="button" class="dgroupmore" data-dict-more="${esc(g.maker)}">もっと見る（残り ${g.rest.toLocaleString('ja-JP')}件）</button>`
+          : ''}` : ''}
       </section>`).join('');
   $('dictResults').innerHTML = rows
-    ? rows + (total > hit.length ? `<p class="hint" style="margin:10px 12px">ほか ${(total - hit.length).toLocaleString('ja-JP')}件（言葉を足すと絞れます）</p>` : '')
+    ? rows
     : '<p class="hint" style="margin:12px">見つかりません。商品名・メーカー・JANの一部で探してみてください</p>';
 }
 
@@ -2757,6 +2793,28 @@ $('dictCatChips').addEventListener('click', (e) => {
   renderSearchTab();
 });
 $('dictResults').addEventListener('click', (e) => {
+  // メーカー見出しをタップ → そのメーカーの中身を開け閉め（自動展開より手で閉じたほうを優先）
+  const head = e.target.closest('[data-dict-group]');
+  if (head) {
+    const maker = head.dataset.dictGroup || '';
+    if (head.getAttribute('aria-expanded') === 'true') {
+      dictOpenMakers.delete(maker);
+      dictClosedMakers.add(maker);
+    } else {
+      dictClosedMakers.delete(maker);
+      dictOpenMakers.add(maker);
+    }
+    renderSearchTab();
+    return;
+  }
+  // 「もっと見る」 → そのメーカーの続きを DICT_MAKER_PAGE 件ずつ描く
+  const more = e.target.closest('[data-dict-more]');
+  if (more) {
+    const maker = more.dataset.dictMore || '';
+    dictMoreShown.set(maker, (dictMoreShown.get(maker) || 0) + DICT_MAKER_PAGE);
+    renderSearchTab();
+    return;
+  }
   const add = e.target.closest('[data-dict-add]');
   if (add) { addDictToStock(mergedDict.find((d) => d.jan === add.dataset.dictAdd)); return; }
   const pick = e.target.closest('[data-dict-pick]');
