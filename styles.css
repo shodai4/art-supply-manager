@@ -733,6 +733,21 @@ body[data-ad-banner="true"] .tabbar {
   background: var(--accent-soft); color: var(--on-accent-soft); font-size: 11px; font-weight: 700; white-space: nowrap;
 }
 .pro-lead { font-size: 16px; font-weight: 800; margin: 0 0 4px; line-height: 1.35; }
+
+/* ---------- Proの購入導線（買い切り・月額） ---------- */
+.planwrap { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 0; }
+.planbtn {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  width: 100%; flex: 0 0 auto; padding: 11px 12px; text-align: left;
+  border: 1px solid var(--accent-line); background: var(--accent-soft); color: var(--on-accent-soft);
+}
+.planbtn b { font-size: 14px; }
+.planbtn span { font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.planbtn:active { filter: brightness(0.96); }
+.planbtn[disabled] { opacity: .55; }
+.planowned { margin: 10px 0 0; font-size: 13px; font-weight: 700; color: var(--on-accent-soft); }
+.pro-note { margin: 8px 0 0; }
+.pro-note a { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--line); }
 .stat-grid.cost { margin: 0 0 6px; }
 .cost-tabs { margin: 10px 0 4px; }
 .bars { display: flex; flex-direction: column; gap: 5px; margin-top: 6px; }

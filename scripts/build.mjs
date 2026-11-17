@@ -11,11 +11,13 @@ export const WWW_DIR = path.join(ROOT, 'www');
 export const WEB_ASSETS = [
   'index.html',
   'privacy.html',
+  'terms.html',
   'support.html',
   'styles.css',
   'core.js',
   'links.js',
   'pro.js',
+  'iap.js',
   'samples.js',
   'theme.js',
   'images.js',

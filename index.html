@@ -15,7 +15,7 @@ try {
 } catch (e) { /* 保存が読めないときはライト */ }
 </script>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="styles.css?v=1.12.2">
+<link rel="stylesheet" href="styles.css?v=1.13.0">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 </head>
@@ -232,8 +232,11 @@ try {
       <h2 class="card-t">プラン</h2>
       <p class="hint" id="proState">—</p>
       <div class="chipwrap" id="proBenefits"></div>
+      <div class="planwrap" id="proPlans"></div>
+      <p class="micro pro-note" id="proNote"></p>
       <div class="actions">
         <button class="btn" id="btnProToggle">Proプレビュー</button>
+        <button class="btn" id="btnProRestore" data-pro-restore>購入を復元</button>
       </div>
     </div>
     <div class="card" id="costCard">
@@ -275,7 +278,7 @@ try {
       <button class="btn danger" id="btnWipe" style="width:100%">全データを削除</button>
     </div>
     <p class="micro foot-note">Amazonのアソシエイトとして、適格販売により収入を得ています。</p>
-    <p class="micro foot-links"><a href="privacy.html" target="_blank" rel="noopener noreferrer">プライバシー</a> ・ <a href="support.html" target="_blank" rel="noopener noreferrer">サポート</a></p>
+    <p class="micro foot-links"><a href="privacy.html" target="_blank" rel="noopener noreferrer">プライバシー</a> ・ <a href="terms.html" target="_blank" rel="noopener noreferrer">利用規約</a> ・ <a href="support.html" target="_blank" rel="noopener noreferrer">サポート</a></p>
     <p class="hint" style="text-align:center;margin:10px 0 0">お絵描き楽しも委員会（しょうだい）</p>
     <!-- Begin Yahoo! JAPAN Web Services Attribution Snippet -->
     <span style="margin:15px 15px 15px 15px"><a href="https://developer.yahoo.co.jp/sitemap/">Webサービス by Yahoo! JAPAN</a></span>
@@ -540,11 +543,13 @@ try {
   <p class="pro-lead" id="proLead">無料は100点・フォルダ3つまで</p>
   <p class="hint" id="proQuota"></p>
   <div class="chipwrap" id="proSheetBenefits"></div>
+  <div class="planwrap" id="proSheetPlans"></div>
+  <p class="micro pro-note" id="proSheetNote"></p>
   <div class="actions">
     <button class="btn" data-close="sheetPro">閉じる</button>
+    <button class="btn" id="btnProSheetRestore" data-pro-restore>購入を復元</button>
     <button class="btn primary" id="btnProStart">無料で試す</button>
   </div>
-  <p class="micro" style="margin:10px 0 0">いまは無料で試せます（課金はまだ入りません）</p>
 </div>
 
 <!-- バックアップ復元シート -->
@@ -570,6 +575,6 @@ try {
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<script type="module" src="app.js?v=1.12.2"></script>
+<script type="module" src="app.js?v=1.13.0"></script>
 </body>
 </html>

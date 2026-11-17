@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const FILES = [
-  'app.js', 'core.js', 'pro.js', 'samples.js', 'theme.js', 'jan-extra.js', 'images.js',
+  'app.js', 'core.js', 'pro.js', 'iap.js', 'samples.js', 'theme.js', 'jan-extra.js', 'images.js',
   'auto-image.js', 'scanner.js', 'scan-flow.js', 'shops.js', 'links.js', 'admob.js',
   'workers/rakuten-image-proxy/src/index.js',
 ];

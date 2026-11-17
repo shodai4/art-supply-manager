@@ -161,7 +161,7 @@ test('Webブラウザでは初期化も表示もせず、余白も入れない',
 test('アプリは起動時にバナーを用意し、CSSはバナー分だけ下を持ち上げる', () => {
   const app = read('app.js');
   assert.match(app, /import \{ setupAdBanner \} from '\.\/admob\.js';/);
-  assert.match(app, /const adBanner = setupAdBanner\(\{ isPro: \(\) => isPro\(state\.settings\) \}\);/);
+  assert.match(app, /adBanner = setupAdBanner\(\{ isPro: \(\) => isPro\(state\.settings\) \}\);/);
 
   const css = read('styles.css');
   // 既定は0（Web・広告が出ていないときは何も変わらない）
@@ -209,8 +209,8 @@ test('admob.js は配布物（www/・Service Worker）に入り、絵文字を�
   assert.match(pkg.dependencies['@capacitor-community/admob'], /^\^6\./);
   assert.equal(EMOJI.test(read('admob.js')), false, 'admob.js に絵文字があります');
   // バージョン（キャッシュの更新）
-  assert.match(sw, /art-supply-manager-v32/);
-  assert.equal(pkg.version, '1.12.2');
+  assert.match(sw, /art-supply-manager-v33/);
+  assert.equal(pkg.version, '1.13.0');
 });
 
 test('Podfile で UMP を 2.x に固定する（プラグインのSwiftが新しいSDKの改名で壊れるため）', () => {
@@ -315,5 +315,5 @@ test('起動時にProなら広告を用意しない（setupAdBanner）', () => {
 test('アプリはProの切り替えで広告を出し入れする', () => {
   const app = read('app.js');
   assert.match(app, /setupAdBanner\(\{ isPro: \(\) => isPro\(state\.settings\) \}\)/);
-  assert.match(app, /function setProPreview\(on\) \{[\s\S]{0,400}adBanner\.sync\(\);/);
+  assert.match(app, /function setProPreview\(on\) \{[\s\S]{0,400}adBanner\?\.sync\(\);/);
 });

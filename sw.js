@@ -1,8 +1,8 @@
 // アトリコ Service Worker（オフライン用キャッシュ）
-const CACHE = 'art-supply-manager-v32';
+const CACHE = 'art-supply-manager-v33';
 const ASSETS = [
-  './', './index.html', './privacy.html', './support.html',
-  './styles.css', './app.js', './core.js', './links.js', './images.js', './pro.js', './samples.js', './theme.js', './jan-database.js', './jan-extra.js',
+  './', './index.html', './privacy.html', './terms.html', './support.html',
+  './styles.css', './app.js', './core.js', './links.js', './images.js', './pro.js', './iap.js', './samples.js', './theme.js', './jan-database.js', './jan-extra.js',
   './jan-extra.json', './shops.js', './scanner.js', './scan-flow.js', './auto-image.js', './admob.js',
   './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png', './apple-touch-icon.png',
 ];

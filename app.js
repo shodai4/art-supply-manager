@@ -19,6 +19,11 @@ import {
   canAddItem, canAddFolder, canUseFeature, describeQuota, isQuotaTight,
 } from './pro.js';
 import {
+  PRO_PLANS, PLAN_ORDER, WEB_PURCHASE_NOTE, planVisibility, planPriceLabel,
+  purchaseFromSettings, hasProPurchase, purchasedPlanName, planStatusLabel,
+  settingsWithPurchase, subscriptionNoticeText, ProStore,
+} from './iap.js';
+import {
   sampleItems, mergeSampleItems, shouldSeedSamples, readSampleSeeded, writeSampleSeeded,
   hasSampleItems, removeSampleItems,
   backfillSampleImages,
@@ -57,6 +62,9 @@ import {
 
 const $ = (id) => document.getElementById(id);
 
+// iOSアプリ（Capacitor）で動いているか。Web（GitHub Pages）では課金しない。
+const NATIVE_APP = isNativeShell(typeof window !== 'undefined' ? window : {});
+
 let state = loadState();
 let ui = {
   tab: 'stock',
@@ -80,6 +88,9 @@ let ui = {
 let pendingRestore = null; // 復元シートで待っている読み込み内容
 let scanner = null; // html5-qrcode instance
 let rafId = 0;
+let adBanner = null; // 最下部のAdMobバナー（起動の最後に作る）
+let proStore = null; // Proの課金（iOSアプリのときだけ中身が入る）
+let proPurchase = purchaseFromSettings(state.settings); // 画面に出す購入状態
 
 /* ---------------- JAN辞書（内蔵＋追加配信） ---------------- */
 let extraEntries = [];          // 配信辞書の項目（キャッシュ由来も含む）
@@ -864,13 +875,48 @@ function yen(n) {
 }
 
 function renderPlan() {
-  const pro = isPro(state.settings);
   const q = itemQuota(state, state.settings);
   const fq = folderQuota(state, state.settings);
   // フォルダの枠は「あとから作った分」だけ数える（最初からある4つは数えない）
-  $('proState').textContent = `${pro ? 'Pro（プレビュー）' : '無料'} ・ 画材 ${describeQuota(q)} ・ フォルダ ${describeQuota(fq, 'つ')}`;
+  $('proState').textContent = `${planStatusLabel(state.settings)} ・ 画材 ${describeQuota(q)} ・ フォルダ ${describeQuota(fq, 'つ')}`;
   $('proBenefits').innerHTML = PRO_BENEFITS.map((b) => `<span class="pro-chip">${esc(b.label)}</span>`).join('');
-  $('btnProToggle').textContent = pro ? 'Proプレビューを終了' : 'Proプレビューを試す';
+  renderProOffer();
+  $('btnProToggle').textContent = isPro(state.settings) ? 'Proプレビューを終了' : 'Proプレビューを試す';
+}
+
+/**
+ * プランの購入導線（買い切り・月額）と注記。
+ * 買い切りを買った人には月額を出さない。Webでは購入できないので案内だけ出す。
+ */
+function renderProOffer() {
+  const visible = planVisibility(proPurchase);
+  const cards = PLAN_ORDER.filter((key) => visible[key]).map((key) => {
+    const plan = PRO_PLANS[key];
+    const disabled = NATIVE_APP ? '' : ' disabled aria-disabled="true"';
+    return `<button class="btn planbtn" data-pro-plan="${esc(plan.key)}"${disabled}>`
+      + `<b>${esc(plan.title)}</b><span>${esc(planPriceLabel(plan.key))}</span></button>`;
+  });
+  const owned = hasProPurchase(proPurchase);
+  const cardsHtml = cards.length
+    ? cards.join('')
+    : `<p class="planowned">${esc(purchasedPlanName(proPurchase))}プランが有効です</p>`;
+  if ($('proPlans')) $('proPlans').innerHTML = cardsHtml;
+  if ($('proSheetPlans')) $('proSheetPlans').innerHTML = cardsHtml;
+
+  const links = '<a href="terms.html" target="_blank" rel="noopener noreferrer">利用規約</a> ・ '
+    + '<a href="privacy.html" target="_blank" rel="noopener noreferrer">プライバシー</a>';
+  const note = !NATIVE_APP
+    ? `${esc(WEB_PURCHASE_NOTE)} ・ ${links}`
+    : (owned ? `Proが有効です ・ ${links}` : `${esc(subscriptionNoticeText())} ${links}`);
+  if ($('proNote')) $('proNote').innerHTML = note;
+  if ($('proSheetNote')) $('proSheetNote').innerHTML = note;
+
+  // プレビューはWebの動作確認用（iOSアプリでは出さず、購入と復元だけで解放する）
+  if ($('btnProToggle')) $('btnProToggle').hidden = NATIVE_APP;
+  if ($('btnProStart')) $('btnProStart').hidden = NATIVE_APP || owned;
+  for (const id of ['btnProRestore', 'btnProSheetRestore']) {
+    if ($(id)) $(id).hidden = !NATIVE_APP;
+  }
 }
 
 /** Proの案内シート（上限・Pro機能のどちらからでも同じ画面） */
@@ -885,7 +931,7 @@ function openProSheet(what = 'item') {
     ? `フォルダ ${describeQuota(folderQuota(state, state.settings), 'つ')}`
     : `画材 ${describeQuota(itemQuota(state, state.settings))}`;
   $('proSheetBenefits').innerHTML = PRO_BENEFITS.map((b) => `<span class="pro-chip">${esc(b.label)}</span>`).join('');
-  $('btnProStart').hidden = isPro(state.settings);
+  renderProOffer();
   openSheet('sheetPro');
 }
 
@@ -897,18 +943,57 @@ function requirePro(feature) {
 }
 
 function setProPreview(on) {
+  if (NATIVE_APP) return; // iOSアプリでは購入と復元だけで解放する
   state = { ...state, settings: { ...state.settings, proPreview: Boolean(on) } };
   save();
   closeSheet('sheetPro');
   render();
   // Proの間は広告を出さない（終了したら戻す）
-  adBanner.sync();
+  adBanner?.sync();
   toast(on ? 'Proプレビューを有効にしました' : 'Proプレビューを終了しました');
+}
+
+/**
+ * StoreKit の購入状態を設定へ反映する（上限・画材費・広告が即座に切り替わる）。
+ * 呼び出し元は ProStore（購入・復元・期限切れの検知）。
+ */
+function applyPurchaseState(next) {
+  const normalized = { lifetime: Boolean(next?.lifetime), monthly: Boolean(next?.monthly) };
+  const changed = normalized.lifetime !== proPurchase.lifetime || normalized.monthly !== proPurchase.monthly;
+  proPurchase = normalized;
+  const settings = settingsWithPurchase(state.settings, proPurchase);
+  const settingsChanged = settings.pro !== state.settings.pro
+    || settings.proPlan !== state.settings.proPlan
+    || settings.proLifetime !== state.settings.proLifetime
+    || settings.proPreview !== state.settings.proPreview;
+  if (changed || settingsChanged) {
+    state = { ...state, settings };
+    save();
+  }
+  render();
+  adBanner?.sync();
 }
 
 $('btnProToggle').addEventListener('click', () => setProPreview(!isPro(state.settings)));
 $('btnProStart').addEventListener('click', () => setProPreview(true));
 $('btnCostPro').addEventListener('click', () => openProSheet('cost'));
+
+// 購入・復元のボタン（プラン画面と設定の両方。データ属性でまとめて受ける）
+document.addEventListener('click', (e) => {
+  const plan = e.target.closest && e.target.closest('[data-pro-plan]');
+  if (plan) {
+    e.preventDefault();
+    if (!NATIVE_APP) { toast(WEB_PURCHASE_NOTE); return; }
+    proStore?.purchase(plan.dataset.proPlan);
+    return;
+  }
+  const restore = e.target.closest && e.target.closest('[data-pro-restore]');
+  if (restore) {
+    e.preventDefault();
+    if (!NATIVE_APP) { toast(WEB_PURCHASE_NOTE); return; }
+    proStore?.restore();
+  }
+});
 
 /* ---------------- 画材費（2軸集計 ＋ CSV） ---------------- */
 function renderCost() {
@@ -2653,6 +2738,12 @@ for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
   document.addEventListener(type, (e) => e.preventDefault(), { passive: false });
 }
 
+// iOSアプリでは Pro プレビュー（Webの動作確認用）を無効にする。解放は購入と復元だけ。
+if (NATIVE_APP && state.settings.proPreview) {
+  state = { ...state, settings: { ...state.settings, proPreview: false } };
+  save();
+}
+
 seedSamplesOnFirstRun();
 render();
 preloadPhotos().then((ok) => {
@@ -2671,5 +2762,17 @@ if (typeof window !== 'undefined') {
 
 // iOSアプリの最下部に AdMob バナー（本番ID）。Webブラウザでは何もしない。
 // バナーの高さは CSS 変数 --ad-h に入り、タブバー・ドック・FAB・一覧の下端を押し上げる。
-// Pro（プレビュー含む）の間は広告を出さず、その分だけタブバーとFABを下げる。
-const adBanner = setupAdBanner({ isPro: () => isPro(state.settings) });
+// Pro（購入・復元で解放）の間は広告を出さず、その分だけタブバーとFABを下げる。
+adBanner = setupAdBanner({ isPro: () => isPro(state.settings) });
+
+// Proの課金（StoreKit）。iOSアプリのときだけストアを初期化し、
+// 買い切り・月額の購入と復元の結果を settings へ反映する。Webでは何もしない。
+proStore = new ProStore({
+  win: window,
+  native: NATIVE_APP,
+  onPurchase: (purchase) => applyPurchaseState(purchase),
+  onMessage: (message) => toast(message.detail ? `${message.title}（${message.detail}）` : message.title),
+  log: (...args) => console.log(...args),
+});
+proStore.start();
+renderProOffer();
