@@ -222,10 +222,9 @@ test('在庫アイテムと編集シートに「シリーズ」欄があり、�
   const app = read('app.js');
   assert.ok(html.includes('id="fSeries"'), '#fSeries がありません');
   assert.match(html, /<label for="fSeries">シリーズ<\/label>/);
-  // 保存・辞書からの入力・辞書の商品を在庫に追加、の3経路で series が入る
+  // 保存・シートを開く（カタログから選ぶとここへ入る）・辞書の商品を在庫に追加、の3経路で series が入る
   assert.match(app, /series: \$\('fSeries'\)\.value/);
   assert.match(app, /\$\('fSeries'\)\.value = data\.series \|\| ''/);
-  assert.match(app, /\$\('fSeries'\)\.value = d\.series \|\| ''/);
   assert.match(app, /series: d\.series \|\| '',/);
   // 辞書から開く登録フォーム（JAN読み取り）にも series が渡る
   assert.match(app, /category: hit\.category, series: hit\.series,/);

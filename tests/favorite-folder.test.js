@@ -105,20 +105,20 @@ test('在庫一覧の先頭に固定フォルダ「お気に入り」が出て�
   assert.equal(/id="favStrip"/.test(html), false, '古いお気に入りの帯が残っている');
   assert.equal(/function renderFavorites/.test(app), false, '古いお気に入りの描画が残っている');
 
-  // トップのフォルダグリッドの先頭に、星のタイルとして足す（件数つき）
+  // ルートの上段（スマートフォルダ）に、星のタイルとして並べる（件数つき）
   assert.match(app, /data-folder="\$\{esc\(FAVORITE_FOLDER_ID\)\}"/);
   assert.match(app, /const favCount = countFavorites\(state\.items\);/);
-  assert.match(app, /if \(!parentId\) \{[\s\S]{0,600}FAVORITE_FOLDER\.name/);
+  assert.match(app, /function renderSmartGrid\(\) \{[\s\S]{0,900}FAVORITE_FOLDER\.name/);
   // 中を開いたときは子フォルダを作らない（フォルダの節を出さない）。
   // フォルダの並びは在庫タブの「場所ごと」のときだけなので、その条件も入る
-  assert.match(app, /const show = ui\.tab === 'stock' && ui\.stockMode !== 'maker' && !ui\.query && !hasFilters\(\) && !fav;/);
+  assert.match(app, /const show = ui\.tab === 'stock' && ui\.stockMode !== 'maker' && !ui\.query && !hasFilters\(\) && !fav && !all;/);
   // 長押しメニュー（編集／移動／削除）は出さない
-  assert.match(app, /if \(folderId && isFavoriteFolder\(folderId\)\) return;/);
+  assert.match(app, /if \(folderId && \(isFavoriteFolder\(folderId\) \|\| isAllFolder\(folderId\)\)\) return;/);
   // 中身は星の付いた画材を、どのフォルダからでも集めて出す
   assert.match(app, /favoriteOnly: ui\.favoriteOnly \|\| fav/);
-  assert.match(app, /emptyKey: fav \? 'favorites' : 'items'/);
+  assert.match(app, /emptyKey: fav \? 'favorites' : \(unfiledOnly \? 'unfiled' : 'items'\)/);
   // 現在地（パンくず）にも「お気に入り」と出る
-  assert.match(app, /isFavoriteFolder\(ui\.folderId\)[\s\S]{0,300}FAVORITE_FOLDER\.name/);
+  assert.match(app, /isFavoriteFolder\(ui\.folderId\)[\s\S]{0,400}FAVORITE_FOLDER\.name/);
 });
 
 test('編集シートの中でもお気に入りを入/切できる（保存で画材に反映）', () => {

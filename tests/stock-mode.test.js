@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { listMakers, sortItems, createItem, blankState, itemMaker } from '../core.js';
+import { listMakers, sortItems, createItem, blankState, itemMaker, addFolder, unfiledItems, isAllFolder, ALL_FOLDER_ID, ALL_FOLDER, FAVORITE_FOLDER_ID } from '../core.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (name) => fs.readFileSync(path.join(ROOT, name), 'utf8');
@@ -37,34 +37,49 @@ test('下タブは4つ（在庫・補充・カタログ・設定）', () => {
 
 /* ---------------- 2) 在庫タブ内の切り替え ---------------- */
 
-test('在庫タブの中に「場所ごと / メーカーごと」の切り替えがあり、初期は場所ごと', () => {
+test('在庫タブの中に「場所 / メーカー」の切り替えがあり、初期は場所ごと', () => {
   const html = read('index.html');
   const app = read('app.js');
   const css = read('styles.css');
   const stock = html.slice(html.indexOf('id="view-stock"'), html.indexOf('id="view-shopping"'));
 
-  // セグメント（2択）が在庫タブの先頭にある
+  // 切り替えは見出しの右横に置く小さなチップ（全幅のセグメントバーは廃止）
   assert.ok(stock.includes('id="stockSeg"'), '切り替えがありません');
-  assert.match(stock, /data-stock-mode="place"[^>]*aria-selected="true"[^>]*>場所ごと</);
-  assert.match(stock, /data-stock-mode="maker"[^>]*aria-selected="false"[^>]*>メーカーごと</);
+  assert.match(stock, /data-stock-mode="place"[^>]*aria-selected="true"[^>]*>場所</);
+  assert.match(stock, /data-stock-mode="maker"[^>]*aria-selected="false"[^>]*>メーカー</);
+  assert.equal(stock.includes('segbar'), false, '大きいセグメントバーが残っている');
+  // 置き場所は「フォルダ」「画材」「メーカー」の各見出しの右（JSが1つだけ移す）
+  for (const id of ['segSlotFolder', 'segSlotItems', 'segSlotMaker']) {
+    assert.ok(stock.includes(`id="${id}"`), `#${id} がありません`);
+  }
+  assert.match(app, /function placeStockSeg\(\) \{[\s\S]{0,400}ui\.stockMode === 'maker' \? \$\('segSlotMaker'\)/);
+  assert.match(app, /\$\('folderGrid'\)\.hidden \? \$\('segSlotItems'\) : \$\('segSlotFolder'\)/);
+  assert.match(app, /slot\.appendChild\(seg\)/);
 
   // 場所ごと＝フォルダ＋在庫一覧（従来の並びをそのまま包む）
   const place = stock.slice(stock.indexOf('id="stockPlaceView"'), stock.indexOf('id="stockMakerView"'));
   assert.ok(place.includes('id="folderSec"') && place.includes('id="folderGrid"'), 'フォルダがありません');
   assert.ok(place.includes('id="itemSec"') && place.includes('id="itemList"'), '在庫一覧がありません');
   // メーカーごと＝メーカー別のまとまり（初期は隠す）
-  assert.match(stock, /id="stockMakerView" hidden[\s\S]{0,200}id="makerGroups"/);
+  assert.match(stock, /id="stockMakerView" hidden[\s\S]{0,300}id="makerGroups"/);
 
   // 初期値と、押したときの切り替え
   assert.match(app, /stockMode: 'place'/);
-  assert.match(app, /\$\('stockSeg'\)\.addEventListener\('click', \(e\) => \{[\s\S]{0,300}data-stock-mode/);
+  assert.match(app, /\$\('stockSeg'\)\.addEventListener\('click', \(e\) => \{[\s\S]{0,400}data-stock-mode/);
   assert.match(app, /ui\.stockMode = mode;/);
   assert.match(app, /\$\('stockPlaceView'\)\.hidden = ui\.tab !== 'stock' \|\| stockMode !== 'place';/);
   assert.match(app, /\$\('stockMakerView'\)\.hidden = ui\.tab !== 'stock' \|\| stockMode !== 'maker';/);
-  // セグメントの見た目（375pxで2等分・折り返さない）
-  assert.match(css, /\.seg\s*\{[^}]*display:\s*flex/);
-  assert.match(css, /\.seg button\s*\{[^}]*flex:\s*1 1 0/);
-  assert.match(css, /\.seg button\[aria-selected="true"\]/);
+
+  // 見た目: 小さなチップ（見出しの右に寄せる）
+  assert.match(css, /\.segchip\s*\{[^}]*border-radius:\s*999px/);
+  assert.match(css, /\.segchip button\s*\{[^}]*font-size:\s*11\.5px/);
+  assert.match(css, /\.segchip button\[aria-selected="true"\]/);
+  assert.match(css, /\.segslot\s*\{[^}]*margin-left:\s*auto/);
+  assert.equal(/\.segbar\s*\{/.test(css), false, '大きいセグメントバーのスタイルが残っている');
+
+  // メーカーごとのときはフォルダ欄とパンくずを隠す（切り替えのチップだけは残す）
+  assert.match(app, /if \(ui\.stockMode === 'maker'\) return;/);
+  assert.match(app, /\$\('crumb'\)\.hidden = !open \|\| ui\.tab !== 'stock' \|\| ui\.stockMode === 'maker';/);
 });
 
 test('「メーカーごと」は持っている画材をメーカー別にまとめ、件数を出す（五十音順）', () => {
@@ -92,7 +107,10 @@ test('「メーカーごと」は持っている画材をメーカー別にま�
 
 test('フォルダを開く・複数選択は「場所ごと」に戻して行う', () => {
   const app = read('app.js');
-  assert.match(app, /ui\.folderId = b\.dataset\.folder;\n  ui\.tab = 'stock';\n  ui\.stockMode = 'place';/);
+  assert.match(app, /function openFolder\(id\) \{\n  ui\.folderId = id;\n  ui\.tab = 'stock';\n  ui\.stockMode = 'place';/);
+  // タイル（スマートフォルダ・フォルダ）のどちらからでも同じ関数で開く
+  assert.match(app, /\$\('smartGrid'\)\.addEventListener\('click', \(e\) => \{[\s\S]{0,160}openFolder\(b\.dataset\.folder\)/);
+  assert.match(app, /\$\('folderGrid'\)\.addEventListener\('click', \(e\) => \{[\s\S]{0,220}openFolder\(b\.dataset\.folder\)/);
   assert.match(app, /ui\.tab = 'stock';\n  ui\.stockMode = 'place'; \/\/ まとめて選ぶのは場所ごとの並びから/);
   // メーカーのまとめを見ている間は、隠れている場所の一覧を作らない
   assert.match(app, /function renderItemSection\(\) \{\n  \/\/ 「メーカーごと」を見ている間は場所の一覧を作らない[\s\S]{0,120}if \(ui\.stockMode === 'maker'\) return;/);
@@ -102,7 +120,7 @@ test('フォルダを開く・複数選択は「場所ごと」に戻して行�
 
 /* ---------------- 3) フォルダタイルの列 ---------------- */
 
-test('フォルダのタイルは5列（お気に入り＋保管場所4つ＋「＋ フォルダ」が1行）', () => {
+test('フォルダのタイルは5列（保管場所4つ＋「＋ フォルダ」が1行）', () => {
   const css = read('styles.css');
   const app = read('app.js');
   // 375pxでも5列（5つがちょうど1行）
@@ -112,9 +130,61 @@ test('フォルダのタイルは5列（お気に入り＋保管場所4つ＋「
   // アイコンは四角のまま・名前は折り返しても2行まで
   assert.match(css, /\.ftile \.fico \{[^}]*aspect-ratio:\s*1 \/ 1/);
   assert.match(css, /\.ftile \.fname \{[^}]*font-size:\s*10\.5px/);
-  // タイルは6つ出る（お気に入り・家・アトリエ・持ち出し用・ストック・＋ フォルダ）
-  assert.match(app, /if \(!parentId\) \{[\s\S]{0,400}tiles\.push/);
+  // お気に入りは上の段（スマートフォルダ）へ移ったので、ここには並べない
+  assert.match(app, /const tiles = kids\.map\(\(f\) => \{/);
   assert.match(app, /tiles\.push\(`\n    <button class="ftile add"/);
+});
+
+/* ---------------- 3b) ルートのスマートフォルダと未分類 ---------------- */
+
+test('未分類＝どのフォルダにも入っていない画材（消えたフォルダの画材も拾う）', () => {
+  let s = blankState();
+  s = addFolder(s, { name: 'アトリエ' });
+  const atelier = s.folders.at(-1).id;
+  const items = [
+    createItem({ name: 'a', folderId: atelier }),
+    { ...createItem({ name: 'b' }), folderId: '' },
+    { ...createItem({ name: 'c' }), folderId: 'gone' },
+  ];
+  assert.deepEqual(unfiledItems(items, s.folders).map((it) => it.name), ['b', 'c']);
+  assert.deepEqual(unfiledItems([], s.folders), []);
+  // 「すべての画材」は仮想フォルダ（お気に入りと同じ扱い）
+  assert.equal(isAllFolder(ALL_FOLDER_ID), true);
+  assert.equal(isAllFolder(FAVORITE_FOLDER_ID), false);
+  assert.equal(isAllFolder(''), false);
+  assert.equal(ALL_FOLDER.name, 'すべての画材');
+});
+
+test('ルートは「お気に入り / すべての画材」を横に2つ、下にフォルダ、未分類はあるときだけ', () => {
+  const html = read('index.html');
+  const app = read('app.js');
+  const css = read('styles.css');
+
+  // 上段は2列の横長タイル（アイコン＋名前＋点数）
+  const smart = /^\.smartgrid \{([^}]*)\}/m.exec(css);
+  assert.ok(smart, '.smartgrid のスタイルがありません');
+  assert.match(smart[1], /grid-template-columns:\s*1fr 1fr/);
+  assert.match(css, /\.stile \{[^}]*display:\s*flex/);
+  assert.ok(html.includes('id="smartGrid"'), '#smartGrid がありません');
+  assert.match(app, /function renderSmartGrid\(\) \{/);
+  assert.match(app, /data-folder="\$\{esc\(FAVORITE_FOLDER_ID\)\}"/);
+  assert.match(app, /data-folder="\$\{esc\(ALL_FOLDER_ID\)\}"/);
+  // ルートで、検索も絞込もしていないときだけ出す
+  assert.match(app, /const show = ui\.tab === 'stock' && ui\.stockMode !== 'maker' && !ui\.query && !hasFilters\(\) && root;/);
+
+  // ルートの一覧は未分類だけ。0件なら節ごと出さない
+  assert.match(app, /if \(root && !ui\.query\) list = unfiledItems\(list, state\.folders\);/);
+  assert.match(app, /\$\('itemSec'\)\.hidden = unfiledOnly && !hasFilters\(\) && list\.length === 0;/);
+  assert.match(app, /root \? '未分類' : folderOf\(ui\.folderId\)\.name/);
+});
+
+test('「すべての画材」は仮想フォルダ（どのフォルダの画材もまとめて見る）', () => {
+  const app = read('app.js');
+  // 特別フォルダの判定と、フォルダをまたいで集める条件
+  assert.match(app, /const anywhere = Boolean\(ui\.query\) \|\| all \|\| fav;/);
+  assert.match(app, /all \? ALL_FOLDER\.name/);
+  assert.match(app, /\$\('crumbTrail'\)\.innerHTML = \(fav/);
+  assert.match(app, /\[{ id: ALL_FOLDER_ID, name: ALL_FOLDER\.name }\]/);
 });
 
 /* ---------------- 4) 確認ダイアログの改行 ---------------- */

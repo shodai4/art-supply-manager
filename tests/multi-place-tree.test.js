@@ -261,7 +261,7 @@ test('画面: 親カードは「計 N点」と ┣ / └ の行、別の場所�
   // 買い物リストではまとめない
   assert.match(app, /forceList: true, noJanGroup: true/);
   // フォルダを1つだけ開いているときの「他：…」
-  assert.match(app, /otherPlaces: ui\.folderId !== 'all' && !fav && !ui\.query/);
+  assert.match(app, /otherPlaces: ui\.folderId !== 'all' && !fav && !all && !ui\.query/);
   assert.match(app, /otherPlaceSummary\(state\.items, it, state\.folders\)/);
 
   // 追加の導線（編集シート・行・親カードの末尾）と、追加先を選ぶシート
@@ -287,10 +287,10 @@ test('画面: 親カードは「計 N点」と ┣ / └ の行、別の場所�
 
 test('画面: 版とキャッシュを上げる（index.html と package.json が揃う）', () => {
   const pkg = JSON.parse(read('package.json'));
-  assert.equal(pkg.version, '1.23.2');
+  assert.equal(pkg.version, '1.24.0');
   assert.match(read('index.html'), new RegExp(`app\\.js\\?v=${pkg.version.replace(/\./g, '\\.')}`));
   assert.match(read('index.html'), new RegExp(`styles\\.css\\?v=${pkg.version.replace(/\./g, '\\.')}`));
-  assert.match(read('sw.js'), /art-supply-manager-v45/);
+  assert.match(read('sw.js'), /art-supply-manager-v46/);
   // 空の状態でも壊れない
   assert.equal(blankState().items.length, 0);
 });

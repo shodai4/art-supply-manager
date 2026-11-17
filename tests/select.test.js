@@ -105,7 +105,8 @@ test('画面: 複数選択の入口（⋯メニュー）・選択マーク・操
 test('シートは開くたび先頭から・移動先は1行1フォルダの縦ツリー', () => {
   const app = read('app.js');
   // 前回のスクロール位置が残ると、開いた瞬間に中ほどが見えてしまう
-  assert.match(app, /openSheet\('sheetItem'\);\n\s*\$\('sheetItem'\)\.scrollTop = 0;/);
+  // （シート全体ではなく、中のスクロールする本体を先頭へ）
+  assert.match(app, /openSheet\('sheetItem'\);\n\s*\/\/[^\n]*\n\s*\$\('sheetItemBody'\)\.scrollTop = 0;/);
   // 縦ツリーは深さのインデントで親子を表すので、行に親の経路を重ねて書かない
   assert.match(app, /function folderTreeHtml\(options/);
   assert.match(app, /\$\('moveOptions'\)\.innerHTML = folderTreeHtml\(folderOptions\(state\.folders/);

@@ -41,13 +41,16 @@ test('画面: パンくず欄に階層を並べ、各階層をタップで移動
   const app = read('app.js');
   const css = read('styles.css');
 
-  // 家ボタン（#btnHome）＋動的に作る階層（#crumbTrail）＋上へ（#btnUp）
-  for (const id of ['crumb', 'btnHome', 'crumbTrail', 'btnUp']) {
+  // 家ボタン（#btnHome）＋動的に作る階層（#crumbTrail）
+  for (const id of ['crumb', 'btnHome', 'crumbTrail']) {
     assert.ok(html.includes(`id="${id}"`), `#${id} がありません`);
   }
+  // 「↑ 上へ」のボタンは外した（親へ戻るのはパンくずの階層をタップすればよい）
+  assert.equal(html.includes('id="btnUp"'), false, '上へ（#btnUp）が残っている');
+  assert.equal(/btnUp|function goUp\(/.test(app), false, '上へ（goUp）の処理が残っている');
   // 現在地の階層は folderChain で組み立て、行ごとに data-crumb を持たせる
   // （特別フォルダ「お気に入り」だけは階層を持たないので現在地のみ）
-  assert.match(app, /const chain = open && !fav \? folderChain\(state\.folders, ui\.folderId\) : \[\];/);
+  assert.match(app, /const chain = open && !fav && !all \? folderChain\(state\.folders, ui\.folderId\) : \[\];/);
   assert.match(app, /isFavoriteFolder\(ui\.folderId\)[\s\S]{0,400}FAVORITE_FOLDER\.name/);
   assert.match(app, /data-crumb="\$\{esc\(f\.id\)\}"/);
   assert.match(app, /aria-current="page"/);
@@ -74,4 +77,10 @@ test('パンくずは横幅が足りなければ折り返す（横スクロー�
   assert.ok(name, '.crumb .cbtn.name のスタイルがありません');
   assert.match(name[1], /text-overflow:\s*ellipsis/);
   assert.match(name[1], /white-space:\s*nowrap/);
+  // 枠の丸ボックスではなく、文字リンク風（枠線・背景を持たない）
+  assert.equal(/border-radius/.test(name[1]), false, '名前が角丸ボックスになっている');
+  const home = /^\.crumb \.cbtn\s*\{([^}]*)\}/m.exec(css);
+  assert.ok(home, '.crumb .cbtn のスタイルがありません');
+  assert.match(home[1], /border:\s*none/);
+  assert.match(home[1], /background:\s*none/);
 });

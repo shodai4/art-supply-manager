@@ -164,7 +164,7 @@ test('カード・シート・入力欄・タブバー・チップは変数の�
     assert.ok(body.includes(decl), `${selector} が ${decl} になっていない`);
   }
   // 検索モーダル（辞書・絞込・並替のシート）もシートの面を継承する
-  assert.match(css, /#dictQ, #dictFindQ\s*\{[^}]*background:\s*var\(--surface\)/);
+  assert.match(css, /#dictQ\s*\{[^}]*background:\s*var\(--surface\)/);
 });
 
 test('在庫0のグレー表示もダークで沈む（面と文字を変数に）', () => {
@@ -204,7 +204,7 @@ test('画面: 設定にテーマ切替、描画前のテーマ適用、theme-col
 test('theme.js は配信・iOSビルド・Service Worker に入っている', async () => {
   const sw = read('sw.js');
   assert.match(sw, /'\.\/theme\.js'/);
-  assert.match(sw, /art-supply-manager-v45/);
+  assert.match(sw, /art-supply-manager-v46/);
   const { WEB_ASSETS } = await import('../scripts/build.mjs');
   assert.ok(WEB_ASSETS.includes('theme.js'), 'theme.js が WEB_ASSETS にありません');
   // iOSビルドの起動条件は app.js / index.html / styles.css の変更で走る（theme.js は build.mjs 経由で www/ へ入る）

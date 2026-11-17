@@ -346,6 +346,35 @@ export function favoritesFirst(items = []) {
   return [...list.filter((it) => it?.favorite === true), ...list.filter((it) => it?.favorite !== true)];
 }
 
+/* ---------------- 特別フォルダ「すべての画材」 ---------------- */
+
+/**
+ * 特別フォルダ「すべての画材」のID。
+ * 「お気に入り」と同じ仮想フォルダで、フォルダをまたいで全部の画材をその場で見せる。
+ * state.folders には入れない（作成数・削除・改名・移動の対象にならない）。
+ */
+export const ALL_FOLDER_ID = 'all-items';
+
+/** 特別フォルダ「すべての画材」の見た目（名前・色）。フォルダとしては保存しない */
+export const ALL_FOLDER = { id: ALL_FOLDER_ID, name: 'すべての画材', color: '#2b66c4', parentId: null };
+
+/** 特別フォルダ「すべての画材」か（削除・移動・改名できない） */
+export function isAllFolder(id) {
+  return String(id ?? '') === ALL_FOLDER_ID;
+}
+
+/**
+ * どのフォルダにも入っていない画材（ルート画面の「未分類」）。
+ * フォルダが消えて行き先を失った画材も、見えなくならずここに出す。
+ */
+export function unfiledItems(items = [], folders = []) {
+  const ids = new Set((Array.isArray(folders) ? folders : []).map((f) => String(f?.id ?? '')));
+  return (Array.isArray(items) ? items : []).filter((it) => {
+    const id = String(it?.folderId ?? '');
+    return !id || !ids.has(id);
+  });
+}
+
 /** 在庫数の増減（0未満にしない）。使い切り判定はステータスで保持 */
 export function adjustStock(item, delta) {
   const qty = Math.max(0, (Number(item.qty) || 0) + Math.trunc(Number(delta) || 0));

@@ -12,6 +12,7 @@ import {
   folderParentId, folderChildren, folderChain, folderDepth, folderPathLabel, folderSubtreeIds,
   folderTree, folderOptions, countByFolderDeep,
   FAVORITE_FOLDER_ID, FAVORITE_FOLDER, isFavoriteFolder, favoriteItems, countFavorites,
+  ALL_FOLDER_ID, ALL_FOLDER, isAllFolder, unfiledItems,
   toggleSelection, isSelected, selectAllIds, pruneSelection, searchDictionary, dictionaryHaystack,
   isMakerGroupOn, withSortMode,
   groupByFolder, findItemByJanInFolder, itemsByJanInOtherFolders,
@@ -518,6 +519,7 @@ function render() {
   renderHeader();
   renderHeaderActions();
   renderCrumb();
+  renderSmartGrid();
   renderFolderGrid();
   renderItemSection();
   renderMakerView();
@@ -530,13 +532,14 @@ function render() {
   document.querySelectorAll('#tabbar button').forEach((b) => {
     b.setAttribute('aria-selected', String(b.dataset.tab === ui.tab));
   });
-  // 在庫タブの中の「場所ごと / メーカーごと」
+  // 在庫タブの中の「場所 / メーカー」
   const stockMode = ui.stockMode === 'maker' ? 'maker' : 'place';
   document.querySelectorAll('#stockSeg button').forEach((b) => {
     b.setAttribute('aria-selected', String(b.dataset.stockMode === stockMode));
   });
   $('stockPlaceView').hidden = ui.tab !== 'stock' || stockMode !== 'place';
   $('stockMakerView').hidden = ui.tab !== 'stock' || stockMode !== 'maker';
+  placeStockSeg();
   for (const t of ['stock', 'shopping', 'catalog', 'settings']) $(`view-${t}`).hidden = t !== ui.tab;
   const fabVisible = (ui.tab === 'stock' || ui.tab === 'shopping') && !ui.selectMode;
   $('btnAdd').style.visibility = fabVisible ? 'visible' : 'hidden';
@@ -585,14 +588,17 @@ function hasFilters() {
 /** フォルダを開いているときだけ、ヘッダーの下に現在地のパンくず（家 › 親 › 子 › 孫）を出す */
 function renderCrumb() {
   const fav = isFavoriteFolder(ui.folderId);
+  const all = isAllFolder(ui.folderId);
   const open = ui.folderId !== 'all';
   $('crumb').hidden = !open || ui.tab !== 'stock' || ui.stockMode === 'maker';
   // 途中の階層をタップすると、そこへ一気に移動できる（幅が足りないときはCSSで折り返す）
-  const chain = open && !fav ? folderChain(state.folders, ui.folderId) : [];
-  // 特別フォルダ「お気に入り」は階層を持たないので、現在地だけを出す
+  const chain = open && !fav && !all ? folderChain(state.folders, ui.folderId) : [];
+  // 特別フォルダ（お気に入り・すべての画材）は階層を持たないので、現在地だけを出す
   $('crumbTrail').innerHTML = (fav
     ? [{ id: FAVORITE_FOLDER_ID, name: FAVORITE_FOLDER.name }]
-    : chain
+    : all
+      ? [{ id: ALL_FOLDER_ID, name: ALL_FOLDER.name }]
+      : chain
   ).map((f, i, arr) => {
     const here = i === arr.length - 1;
     const label = here ? ' aria-current="page"' : ` aria-label="${esc(f.name)}へ移動"`;
@@ -606,41 +612,60 @@ function renderCrumb() {
   $('quotaNote').classList.toggle('tight', isQuotaTight(q));
 }
 
-/** 上へ: 親フォルダへ。最上位ならフォルダのトップ（すべて）へ戻る */
-function goUp() {
-  if (ui.folderId === 'all') return;
-  const parent = folderParentId(folderOf(ui.folderId));
-  ui.folderId = parent || 'all';
-  render();
-  window.scrollTo({ top: 0 });
+/**
+ * 「場所 / メーカー」の小さな切り替えを、いま出ている見出しの右横へ置く。
+ * 場所ごと＝フォルダの見出し（フォルダ欄が出ないときは画材の見出し）／メーカーごと＝メーカーの見出し。
+ * 要素は1つだけ作って移すので、選ばれている状態は常に1か所だけになる。
+ */
+function placeStockSeg() {
+  const seg = $('stockSeg');
+  const slot = ui.stockMode === 'maker' ? $('segSlotMaker')
+    : ($('folderGrid').hidden ? $('segSlotItems') : $('segSlotFolder'));
+  if (slot && seg.parentElement !== slot) slot.appendChild(seg);
+}
+
+/**
+ * ルートの上段「スマートフォルダ」（お気に入り・すべての画材）。
+ * フォルダをまたいで集める仮想の見方なので、フォルダの一覧とは別の行に横2つで並べる。
+ */
+function renderSmartGrid() {
+  const root = ui.folderId === 'all';
+  const show = ui.tab === 'stock' && ui.stockMode !== 'maker' && !ui.query && !hasFilters() && root;
+  $('smartGrid').hidden = !show;
+  if (!show) { $('smartGrid').innerHTML = ''; return; }
+  const favCount = countFavorites(state.items);
+  const allCount = state.items.length;
+  $('smartGrid').innerHTML = `
+    <button class="stile" data-folder="${esc(FAVORITE_FOLDER_ID)}">
+      <span class="sico" style="--c:${esc(FAVORITE_FOLDER.color)};--cs:${rgba(FAVORITE_FOLDER.color, 0.13)}">
+        <svg class="ic" aria-hidden="true"><use href="#i-star-solid"/></svg>
+      </span>
+      <span class="stxt"><span class="sname">${esc(FAVORITE_FOLDER.name)}</span><span class="scnt">${favCount}点</span></span>
+    </button>
+    <button class="stile" data-folder="${esc(ALL_FOLDER_ID)}">
+      <span class="sico" style="--c:${esc(ALL_FOLDER.color)};--cs:${rgba(ALL_FOLDER.color, 0.13)}">
+        <svg class="ic" aria-hidden="true"><use href="#i-grid"/></svg>
+      </span>
+      <span class="stxt"><span class="sname">${esc(ALL_FOLDER.name)}</span><span class="scnt">${allCount}点</span></span>
+    </button>`;
 }
 
 /** 今いる場所のフォルダ（ルートなら最上位、フォルダの中ならその子フォルダ）＋「＋ フォルダ」 */
 function renderFolderGrid() {
-  // 特別フォルダ「お気に入り」の中にはフォルダを作らない（子フォルダは持たない）
+  // 特別フォルダ（お気に入り・すべての画材）の中にはフォルダを作らない（子を持たない）
   const fav = isFavoriteFolder(ui.folderId);
-  const show = ui.tab === 'stock' && ui.stockMode !== 'maker' && !ui.query && !hasFilters() && !fav;
-  $('folderSec').hidden = !show;
+  const all = isAllFolder(ui.folderId);
+  const show = ui.tab === 'stock' && ui.stockMode !== 'maker' && !ui.query && !hasFilters() && !fav && !all;
+  $('folderGrid').hidden = !show;
+  // フォルダの一覧を出さないときは見出しも畳む（現在地はすぐ下のパンくずが伝える）
+  $('folderSecTitle').hidden = !show;
   if (!show) { $('folderGrid').innerHTML = ''; return; }
   const parentId = ui.folderId === 'all' ? '' : ui.folderId;
   const kids = folderChildren(state.folders, parentId);
   const counts = countByFolderDeep(state.folders, state.items);
   $('folderSecTitle').textContent = parentId ? 'この中のフォルダ' : 'フォルダ';
-  // トップでは、削除できない固定フォルダ「お気に入り」を先頭に置く
-  // （星を付けた画材がここに入る。実体は各フォルダのままなので元のフォルダにも残る）
-  const tiles = [];
-  if (!parentId) {
-    const favCount = countFavorites(state.items);
-    tiles.push(`
-    <button class="ftile fav-folder" data-folder="${esc(FAVORITE_FOLDER_ID)}">
-      <span class="fico" style="--c:${esc(FAVORITE_FOLDER.color)};--cs:${rgba(FAVORITE_FOLDER.color, 0.13)}">
-        <svg class="ic" aria-hidden="true"><use href="#i-star-solid"/></svg>
-        <span class="fcnt">${favCount}</span>
-      </span>
-      <span class="fname">${esc(FAVORITE_FOLDER.name)}</span>
-    </button>`);
-  }
-  tiles.push(...kids.map((f) => {
+  // ルートでは「お気に入り」と「すべての画材」を上の段（#smartGrid）に出しているのでここには並べない
+  const tiles = kids.map((f) => {
     const color = f.color || '#5b6b7c';
     const children = folderChildren(state.folders, f.id).length;
     return `
@@ -652,7 +677,7 @@ function renderFolderGrid() {
       </span>
       <span class="fname">${esc(f.name)}</span>
     </button>`;
-  }));
+  });
   // フォルダが無くても「＋ フォルダ」だけは出す（作り始められるように）
   tiles.push(`
     <button class="ftile add" data-add-folder="1" aria-label="フォルダを作る">
@@ -667,15 +692,25 @@ function renderItemSection() {
   // 「メーカーごと」を見ている間は場所の一覧を作らない（隠れているうえ、行数が多いと重い）
   if (ui.stockMode === 'maker') return;
   const fav = isFavoriteFolder(ui.folderId);
+  const all = isAllFolder(ui.folderId);
+  const root = ui.folderId === 'all';
   const list = currentList();
-  $('itemSecTitle').textContent = ui.query ? '検索結果' : (fav ? FAVORITE_FOLDER.name : (ui.folderId === 'all' ? 'すべての画材' : folderOf(ui.folderId).name));
+  // ルートは「未分類」だけ（フォルダに入れた画材はフォルダを開いて見る）。
+  // 検索中は場所をまたいでいるので、未分類の見出しにはしない。
+  const unfiledOnly = root && !ui.query;
+  $('itemSec').hidden = unfiledOnly && !hasFilters() && list.length === 0;
+  $('itemSecTitle').textContent = ui.query ? '検索結果'
+    : (fav ? FAVORITE_FOLDER.name
+      : all ? ALL_FOLDER.name
+        : (root ? '未分類' : folderOf(ui.folderId).name));
   $('itemCount').textContent = String(list.length);
-  // 「お気に入り」はどのフォルダから来たかが分かるよう、フォルダの色の点を出す
+  // 「お気に入り」「すべての画材」はどのフォルダから来たかが分かるよう、フォルダの色の点を出す
   renderTilesInto($('itemList'), list, {
-    emptyKey: fav ? 'favorites' : 'items',
-    showFolder: ui.folderId === 'all' || fav,
+    emptyKey: fav ? 'favorites' : (unfiledOnly ? 'unfiled' : 'items'),
+    // お気に入り・すべての画材・未分類は、どのフォルダのものか分かるようにする
+    showFolder: all || fav || unfiledOnly,
     // フォルダを1つだけ開いているときは、まとめずに「他：アトリエ1」を添える
-    otherPlaces: ui.folderId !== 'all' && !fav && !ui.query,
+    otherPlaces: ui.folderId !== 'all' && !fav && !all && !ui.query,
   });
 }
 
@@ -938,6 +973,8 @@ function renderTilesInto(el, items, opts = {}) {
       ? '<div class="empty"><b>補充はありません</b>残りわずか・使い切りがここに集まります</div>'
       : opts.emptyKey === 'favorites'
         ? '<div class="empty"><b>お気に入りはまだありません</b>カードの星を押すと、ここに集まります（元のフォルダにも残ります）</div>'
+        : opts.emptyKey === 'unfiled'
+          ? '<div class="empty"><b>未分類の画材はありません</b>フォルダに入れた画材は、各フォルダから見られます</div>'
         : (state.items.length
           ? '<div class="empty"><b>見つかりません</b>検索や絞込を変えてみてください</div>'
           : '<div class="empty"><b>まだ画材がありません</b>右下の＋ か 読取 から登録できます<button class="btn mini wide" data-add-samples>サンプルを入れる</button></div>');
@@ -961,15 +998,20 @@ function renderShopping() {
 function currentList() {
   // 親フォルダを開くと、配下のフォルダの画材もまとめて見る（直感的な挙動）
   // 検索のときは場所をまたいで全体から探す
-  // 「お気に入り」はどのフォルダにある画材でも、星の付いたものをその場で集める（実体は移動しない）
+  // ルートは「未分類」だけ（フォルダに入れた画材は各フォルダ・「すべての画材」から見る）
+  // 「お気に入り」「すべての画材」は仮想フォルダで、フォルダをまたいで集める（実体は移動しない）
   const fav = isFavoriteFolder(ui.folderId);
-  const anywhere = ui.query || ui.folderId === 'all' || fav;
+  const all = isAllFolder(ui.folderId);
+  const root = ui.folderId === 'all';
+  const anywhere = Boolean(ui.query) || all || fav;
   const scope = anywhere ? null : folderSubtreeIds(state.folders, ui.folderId);
-  return favoritesFirst(sortItems(filterItems(state.items, {
-    query: ui.query, folderId: ui.query || fav ? 'all' : ui.folderId, folderIds: scope,
+  let list = filterItems(state.items, {
+    query: ui.query, folderId: anywhere ? 'all' : ui.folderId, folderIds: scope,
     category: ui.category, status: ui.status, maker: ui.maker,
     favoriteOnly: ui.favoriteOnly || fav,
-  }), state.settings.sort));
+  });
+  if (root && !ui.query) list = unfiledItems(list, state.folders);
+  return favoritesFirst(sortItems(list, state.settings.sort));
 }
 
 function renderFolders() {
@@ -1311,7 +1353,6 @@ $('btnHome').addEventListener('click', () => {
   render();
   window.scrollTo({ top: 0 });
 });
-$('btnUp').addEventListener('click', () => goUp());
 // パンくず（家 › 親 › 子 › 孫）の途中の階層をタップしたら、その階層へ移動する
 $('crumbTrail').addEventListener('click', (e) => {
   const b = e.target.closest('[data-crumb]');
@@ -1413,18 +1454,28 @@ $('stockSeg').addEventListener('click', (e) => {
   window.scrollTo({ top: 0 });
 });
 
-// フォルダをタップして中へ／「＋ フォルダ」で作る
-$('folderGrid').addEventListener('click', (e) => {
-  const add = e.target.closest('[data-add-folder]');
-  if (add) { addFolderAt(ui.folderId === 'all' ? '' : ui.folderId); return; }
-  const b = e.target.closest('[data-folder]');
-  if (!b) return;
-  ui.folderId = b.dataset.folder;
+// フォルダ（特別フォルダを含む）を開く
+function openFolder(id) {
+  ui.folderId = id;
   ui.tab = 'stock';
   ui.stockMode = 'place'; // フォルダの中は場所ごとの並びで開く
   exitSelect();
   render();
   window.scrollTo({ top: 0 });
+}
+
+// ルートの上段「お気に入り / すべての画材」をタップして中へ
+$('smartGrid').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-folder]');
+  if (b) openFolder(b.dataset.folder);
+});
+
+// フォルダをタップして中へ／「＋ フォルダ」で作る
+$('folderGrid').addEventListener('click', (e) => {
+  const add = e.target.closest('[data-add-folder]');
+  if (add) { addFolderAt(ui.folderId === 'all' ? '' : ui.folderId); return; }
+  const b = e.target.closest('[data-folder]');
+  if (b) openFolder(b.dataset.folder);
 });
 
 /* ---------------- 複数選択（一括移動） ---------------- */
@@ -1577,13 +1628,41 @@ function openItemSheet(id, preset = {}) {
   renderPhotoPreview();
   $('makerList').innerHTML = [...new Set([...mergedDict.map((d) => d.maker), 'ターナー', 'リキテックス', 'ウィンザー＆ニュートン', 'マツダ', '名村大成堂', 'クサカベ', 'ホルベイン'])].map((m) => `<option value="${esc(m)}">`).join('');
   $('btnDeleteItem').hidden = !it;
+  $('btnSaveItem').textContent = it ? '保存' : '追加する';
+  // 開くたびは「もっと詳しく」を閉じた状態から（中身があるときはバッジで知らせる）
+  $('itemMore').open = false;
+  refreshMoreBadge();
   updateJanHint();
   refreshFormShopLinks();
   openSheet('sheetItem');
-  $('sheetItem').scrollTop = 0;
+  // 前回のスクロール位置が残ると、開いた瞬間に中ほどが見えてしまう
+  $('sheetItemBody').scrollTop = 0;
   setTimeout(() => $('fName').focus({ preventScroll: true }), 120);
   // JANが入っていて画像・写真が未設定なら、そのまま画像を取りに行く（読取・辞書から開いたとき）
   autoFetchFormImage();
+}
+
+/**
+ * 「もっと詳しく」を閉じていても中身があると分かるよう、入っている項目を短く添える。
+ * （閉じていても値は消さない。保存は入力欄をそのまま読む）
+ */
+function refreshMoreBadge() {
+  const badge = $('moreBadge');
+  if (!badge) return;
+  const parts = [];
+  if (normalizeJAN($('fJan').value)) parts.push('JAN');
+  const hasPhoto = (pendingPhoto && pendingPhoto.kind === 'set')
+    || (!(pendingPhoto && pendingPhoto.kind === 'delete') && Boolean(ui.editingId && photoUrls.has(ui.editingId)));
+  if (hasPhoto) parts.push('写真');
+  if ($('fShop').value.trim()) parts.push('購入店');
+  if (String($('fPrice').value).trim()) parts.push('単価');
+  if ($('fMemo').value.trim()) parts.push('メモ');
+  if (normalizeImageUrl($('fImageUrl').value)) parts.push('画像URL');
+  badge.textContent = parts.length > 2 ? `${parts.length}件` : parts.join('・');
+  badge.hidden = parts.length === 0;
+}
+for (const id of ['fJan', 'fShop', 'fPrice', 'fMemo', 'fImageUrl']) {
+  $(id).addEventListener('input', refreshMoreBadge);
 }
 
 /** 編集シートの「お気に入り」ボタンの状態をそろえる */
@@ -1625,6 +1704,7 @@ function renderPhotoPreview() {
   const exists = (pendingPhoto && pendingPhoto.kind === 'set')
     || (!(pendingPhoto && pendingPhoto.kind === 'delete') && Boolean(ui.editingId && photoUrls.has(ui.editingId)));
   $('btnPhotoClear').hidden = !exists;
+  refreshMoreBadge();
 }
 
 $('btnPhotoPick').addEventListener('click', () => $('fPhoto').click());
@@ -2084,8 +2164,8 @@ function startPress(e) {
   // 行の中の小さなボタン（並べ替え・編集）は普通のタップに任せる
   if (e.target.closest('[data-up], [data-down], [data-fedit]')) return;
   const folderId = folderIdFromPress(e.target);
-  // 特別フォルダ「お気に入り」は削除・移動・改名できないので、長押しメニューは出さない
-  if (folderId && isFavoriteFolder(folderId)) return;
+  // 特別フォルダ「お気に入り」「すべての画材」は削除・移動・改名できないので、長押しメニューは出さない
+  if (folderId && (isFavoriteFolder(folderId) || isAllFolder(folderId))) return;
   // フォルダの上でなければ、画材カードかどうかを見る（フォルダの長押しを優先）
   const itemId = folderId ? '' : itemIdFromPress(e.target);
   if (!folderId && !itemId) return;
@@ -2985,7 +3065,7 @@ $('btnWipe').addEventListener('click', async () => {
   toast('全データを削除しました');
 });
 // 辞書の一覧・更新ボタンは設定から外した（起動時の自動同期はそのまま続く）。
-// 辞書シートは編集シートの「辞書から探す」から開く。
+// 画材を辞書で探すのはカタログタブ（とバーコード読取）にまとめた。
 
 /* ---------------- 通販で探す（アフィリエイト土台） ---------------- */
 function openShopSheet(item) {
@@ -3076,8 +3156,6 @@ document.addEventListener('click', (e) => {
 }, true);
 
 const DICT_RENDER_LIMIT = 300;
-/** 「辞書から探す」シートに出す件数（34,365件でも軽いよう、描画はこの数だけ） */
-const DICT_FIND_LIMIT = 40;
 
 function renderDictList(query) {
   const merged = mergeDictionaries(JAN_DICTIONARY, extraEntries);
@@ -3096,65 +3174,6 @@ function renderDictList(query) {
     : '');
 }
 $('dictQ').addEventListener('input', (e) => renderDictList(e.target.value));
-
-/* ---------------- 辞書から探す（登録フォームへ自動入力） ---------------- */
-/** 辞書の検索結果（タップでフォームに入る） */
-function renderDictFind(query) {
-  const q = String(query || '').trim();
-  if (!q) {
-    $('dictFindList').innerHTML = `<p class="hint" style="margin:8px 0 0">色名・メーカー・品番・JANで探せます（内蔵${mergedDict.length}件）</p>`;
-    return;
-  }
-  const { items: hit, total } = searchDictionary(mergedDict, q, {
-    limit: DICT_FIND_LIMIT, hay: dictionaryHaystack(mergedDict),
-  });
-  const rows = hit.map((d) => {
-    // 商品名（シリーズ＋色名＋号数）はそのまま出し、下の行にメーカーと色番号・シリーズを添える
-    const sub = [d.maker, d.series && !String(d.name || '').includes(d.series) ? d.series : '', d.code].filter(Boolean).join(' ');
-    return `
-    <button type="button" class="dfind" data-dict-jan="${esc(d.jan)}">
-      <span class="dfind-name">${esc(d.name || d.colorName)}</span>
-      <span class="dfind-sub">${esc(sub)}</span>
-      <span class="dfind-jan">${esc(d.jan)}</span>
-    </button>`;
-  }).join('');
-  $('dictFindList').innerHTML = rows
-    ? rows + (total > hit.length ? `<p class="hint" style="margin:10px 0 0">ほか ${total - hit.length}件（言葉を足すと絞れます）</p>` : '')
-    : '<p class="hint" style="margin:8px 0 0">見つかりません。別の言葉かJANで探してください</p>';
-}
-
-/** 辞書の1件を登録フォームへ入れる（商品名・メーカー・カテゴリ・色名・色番号・JAN・号数） */
-function applyDictEntry(d) {
-  if (!d) return;
-  $('fName').value = d.name || d.colorName || '';
-  $('fMaker').value = d.maker || '';
-  $('fCategoryInput').value = CATEGORIES.some((c) => c.id === d.category) ? d.category : 'other';
-  $('fSeries').value = d.series || '';
-  $('fColorName').value = d.colorName || '';
-  $('fColorCode').value = d.code || '';
-  $('fSize').value = d.size || '';
-  $('fJan').value = d.jan || '';
-  ui.formBrand = d.brand || '';
-  updateJanHint();
-  refreshFormShopLinks();
-  closeSheet('sheetDictFind');
-  toast('辞書の商品を入れました');
-  autoFetchFormImage(); // JANが入ったので、そのまま商品画像を取りに行く
-}
-
-$('btnDictFind').addEventListener('click', () => {
-  $('dictFindQ').value = '';
-  renderDictFind('');
-  openSheet('sheetDictFind');
-  setTimeout(() => $('dictFindQ').focus({ preventScroll: true }), 120);
-});
-$('dictFindQ').addEventListener('input', (e) => renderDictFind(e.target.value));
-$('dictFindList').addEventListener('click', (e) => {
-  const b = e.target.closest('[data-dict-jan]');
-  if (!b) return;
-  const d = mergedDict.find((x) => x.jan === b.dataset.dictJan);
-  applyDictEntry(d);
-});
 
 /* ---------------- 検索タブ（内蔵JAN辞書のカタログ検索） ---------------- */
 // 3.7万件を相手にするので、入力は少し待ってから（デバウンス）絞る。

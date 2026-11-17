@@ -15,7 +15,7 @@ try {
 } catch (e) { /* 保存が読めないときはライト */ }
 </script>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="styles.css?v=1.23.2">
+<link rel="stylesheet" href="styles.css?v=1.24.0">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 </head>
@@ -132,30 +132,27 @@ try {
   </div>
 
   <!-- フォルダを開いているときの現在地（家 › 親 › 子 › 孫。各階層をタップで移動・幅が足りなければ折り返す） -->
-  <nav class="crumb" id="crumb" aria-label="現在の場所" hidden>
-    <button class="cbtn" id="btnHome" aria-label="保管場所へ戻る"><svg class="ic" aria-hidden="true"><use href="#i-home"/></svg></button>
-    <div class="trail" id="crumbTrail"></div>
-    <button class="cbtn up" id="btnUp" aria-label="上へ戻る"><svg class="ic" aria-hidden="true"><use href="#i-up"/></svg></button>
-  </nav>
 </header>
 
 <main>
-  <!-- 在庫（自分の持ち物）。上で「場所ごと / メーカーごと」を切り替える -->
+  <!-- 在庫（自分の持ち物）。見方（場所／メーカー）の小さな切り替えは、上の見出しの右横に出す -->
   <section id="view-stock">
-    <div class="segbar">
-      <div class="seg" id="stockSeg" role="tablist" aria-label="在庫の見方">
-        <button type="button" role="tab" data-stock-mode="place" aria-selected="true" aria-controls="stockPlaceView">場所ごと</button>
-        <button type="button" role="tab" data-stock-mode="maker" aria-selected="false" aria-controls="stockMakerView">メーカーごと</button>
-      </div>
-    </div>
-
     <!-- 場所ごと（フォルダ → 画材の順に1つの流れで並べる。お気に入りは先頭の固定フォルダ） -->
     <div id="stockPlaceView">
       <div class="fsec" id="folderSec">
-        <div class="sechead">
+        <div class="sechead" id="folderSecHead">
           <svg class="ic" aria-hidden="true"><use href="#i-folder"/></svg>
           <span id="folderSecTitle">フォルダ</span>
+          <!-- 見方の切り替え（JSが、いま出ている見出しの右へ移す） -->
+          <span class="segslot" id="segSlotFolder"></span>
         </div>
+        <!-- 現在地（家 › 親 › 子 › 孫）。フォルダの中にいるときだけ、見出しのすぐ下に出す -->
+        <nav class="crumb" id="crumb" aria-label="現在の場所" hidden>
+          <button class="cbtn" id="btnHome" aria-label="保管場所へ戻る"><svg class="ic" aria-hidden="true"><use href="#i-home"/></svg></button>
+          <div class="trail" id="crumbTrail"></div>
+        </nav>
+        <!-- ルートの上段：フォルダをまたいで集める仮想フォルダ（お気に入り・すべての画材） -->
+        <div class="smartgrid" id="smartGrid"></div>
         <div class="fgrid" id="folderGrid"></div>
       </div>
 
@@ -164,6 +161,7 @@ try {
           <svg class="ic" aria-hidden="true"><use href="#i-grid"/></svg>
           <span id="itemSecTitle">すべての画材</span>
           <b id="itemCount">0</b>
+          <span class="segslot" id="segSlotItems"></span>
         </div>
         <div id="itemList"></div>
       </div>
@@ -171,8 +169,19 @@ try {
 
     <!-- メーカーごと（タップで開いて、そのメーカーの画材を見る） -->
     <div id="stockMakerView" hidden>
+      <div class="sechead">
+        <svg class="ic" aria-hidden="true"><use href="#i-grid"/></svg>
+        <span>メーカー</span>
+        <span class="segslot" id="segSlotMaker"></span>
+      </div>
       <p class="lede">メーカーごとに開いて見られます</p>
       <div class="makers" id="makerGroups"></div>
+    </div>
+
+    <!-- 見方の切り替え（常に1つだけ。JSが上の見出しの右へ移す） -->
+    <div class="segchip" id="stockSeg" role="tablist" aria-label="在庫の見方">
+      <button type="button" role="tab" data-stock-mode="place" aria-selected="true" aria-controls="stockPlaceView" aria-label="場所ごとに見る">場所</button>
+      <button type="button" role="tab" data-stock-mode="maker" aria-selected="false" aria-controls="stockMakerView" aria-label="メーカーごとに見る">メーカー</button>
     </div>
   </section>
 
@@ -368,84 +377,95 @@ try {
 
 <!-- 追加/編集シート -->
 <div class="sheet-mask" id="mask"></div>
-<div class="sheet" id="sheetItem" role="dialog" aria-modal="true" aria-labelledby="sheetItemTitle">
+<div class="sheet sheet-item" id="sheetItem" role="dialog" aria-modal="true" aria-labelledby="sheetItemTitle">
   <h2 id="sheetItemTitle">画材を追加<button class="close" data-close="sheetItem" aria-label="閉じる"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></h2>
   <form id="itemForm">
-    <div class="field">
-      <label for="fName">商品名 *</label>
-      <input id="fName" required placeholder="例：ホルベイン 油絵具 シルバー 6号">
-      <button type="button" class="btn mini wide" id="btnDictFind">辞書から探す</button>
-    </div>
-    <div class="field-row">
-      <div class="field"><label for="fMaker">メーカー</label><input id="fMaker" list="makerList" placeholder="ホルベイン"><datalist id="makerList"></datalist></div>
-      <div class="field"><label for="fCategory">カテゴリ</label><select id="fCategoryInput"></select></div>
-    </div>
-    <div class="field"><label for="fSeries">シリーズ</label><input id="fSeries" placeholder="油絵具（シリーズ名）"></div>
-    <div class="field-row">
-      <div class="field"><label for="fColorName">色名</label><input id="fColorName" placeholder="シルバー"></div>
-      <div class="field"><label for="fColorCode">色番号</label><input id="fColorCode" placeholder="H191"></div>
-    </div>
-    <div class="field-row">
-      <div class="field"><label for="fSize">号数/容量</label><input id="fSize" placeholder="6号(20ml)"></div>
-      <div class="field"><label for="fQty">在庫数</label>
-        <div class="stepper">
-          <button type="button" data-qstep="-1" aria-label="1減らす">−</button>
-          <input id="fQty" type="number" min="0" step="1" value="1" inputmode="numeric">
-          <button type="button" data-qstep="1" aria-label="1増やす">＋</button>
+    <div class="sheet-body" id="sheetItemBody">
+      <div class="field">
+        <label for="fName">商品名 *</label>
+        <input id="fName" required placeholder="例：ホルベイン 油絵具 シルバー 6号">
+      </div>
+      <div class="field-row">
+        <div class="field"><label for="fMaker">メーカー</label><input id="fMaker" list="makerList" placeholder="ホルベイン"><datalist id="makerList"></datalist></div>
+        <div class="field"><label for="fCategory">カテゴリ</label><select id="fCategoryInput"></select></div>
+      </div>
+      <div class="field"><label for="fSeries">シリーズ</label><input id="fSeries" placeholder="油絵具（シリーズ名）"></div>
+      <div class="field-row">
+        <div class="field"><label for="fColorName">色名</label><input id="fColorName" placeholder="シルバー"></div>
+        <div class="field"><label for="fColorCode">色番号</label><input id="fColorCode" placeholder="H191"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label for="fSize">号数/容量</label><input id="fSize" placeholder="6号(20ml)"></div>
+        <div class="field"><label for="fQty">在庫数</label>
+          <div class="stepper">
+            <button type="button" data-qstep="-1" aria-label="1減らす">−</button>
+            <input id="fQty" type="number" min="0" step="1" value="1" inputmode="numeric">
+            <button type="button" data-qstep="1" aria-label="1増やす">＋</button>
+          </div>
         </div>
       </div>
-    </div>
-    <div class="field"><label for="fStatusInput">残量</label><select id="fStatusInput"></select></div>
-    <div class="field"><label for="fFolderInput">保管場所</label><select id="fFolderInput"></select></div>
-    <div class="field" id="addPlaceField" hidden>
-      <button type="button" class="btn mini wide" id="btnAddPlace">＋ 別の場所に追加</button>
-      <p class="micro" style="margin:6px 0 0">同じ画材を別のフォルダにも1点置けます（数量は場所ごとに別で数えます）</p>
-    </div>
-    <div class="field">
-      <label>お気に入り</label>
-      <button type="button" class="favtoggle" id="fFav" aria-pressed="false">
-        <svg class="ic" aria-hidden="true"><use href="#i-star"/></svg><span id="fFavLabel">お気に入りにする</span>
-      </button>
-    </div>
-    <div class="field"><label for="fJan">JANコード</label><input id="fJan" inputmode="numeric" placeholder="13桁（読取ボタンでも可）">
-      <p class="hint" id="janHint" style="margin:4px 0 0"></p>
-      <button type="button" class="btn mini wide" id="btnFetchImage">画像を取得</button>
-    </div>
-    <div class="field-row">
-      <div class="field"><label for="fShop">購入店</label><input id="fShop" placeholder="世界堂"></div>
-      <div class="field"><label for="fPrice">単価(円)</label><input id="fPrice" type="number" min="0" inputmode="numeric"></div>
-    </div>
-    <div class="field"><label for="fMemo">メモ</label><textarea id="fMemo" rows="2" placeholder="使いかけ、混色メモなど"></textarea></div>
-    <div class="field">
-      <label>写真メモ</label>
-      <div class="photo-edit">
-        <div class="photo-prev" id="photoPrev"><span class="ph-txt">写真なし<br>アイコン表示</span></div>
-        <div class="photo-btns">
-          <button type="button" class="btn mini" id="btnPhotoPick">撮る / 選ぶ</button>
-          <button type="button" class="btn mini danger" id="btnPhotoClear" hidden>写真を削除</button>
-        </div>
+      <div class="field"><label for="fStatusInput">残量</label><select id="fStatusInput"></select></div>
+      <div class="field"><label for="fFolderInput">保管場所</label><select id="fFolderInput"></select></div>
+      <div class="field" id="addPlaceField" hidden>
+        <button type="button" class="btn mini wide" id="btnAddPlace">＋ 別の場所に追加</button>
+        <p class="micro" style="margin:6px 0 0">同じ画材を別のフォルダにも1点置けます（数量は場所ごとに別で数えます）</p>
       </div>
-      <p class="hint" id="photoHint" style="margin:6px 0 0">端末内に保存（外部送信なし）</p>
+      <div class="field">
+        <label>お気に入り</label>
+        <button type="button" class="favtoggle" id="fFav" aria-pressed="false">
+          <svg class="ic" aria-hidden="true"><use href="#i-star"/></svg><span id="fFavLabel">お気に入りにする</span>
+        </button>
+      </div>
+      <!-- 購入店・メモ・写真などは、普段の登録では使わないので畳んでおく（閉じていても値は保存される） -->
+      <details class="more" id="itemMore">
+        <summary>
+          <span class="more-mark" aria-hidden="true">▸</span>
+          <span class="more-label">もっと詳しく（購入店・メモ・写真など）</span>
+          <span class="more-badge" id="moreBadge" hidden></span>
+        </summary>
+        <div class="more-body">
+          <div class="field"><label for="fJan">JANコード</label><input id="fJan" inputmode="numeric" placeholder="13桁（読取ボタンでも可）">
+            <p class="hint" id="janHint" style="margin:4px 0 0"></p>
+            <button type="button" class="btn mini wide" id="btnFetchImage">画像を取得</button>
+          </div>
+          <div class="field-row">
+            <div class="field"><label for="fShop">購入店</label><input id="fShop" placeholder="世界堂"></div>
+            <div class="field"><label for="fPrice">単価(円)</label><input id="fPrice" type="number" min="0" inputmode="numeric"></div>
+          </div>
+          <div class="field"><label for="fMemo">メモ</label><textarea id="fMemo" rows="2" placeholder="使いかけ、混色メモなど"></textarea></div>
+          <div class="field">
+            <label>写真メモ</label>
+            <div class="photo-edit">
+              <div class="photo-prev" id="photoPrev"><span class="ph-txt">写真なし<br>アイコン表示</span></div>
+              <div class="photo-btns">
+                <button type="button" class="btn mini" id="btnPhotoPick">撮る / 選ぶ</button>
+                <button type="button" class="btn mini danger" id="btnPhotoClear" hidden>写真を削除</button>
+              </div>
+            </div>
+            <p class="hint" id="photoHint" style="margin:6px 0 0">端末内に保存（外部送信なし）</p>
+          </div>
+          <input type="file" id="fPhoto" accept="image/*" class="sr">
+          <div class="field">
+            <label for="fImageUrl">画像URL</label>
+            <input id="fImageUrl" type="url" inputmode="url" placeholder="https://..." autocomplete="off" autocapitalize="off" spellcheck="false">
+            <p class="hint" id="imageUrlHint" style="margin:4px 0 0">画像URLを貼り付け</p>
+          </div>
+          <div class="field">
+            <label>通販</label>
+            <div class="shop-links" id="shopLinks"></div>
+            <p class="micro" id="shopQuery" style="margin:4px 0 0"></p>
+          </div>
+          <div class="propose-box" id="proposeBox" hidden>
+            <button type="button" class="btn mini wide" id="btnPropose">辞書に提案</button>
+          </div>
+        </div>
+      </details>
     </div>
-    <input type="file" id="fPhoto" accept="image/*" class="sr">
-    <div class="field">
-      <label for="fImageUrl">画像URL</label>
-      <input id="fImageUrl" type="url" inputmode="url" placeholder="https://..." autocomplete="off" autocapitalize="off" spellcheck="false">
-      <p class="hint" id="imageUrlHint" style="margin:4px 0 0">画像URLを貼り付け</p>
-    </div>
-    <div class="field">
-      <label>通販</label>
-      <div class="shop-links" id="shopLinks"></div>
-      <p class="micro" id="shopQuery" style="margin:4px 0 0"></p>
-    </div>
-    <div class="propose-box" id="proposeBox" hidden>
-      <button type="button" class="btn mini wide" id="btnPropose">辞書に提案</button>
-    </div>
-    <div class="actions">
+    <div class="foot" id="itemFoot">
+      <button type="button" class="btn danger" id="btnDeleteItem" hidden>削除</button>
       <button type="button" class="btn" data-close="sheetItem">キャンセル</button>
-      <button type="submit" class="btn primary">保存</button>
+      <button type="submit" class="btn primary" id="btnSaveItem">保存</button>
     </div>
-    <button type="button" class="btn danger" id="btnDeleteItem" hidden style="width:100%;margin-top:8px">削除</button>
   </form>
 </div>
 
@@ -548,13 +568,6 @@ try {
   <div id="dictList" style="font-size:12px"></div>
 </div>
 
-<!-- 辞書検索シート（登録フォームへ自動入力） -->
-<div class="sheet" id="sheetDictFind" role="dialog" aria-modal="true" aria-labelledby="dictFindTitle">
-  <h2 id="dictFindTitle">辞書から探す<button class="close" data-close="sheetDictFind" aria-label="閉じる"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></h2>
-  <input id="dictFindQ" type="search" placeholder="色名・メーカー・JAN" autocomplete="off" inputmode="search" style="width:100%;margin:0 0 8px">
-  <div class="dict-list" id="dictFindList"></div>
-</div>
-
 <!-- チュートリアルシート -->
 <div class="sheet" id="sheetGuide" role="dialog" aria-modal="true" aria-labelledby="guideTitle">
   <h2 id="guideTitle">使い方<button class="close" data-close="sheetGuide" aria-label="閉じる"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></h2>
@@ -562,7 +575,6 @@ try {
     <div class="gstep"><b>画材を追加する</b><span>右下の＋を押して、商品名・メーカー・保管場所を入れて保存します。JANがあると画像も自動で入ります。</span></div>
     <div class="gstep"><b>バーコードで登録</b><span>右下の読取ボタンでバーコードを読みます。1本読むと編集シートが開き、JANと商品名が自動で入ります。</span></div>
     <div class="gstep"><b>続けて読み取る（連続スキャン）</b><span>読取画面の「連続スキャン」をONにすると、カメラを閉じずに読み続けられます。辞書にある画材は自動で登録され、画像も後から入ります。</span></div>
-    <div class="gstep"><b>辞書から選んで登録</b><span>編集シートの「辞書から探す」で色名・メーカー・品番から選ぶと、商品名やJANが自動で入ります。</span></div>
     <div class="gstep"><b>在庫の＋と−</b><span>一覧のカードにある「−」「＋」で、編集を開かずに在庫数を増減できます。0になると「要補充」に切り替わります。</span></div>
     <div class="gstep"><b>お気に入り</b><span>カードの星を押すと、フォルダの先頭にある「お気に入り」に入ります。もう一度押すと外れます（元のフォルダにもそのまま残ります）。編集シートの中でも入/切できます。</span></div>
     <div class="gstep"><b>フォルダ（保管場所）</b><span>在庫タブのフォルダをタップして中へ。フォルダを長押しすると、編集・移動・削除ができます。フォルダの中では上の家アイコンで戻れます。フォルダの中に子フォルダも作れます。</span></div>
@@ -629,6 +641,6 @@ try {
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<script type="module" src="app.js?v=1.23.2"></script>
+<script type="module" src="app.js?v=1.24.0"></script>
 </body>
 </html>

@@ -148,27 +148,28 @@ button, a, select, label, summary, .hbtn, .vpill, .fab, .tabbar button { touch-a
 }
 
 /* フォルダを開いているときの現在地（家 › 親 › 子 › 孫。各階層をタップで移動・幅が足りないときは折り返す） */
-.crumb { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 0 12px 10px; }
+.crumb { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; padding: 0 12px 4px; }
 .crumb[hidden] { display: none; }
+/* 家アイコンは枠なしの小さなアイコン（テキストの行に馴染ませる） */
 .crumb .cbtn {
-  flex: 0 0 auto; width: 44px; height: 42px; border-radius: 12px; border: 1px solid var(--line);
-  background: var(--surface); display: grid; place-items: center; color: var(--soft-ink);
+  flex: 0 0 auto; width: 22px; height: 22px; border: none; background: none; padding: 0;
+  display: grid; place-items: center; color: var(--ink-2);
 }
-.crumb .cbtn .ic { width: 21px; height: 21px; }
-.crumb .cbtn:active { background: var(--surface-2); }
+.crumb .cbtn .ic { width: 15px; height: 15px; }
+.crumb .cbtn:active { opacity: .6; }
 /* 階層の並び。画面幅に収まらないときは折り返して全階層を見せる（横スクロールで隠さない） */
-.crumb .trail { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; flex: 1 1 140px; min-width: 0; }
+.crumb .trail { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; flex: 1 1 140px; min-width: 0; }
 /* 「› 名前」を1つのまとまりにして、折り返しで区切りと名前が離れないようにする */
-.crumb .step { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
+.crumb .step { display: flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
+/* 名前は枠のない文字リンク（押すとその階層へ移動） */
 .crumb .cbtn.name {
-  width: auto; max-width: 100%; flex: 0 1 auto; min-width: 0; padding: 0 10px; display: block;
-  font-size: 15px; font-weight: 800; color: var(--ink); line-height: 40px;
+  width: auto; max-width: 100%; flex: 0 1 auto; min-width: 0; padding: 0; display: block; height: auto;
+  font-size: 12.5px; font-weight: 700; color: var(--ink-2); line-height: 1.5;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left;
 }
-/* いまいる階層（タップしても何も変わらないので、少し沈んで見せる） */
-.crumb .cbtn.name.here { background: var(--surface-2); color: var(--ink); }
-.crumb .sep { flex: 0 0 auto; font-size: 13px; color: var(--ink-3); }
-.crumb .cbtn.up { margin-left: auto; }
+/* いまいる階層は文字の濃さだけで表す（押しても何も変わらない） */
+.crumb .cbtn.name.here { color: var(--ink); font-weight: 800; }
+.crumb .sep { flex: 0 0 auto; font-size: 11px; color: var(--ink-3); }
 
 /* 在庫タブのまとまり（お気に入り・フォルダ・画材）の見出し */
 .fsec { margin: 0; }
@@ -184,23 +185,43 @@ button, a, select, label, summary, .hbtn, .vpill, .fab, .tabbar button { touch-a
 .sechead .ic:first-child { flex: 0 0 auto; }
 /* お気に入りは在庫一覧の先頭の固定フォルダになったので、横並びの帯は使わない */
 
-/* 在庫タブの「場所ごと / メーカーごと」切り替え（iOSのセグメント風） */
-.segbar { padding: 10px 12px 2px; }
-.seg {
-  display: flex; gap: 2px; padding: 2px; border-radius: 10px;
+/* 在庫タブの見方の切り替え（見出しの右横に置く小さなチップ） */
+.segslot { margin-left: auto; display: flex; align-items: center; }
+.segslot:empty { display: none; }
+.segchip {
+  display: flex; gap: 1px; padding: 1px; border-radius: 999px;
   background: var(--surface-3); border: 1px solid var(--line);
 }
-.seg button {
-  flex: 1 1 0; min-width: 0; border: none; background: none; border-radius: 8px;
-  padding: 7px 4px; font-size: 13px; font-weight: 700; color: var(--ink-2);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+.segchip button {
+  border: none; background: none; border-radius: 999px;
+  padding: 4px 9px; font-size: 11.5px; font-weight: 800; color: var(--muted-ink);
+  white-space: nowrap;
 }
-.seg button[aria-selected="true"] {
-  background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(16, 32, 56, .16);
+.segchip button[aria-selected="true"] {
+  background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgba(16, 32, 56, .14);
 }
-.seg button:active { opacity: .7; }
+.segchip button:active { opacity: .7; }
 
 /* ---------- フォルダグリッド（保管場所） ---------- */
+/* ルートの上段：お気に入り・すべての画材（横に2つ並ぶ横長のタイル） */
+.smartgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px 12px 2px; }
+.smartgrid[hidden] { display: none; }
+.stile {
+  display: flex; align-items: center; gap: 9px; min-width: 0; text-align: left;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 9px 10px;
+}
+.stile:active { background: var(--surface-2); }
+.stile .sico {
+  flex: 0 0 auto; width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center;
+  background: var(--cs, var(--surface-3)); color: var(--c, var(--soft-ink));
+}
+.stile .sico .ic { width: 16px; height: 16px; }
+.stile .stxt { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+.stile .sname {
+  font-size: 12px; font-weight: 800; color: var(--tile-ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.stile .scnt { font-size: 10px; color: var(--muted-ink); font-weight: 700; }
 /* お気に入り＋保管場所4つ＋「＋ フォルダ」の5つが1行に並ぶ列数（アイコンの形はそのままで一回りコンパクト） */
 .fgrid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px 6px; padding: 12px 10px 6px; }
 .fgrid[hidden] { display: none; }
@@ -515,6 +536,47 @@ body[data-ad-banner="true"] .tabbar {
 .sheet.open { display: block; }
 .sheet h2 { font-size: 15.5px; margin: 0 0 10px; display: flex; align-items: center; gap: 8px; font-weight: 800; }
 .sheet h2 .close { margin-left: auto; border: none; background: var(--surface-2); width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; color: var(--soft-ink); }
+
+/* ---------- 追加・編集シート（保存を下端に固定し、細かい項目は畳む） ---------- */
+/* シート自体はスクロールさせず、中身（#sheetItemBody）だけをスクロールさせる。
+   こうすると保存ボタンが常に下端に見え、キーボードが出ても項目がボタンに隠れない */
+#sheetItem.open {
+  display: flex; flex-direction: column; overflow: hidden;
+  padding: 14px 14px 0;
+}
+#sheetItem h2 { flex: 0 0 auto; }
+#itemForm { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.sheet-body {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch; padding-bottom: 4px;
+}
+.foot {
+  flex: 0 0 auto; display: flex; gap: 8px; align-items: center;
+  margin-top: 2px; padding-top: 10px;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line); background: var(--surface);
+}
+/* バナーが出ている間は、ボタンをその上まで持ち上げる（下の余白はバナー側が持つ） */
+body[data-ad-banner="true"] .foot { padding-bottom: calc(12px + var(--ad-h)); }
+/* 「▸ もっと詳しく（任意）」の折りたたみ（初期は閉じたまま） */
+.more {
+  margin: 2px 0 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface);
+}
+.more > summary {
+  list-style: none; cursor: pointer; display: flex; align-items: center; gap: 7px;
+  padding: 12px 12px; font-size: 13px; font-weight: 700; color: var(--ink-2);
+}
+.more > summary::-webkit-details-marker { display: none; }
+.more > summary:active { background: var(--surface-2); border-radius: 12px; }
+.more[open] > summary { border-bottom: 1px solid var(--line); border-radius: 12px 12px 0 0; color: var(--ink); }
+.more-mark { flex: 0 0 auto; font-size: 11px; color: var(--muted-ink); transition: transform .15s ease; }
+.more[open] .more-mark { transform: rotate(90deg); }
+.more-label { flex: 1 1 auto; min-width: 0; }
+.more-badge {
+  flex: 0 0 auto; font-size: 10.5px; font-weight: 800; color: var(--on-accent-soft);
+  background: var(--accent-soft); border: 1px solid var(--accent-line); border-radius: 999px; padding: 2px 8px;
+}
+.more-body { padding: 11px 12px 2px; }
 .grp { font-size: 11px; font-weight: 800; color: var(--muted-ink); margin: 14px 0 7px; letter-spacing: .04em; }
 .grp:first-of-type { margin-top: 2px; }
 .chipwrap { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -548,9 +610,13 @@ body[data-ad-banner="true"] .tabbar {
 .btn { border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 12px; font-weight: 700; flex: 1 1 0; font-size: 15px; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .btn.danger { color: var(--bad); border-color: var(--bad-line); background: var(--bad-soft); }
+/* 編集シートの下端に並ぶボタン（保存を広く、削除は文字ぶんだけ） */
+.foot > .btn { flex: 0 1 auto; min-width: 0; white-space: nowrap; }
+.foot > .btn.primary { flex: 1 1 auto; }
+.foot > .btn.danger { flex: 0 0 auto; padding-left: 14px; padding-right: 14px; }
 .hint { font-size: 11.5px; color: var(--ink-2); margin: 0 0 10px; line-height: 1.55; }
-#dictQ, #dictFindQ { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font-size: 14px; background: var(--surface); }
-#dictQ:focus, #dictFindQ:focus { outline: none; border-color: var(--accent-line); box-shadow: 0 0 0 3px rgba(47, 111, 208, .14); }
+#dictQ { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font-size: 14px; background: var(--surface); }
+#dictQ:focus { outline: none; border-color: var(--accent-line); box-shadow: 0 0 0 3px rgba(47, 111, 208, .14); }
 .pill { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 8px 12px; font-size: 13px; }
 .pill[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--on-accent-soft); font-weight: 700; }
 /* 移動先は1行1フォルダの縦ツリー（深さでインデントし、親子は └ で表す） */
@@ -571,15 +637,7 @@ body[data-ad-banner="true"] .tabbar {
 .ftree-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ftree-here { flex: 0 0 auto; font-size: 10.5px; font-weight: 700; color: var(--muted-ink); }
 
-/* 辞書から探す（検索結果の行） */
-.dict-list { font-size: 12px; }
-.dfind {
-  display: block; width: 100%; text-align: left; background: none; border: none;
-  border-bottom: 1px solid var(--line); padding: 9px 2px; line-height: 1.35;
-}
-.dfind-name { display: block; font-size: 13.5px; font-weight: 700; color: var(--ink); }
-.dfind-sub { display: block; font-size: 11px; color: var(--ink-2); }
-.dfind-jan { font-family: ui-monospace, monospace; font-size: 10.5px; color: var(--ink-3); }
+/* 辞書一覧（JAN辞書シート） */
 .dic-meta { color: var(--ink-2); }
 .dic-jan { font-family: ui-monospace, monospace; }
 .dic-src { font-size: 11px; }
@@ -860,6 +918,27 @@ body[data-ad-banner="true"] .tabbar {
 .dict-one { margin: 0; font-size: 12.5px; font-weight: 700; color: var(--ink-2); }
 /* 辞書カードの「画材名を最新にする」のすぐ下に添える補足 */
 .dict-sync-note { margin: 8px 0 0; }
+
+/* ---------- 設定タブはスリムに（1画面に多く収める） ---------- */
+/* カードの上下の余白・見出し・ボタンの高さを詰めて、「プラン」あたりまでを1画面に入れる */
+#view-settings .card { padding: 9px 11px; margin: 6px 10px; }
+#view-settings .card-t { font-size: 12.5px; margin: 0 0 6px; }
+#view-settings .actions { margin-top: 6px; gap: 6px; }
+#view-settings .btn { padding: 8px 10px; font-size: 13px; border-radius: 10px; }
+#view-settings .hint { margin: 0 0 6px; font-size: 11px; }
+#view-settings .chipwrap { gap: 5px; }
+#view-settings .fchip { padding: 5px 10px; font-size: 12px; }
+#view-settings .planwrap { margin: 7px 0 0; gap: 5px; }
+#view-settings .planbtn { padding: 8px 10px; }
+#view-settings .stat-grid { margin: 6px 10px; gap: 6px; }
+#view-settings .stat { padding: 7px; }
+#view-settings .stat b { font-size: 17px; }
+#view-settings .stat span { font-size: 10.5px; }
+#view-settings .dict-one { font-size: 12px; }
+#view-settings .dict-sync-note { margin: 5px 0 0; }
+#view-settings .cost-tabs { margin: 6px 0 2px; }
+#view-settings .bars { gap: 4px; margin-top: 4px; }
+#view-settings .foot-note, #view-settings .foot-links { margin-top: 10px; }
 
 /* ---------- 極小の注記（法務・規約） ---------- */
 .micro { font-size: 10.5px; line-height: 1.5; color: var(--ink-3); margin: 0; }

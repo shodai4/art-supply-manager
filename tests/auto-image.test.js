@@ -216,12 +216,12 @@ test('サンプル画像は行の書き換えでは消さない', () => {
 
 /* ---------------- 画面側の導線 ---------------- */
 
-test('3つの導線（単発の読取・連続スキャン・辞書から）から自動取得が呼ばれる', () => {
+test('3つの導線（単発の読取・連続スキャン・カタログから）から自動取得が呼ばれる', () => {
   const app = read('app.js');
-  // 編集シートを開いたとき（単発の読取・辞書から開いたときもここを通る）
+  // 編集シートを開いたとき（単発の読取・カタログから開いたときもここを通る）
   assert.match(app, /setTimeout\(\(\) => \$\('fName'\)\.focus\(\{ preventScroll: true \}\), 120\);[\s\S]{0,200}autoFetchFormImage\(\)/);
-  // 辞書の候補をタップしたとき
-  assert.match(app, /\$\('fJan'\)\.value = d\.jan \|\| '';[\s\S]{0,400}autoFetchFormImage\(\)/);
+  // カタログから選んだとき（JAN入りのプリセットでシートを開く）
+  assert.match(app, /openItemSheet\(null, dictPreset\(d\)\)/);
   // 連続スキャンで登録したとき
   assert.match(app, /result\.kind === 'added' \|\| result\.kind === 'drafted'\)\) autoFillScannedImage\(result\.item\)/);
   // 失敗は静かに（自動取得では toast を出さない）

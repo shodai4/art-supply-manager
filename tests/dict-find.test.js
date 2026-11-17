@@ -1,13 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { searchDictionary, dictionaryHaystack } from '../core.js';
 import { JAN_DICTIONARY } from '../jan-database.js';
-
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const read = (name) => fs.readFileSync(path.join(ROOT, name), 'utf8');
 
 const DICT = [
   { jan: '4900669001911', name: 'ホルベイン 油絵具 シルバー 6号', maker: 'ホルベイン', brand: '', colorName: 'シルバー', code: 'H191', size: '6号', category: 'oil' },
@@ -71,27 +65,5 @@ test('内蔵辞書（34,365件）でも実用的な速さで探せる', () => {
   assert.ok(performance.now() - t1 <= ms + 50, '索引の使い回しで遅くなっている');
 });
 
-test('画面: 辞書から探すシートと自動入力の導線がある', () => {
-  const html = read('index.html');
-  const app = read('app.js');
-  for (const id of ['btnDictFind', 'sheetDictFind', 'dictFindQ', 'dictFindList']) {
-    assert.ok(html.includes(`id="${id}"`), `#${id} がありません`);
-  }
-  assert.match(html, />辞書から探す</);
-  assert.match(app, /data-dict-jan/);
-  // 検索は共通の関数＋索引キャッシュを使う（34,365件でも重くしない）
-  assert.match(app, /searchDictionary\(mergedDict/);
-  assert.match(app, /dictionaryHaystack\(mergedDict\)/);
-  assert.match(app, /const DICT_FIND_LIMIT = \d+;/);
-  assert.match(app, /DICT_FIND_LIMIT <= 60|DICT_FIND_LIMIT = 40/);
-  // タップでフォームの各欄へ入る
-  for (const field of ['fName', 'fMaker', 'fColorName', 'fColorCode', 'fSize', 'fJan']) {
-    assert.ok(app.includes(`$('${field}').value = d.`), `${field} への自動入力がない`);
-  }
-  // カテゴリはIDが既知のときだけ（不明ならその他）
-  assert.match(app, /\$\('fCategoryInput'\)\.value = CATEGORIES\.some\(/);
-  assert.match(app, /ui\.formBrand = d\.brand/);
-  assert.match(app, /brand: ui\.formBrand/);
-  // 検索結果はボタン（タップしやすい）
-  assert.match(app, /class="dfind" data-dict-jan=/);
-});
+// 画面側（編集シートの「辞書から探す」）は v1.24.0 で外した。
+// カタログタブの導線と、外したことの確認は tests/item-sheet-layout.test.js で見る。

@@ -236,7 +236,7 @@ test('画面: 階層フォルダの導線（フォルダのタイル・親の選
   const html = read('index.html');
   const app = read('app.js');
   const css = read('styles.css');
-  for (const id of ['fFolderParent', 'folderGrid', 'folderList', 'crumb', 'btnUp', 'btnHome', 'folderSec']) {
+  for (const id of ['fFolderParent', 'folderGrid', 'folderList', 'crumb', 'btnHome', 'folderSec']) {
     assert.ok(html.includes(`id="${id}"`), `#${id} がありません`);
   }
   assert.match(html, /id="fFolderParent"/);
