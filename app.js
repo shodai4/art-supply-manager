@@ -905,9 +905,12 @@ function renderProOffer() {
 
   const links = '<a href="terms.html" target="_blank" rel="noopener noreferrer">利用規約</a> ・ '
     + '<a href="privacy.html" target="_blank" rel="noopener noreferrer">プライバシー</a>';
-  const note = !NATIVE_APP
-    ? `${esc(WEB_PURCHASE_NOTE)} ・ ${links}`
-    : (owned ? `Proが有効です ・ ${links}` : `${esc(subscriptionNoticeText())} ${links}`);
+  // Webでも注記は出す（課金できないことと、月額の自動更新を短く）
+  const rows = [];
+  if (!NATIVE_APP) rows.push(esc(WEB_PURCHASE_NOTE));
+  rows.push(owned ? 'Proが有効です' : esc(subscriptionNoticeText()));
+  rows.push(links);
+  const note = rows.map((row) => `<span class="pro-line">${row}</span>`).join('');
   if ($('proNote')) $('proNote').innerHTML = note;
   if ($('proSheetNote')) $('proSheetNote').innerHTML = note;
 

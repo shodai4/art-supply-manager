@@ -347,6 +347,10 @@ test('プラン画面・設定に購入と復元の導線、規約リンク、�
   assert.match(html, /privacy\.html/);
   // 自動更新の注記は iap.js の文言を画面に出す（文言を2か所に散らさない）
   assert.match(app, /subscriptionNoticeText/);
+  // Webでも注記を出す（課金できないことと、月額の自動更新の両方）
+  const noteBlock = app.slice(app.indexOf('function renderProOffer'), app.indexOf('function openProSheet'));
+  assert.match(noteBlock, /WEB_PURCHASE_NOTE/);
+  assert.match(noteBlock, /subscriptionNoticeText/);
   assert.match(app, /planVisibility/);
   assert.match(app, /settingsWithPurchase/);
   assert.match(app, /from '\.\/iap\.js'/);
