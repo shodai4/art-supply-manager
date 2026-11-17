@@ -47,7 +47,8 @@ test('検索文字列は辞書の配列ごとに1回だけ作る（毎打鍵で�
   const first = dictionaryHaystack(dict);
   assert.equal(dictionaryHaystack(dict), first, '同じ配列では使い回す');
   assert.equal(first.length, dict.length);
-  assert.ok(first[0].includes('シルバー'));
+  // 辞書側はひらがな・小文字にそろえて持つ（ひらがな入力でも当たる）
+  assert.ok(first[0].includes('しるばー'));
   // 別の配列（合成後の辞書など）なら作り直す
   const other = [...DICT];
   assert.notEqual(dictionaryHaystack(other), first);

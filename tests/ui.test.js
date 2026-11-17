@@ -390,3 +390,47 @@ test('フォルダは長押しで「編集 / 移動 / 削除」のメニュー�
   assert.match(css, /-webkit-touch-callout:\s*none/);
   assert.match(css, /user-select:\s*none/);
 });
+
+test('検索タブは「メーカー」→（カテゴリ）→検索バー→検索結果の順に並ぶ', () => {
+  const html = read('index.html');
+  const search = html.slice(html.indexOf('id="view-search"'), html.indexOf('id="view-settings"'));
+
+  const maker = search.indexOf('id="dictMakerSel"');
+  const cat = search.indexOf('id="dictCatSec"');
+  const input = search.indexOf('id="dictQTab"');
+  const note = search.indexOf('id="dictTabNote"');
+  const results = search.indexOf('id="dictResults"');
+  assert.ok(maker > 0, 'メーカーの選択がありません');
+  assert.ok(cat > maker, 'カテゴリはメーカーの下（メーカーを選んだときに出る）');
+  assert.ok(input > cat, '検索バーはメーカーの下に置く');
+  assert.ok(note > input, '検索バーの案内文はバーのすぐ下');
+  assert.ok(results > note, '検索結果は検索バーの下');
+
+  // メーカーの見出しが検索バーのカードより上にある（塊ごと入れ替わっている）
+  const makerHead = search.indexOf('<span>メーカー</span>');
+  const searchCard = search.lastIndexOf('<div class="card">', input);
+  assert.ok(makerHead > 0 && makerHead < searchCard, 'メーカーの塊が検索バーより下にある');
+});
+
+test('設定タブは 表示→サンプル→JAN辞書→使い方→プラン→画材費→バックアップ の順に並ぶ', () => {
+  const html = read('index.html');
+  const settings = html.slice(html.indexOf('id="view-settings"'), html.indexOf('id="btnWipe"'));
+
+  const order = [
+    'id="themeCard"', // 表示
+    'id="sampleCard"', // サンプル
+    'id="dictInfo"', // JAN辞書
+    'id="guideCard"', // 使い方
+    'id="proCard"', // プラン
+    'id="costCard"', // 画材費
+    'id="btnExport"', // バックアップ
+  ].map((id) => ({ id, at: settings.indexOf(id) }));
+  for (const { id, at } of order) assert.ok(at > 0, `${id} がありません`);
+  for (let i = 1; i < order.length; i += 1) {
+    assert.ok(order[i].at > order[i - 1].at, `${order[i - 1].id} より ${order[i].id} を下に置く`);
+  }
+  // カードの中身（見出し）も一緒に動いている
+  for (const label of ['表示', 'サンプル', '使い方', 'プラン', '画材費', 'バックアップ']) {
+    assert.ok(settings.includes(label), `${label} の見出しがありません`);
+  }
+});

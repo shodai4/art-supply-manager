@@ -18,6 +18,7 @@ import {
 } from './pro.js';
 import {
   sampleItems, mergeSampleItems, shouldSeedSamples, readSampleSeeded, writeSampleSeeded,
+  hasSampleItems, removeSampleItems,
   backfillSampleImages,
 } from './samples.js';
 import { JAN_DICTIONARY } from './jan-database.js';
@@ -320,6 +321,26 @@ function seedSamplesOnFirstRun() {
   writeSampleSeeded(safeStorage(), true);
   save();
   toast('サンプルを入れました（設定からも入れられます）');
+}
+
+/** 設定の「サンプルを消す」: サンプルの画材（sample-01〜08）だけを取り除く（自分の画材は残す） */
+function removeSamples() {
+  const { state: next, removed } = removeSampleItems(state);
+  if (!removed) { toast('サンプルは入っていません'); return; }
+  state = next;
+  save();
+  render();
+  toast(`サンプルを${removed}点消しました`);
+}
+
+/** 設定の「サンプル」カード: 入っていれば「サンプルを消す」、無ければ「サンプルを入れる」 */
+function renderSampleCard() {
+  const btn = $('btnAddSamples');
+  if (!btn) return;
+  const has = hasSampleItems(state);
+  btn.textContent = has ? 'サンプルを消す' : 'サンプルを入れる';
+  btn.dataset.sampleMode = has ? 'remove' : 'add';
+  btn.setAttribute('aria-label', has ? 'サンプルを消す（自分で登録した画材はそのまま残ります）' : 'サンプルを入れる');
 }
 
 /* ---------------- storage ---------------- */
@@ -813,6 +834,7 @@ function renderSettings() {
   $('fRakuten') && ($('fRakuten').value = String(state.settings.rakutenAppId || ''));
   renderPlan();
   renderCost();
+  renderSampleCard();
   renderDictionaryState();
 }
 
@@ -1554,8 +1576,14 @@ $('btnDeleteItem').addEventListener('click', async () => {
 
 $('btnAdd').addEventListener('click', () => openItemSheet(null));
 
-// 空の一覧・設定の「サンプルを入れる」（ボタンは描き直されるので文書全体で受ける）
+// 空の一覧の「サンプルを入れる」・設定の「サンプルを入れる／消す」（ボタンは描き直されるので文書全体で受ける）
 document.addEventListener('click', (e) => {
+  const toggle = e.target.closest('[data-sample-toggle]');
+  if (toggle) {
+    if (hasSampleItems(state)) removeSamples();
+    else addSamples();
+    return;
+  }
   if (e.target.closest('[data-add-samples]')) addSamples();
 });
 

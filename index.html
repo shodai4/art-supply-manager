@@ -15,7 +15,7 @@ try {
 } catch (e) { /* 保存が読めないときはライト */ }
 </script>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="styles.css?v=1.12.1">
+<link rel="stylesheet" href="styles.css?v=1.12.2">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 </head>
@@ -183,19 +183,12 @@ try {
 
   <!-- 検索（内蔵JAN辞書から探して、そのまま自分の在庫へ追加） -->
   <section id="view-search" hidden>
-    <div class="card">
-      <div class="dict-search">
-        <input id="dictQTab" type="search" placeholder="商品名・メーカー・JAN" autocomplete="off" inputmode="search" enterkeyhint="search" aria-label="内蔵辞書を検索">
-        <button id="dictQTabClear" aria-label="検索をやめる"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button>
-      </div>
-      <p class="hint" id="dictTabNote" style="margin:8px 0 0"></p>
-    </div>
     <div class="fsec">
       <div class="sechead">
         <svg class="ic" aria-hidden="true"><use href="#i-folder"/></svg>
         <span>メーカー</span>
       </div>
-      <div class="card" style="margin-top:0">
+      <div class="card">
         <select id="dictMakerSel" aria-label="メーカーで絞る"></select>
       </div>
     </div>
@@ -205,6 +198,13 @@ try {
         <span>カテゴリ</span>
       </div>
       <div class="chipwrap" id="dictCatChips"></div>
+    </div>
+    <div class="card">
+      <div class="dict-search">
+        <input id="dictQTab" type="search" placeholder="商品名・メーカー・JAN" autocomplete="off" inputmode="search" enterkeyhint="search" aria-label="内蔵辞書を検索">
+        <button id="dictQTabClear" aria-label="検索をやめる"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button>
+      </div>
+      <p class="hint" id="dictTabNote" style="margin:8px 0 0"></p>
     </div>
     <div class="fsec">
       <div class="sechead">
@@ -221,6 +221,21 @@ try {
     <div class="card" id="themeCard">
       <h2 class="card-t">表示</h2>
       <div class="chipwrap" id="themeChips"></div>
+    </div>
+    <div class="card" id="sampleCard">
+      <h2 class="card-t">サンプル</h2>
+      <div class="actions">
+        <button class="btn" id="btnAddSamples" data-sample-toggle>サンプルを入れる</button>
+      </div>
+    </div>
+    <div class="card">
+      <p class="dict-one" id="dictInfo">JAN辞書：—</p>
+    </div>
+    <div class="card" id="guideCard">
+      <h2 class="card-t">使い方</h2>
+      <div class="actions">
+        <button class="btn" id="btnGuide">チュートリアルを見る</button>
+      </div>
     </div>
     <div class="card" id="proCard">
       <h2 class="card-t">プラン</h2>
@@ -264,21 +279,6 @@ try {
         <button class="btn" id="btnImport">復元</button>
       </div>
       <input type="file" id="fileImport" accept="application/json,.json" class="sr">
-    </div>
-    <div class="card" id="sampleCard">
-      <h2 class="card-t">お試し</h2>
-      <div class="actions">
-        <button class="btn" id="btnAddSamples" data-add-samples>サンプルを入れる</button>
-      </div>
-    </div>
-    <div class="card">
-      <p class="dict-one" id="dictInfo">JAN辞書：—</p>
-    </div>
-    <div class="card" id="guideCard">
-      <h2 class="card-t">使い方</h2>
-      <div class="actions">
-        <button class="btn" id="btnGuide">チュートリアルを見る</button>
-      </div>
     </div>
     <div class="card">
       <button class="btn danger" id="btnWipe" style="width:100%">全データを削除</button>
@@ -573,6 +573,6 @@ try {
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<script type="module" src="app.js?v=1.12.1"></script>
+<script type="module" src="app.js?v=1.12.2"></script>
 </body>
 </html>

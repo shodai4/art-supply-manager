@@ -329,14 +329,53 @@ export function computeShoppingList(items) {
     });
 }
 
+/* ---------------- 検索の下ごしらえ（ひらがな・カタカナ・全角半角・大文字小文字のゆらぎ吸収） ---------------- */
+
+/**
+ * 検索用の文字列にそろえる。
+ * NFKC（全角英数→半角・半角カナ→全角カナ）→ 小文字 → カタカナをひらがなへ。
+ * 「ホルベイン」「ほるべいん」「ﾎﾙﾍﾞｲﾝ」「ＨＯＬＢＥＩＮ」が同じ並びになる。
+ */
+export function normalizeSearchText(value) {
+  return String(value ?? '')
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[\u30a1-\u30f6]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0x60));
+}
+
+/**
+ * 検索語をスペース（半角・全角）で区切って正規化する。
+ * 返した語がすべて含まれるものだけをヒットさせる（AND検索）。
+ */
+export function searchTokens(query) {
+  return normalizeSearchText(query).split(/\s+/).filter(Boolean);
+}
+
+/** 数字だけの語（JAN の部分一致に使う）か */
+function isDigitalToken(token) {
+  return /^\d{2,13}$/.test(token);
+}
+
+/**
+ * 正規化済みの語がすべて含まれるか（AND検索）。
+ * 数字の語は、JAN の一部としても探す（従来どおりの部分一致）。
+ */
+function matchesAllTokens(tokens, hay, jan = '') {
+  for (const t of tokens) {
+    if (hay.includes(t)) continue;
+    if (isDigitalToken(t) && jan.includes(t)) continue;
+    return false;
+  }
+  return true;
+}
+
 /**
  * 検索・絞り込み。
  * folderIds（配列）を渡すと、その範囲（親フォルダ＋配下など）で絞る。
  * folderId だけのときは、そのフォルダの画材だけ（従来どおり）。
  */
 export function filterItems(items, filter = {}) {
-  const q = String(filter.query || '').trim().toLowerCase();
-  const qn = normalizeJAN(filter.query || '');
+  const tokens = searchTokens(filter.query || '');
   const scope = Array.isArray(filter.folderIds) ? new Set(filter.folderIds) : null;
   return items.filter((it) => {
     if (scope) { if (!scope.has(it.folderId)) return false; }
@@ -349,11 +388,10 @@ export function filterItems(items, filter = {}) {
     }
     if (filter.shortageOnly && !(it.status === 'low' || it.status === 'empty' || Number(it.qty) === 0)) return false;
     if (filter.favoriteOnly && it.favorite !== true) return false;
-    if (!q) return true;
-    const hay = [it.name, it.maker, it.brand, it.colorName, it.colorCode, it.size, it.jan, it.shop, it.memo]
-      .join(' ')
-      .toLowerCase();
-    return hay.includes(q) || (qn.length > 0 && it.jan.includes(qn));
+    if (!tokens.length) return true;
+    const hay = normalizeSearchText([it.name, it.maker, it.brand, it.colorName, it.colorCode, it.size, it.jan, it.shop, it.memo]
+      .join(' '));
+    return matchesAllTokens(tokens, hay, normalizeJAN(it.jan));
   });
 }
 
@@ -401,29 +439,33 @@ const DICT_HAY_CACHE = new WeakMap();
 
 /**
  * 検索用の文字列（商品名・色名・メーカー・ブランド・サイズ・品番・JAN）。
- * 辞書の配列が変わったときだけ作り直す（毎打鍵で数万件を連結しない）。
+ * 辞書の配列が変わったときだけ作り直す（毎打鍵で数万件を連結・正規化しない）。
+ * 正規化（ひらがな・カタカナ等の統一）もこの1回だけ。
  */
 export function dictionaryHaystack(dict = []) {
   if (!Array.isArray(dict)) return [];
   const cached = DICT_HAY_CACHE.get(dict);
   if (cached && cached.length === dict.length) return cached;
-  const hay = dict.map((d) => `${d.name || ''} ${d.colorName || ''} ${d.maker || ''} ${d.brand || ''} ${d.size || ''} ${d.code || ''} ${d.jan || ''}`.toLowerCase());
+  const hay = dict.map((d) => normalizeSearchText(`${d.name || ''} ${d.colorName || ''} ${d.maker || ''} ${d.brand || ''} ${d.size || ''} ${d.code || ''} ${d.jan || ''}`));
   DICT_HAY_CACHE.set(dict, hay);
   return hay;
 }
 
 /**
  * 辞書を手動で検索する。描画する分だけ返し、全体の件数は total で返す。
+ * スペース（半角・全角）で区切った語はすべて含むものだけ（AND検索）。
+ * ひらがな・カタカナ、全角・半角、大文字・小文字のゆらぎは吸収する。
  * 数字だけの入力はJANの部分一致としても探す（4桁以上）。
  */
 export function searchDictionary(dict = [], query = '', { limit = 40, hay, maker = '', category = '' } = {}) {
-  const q = String(query ?? '').trim().toLowerCase();
+  const tokens = searchTokens(query);
   const qJan = normalizeJAN(query ?? '');
-  const janQuery = /^\d{4,13}$/.test(qJan);
+  const janQuery = tokens.length === 1 && /^\d{4,13}$/.test(qJan) ? qJan : '';
   const wantMaker = String(maker ?? '').trim();
   const wantCategory = String(category ?? '').trim();
   const stack = Array.isArray(hay) && hay.length === dict.length ? hay : dictionaryHaystack(dict);
   const max = Math.max(0, Math.trunc(Number(limit) || 0));
+  const onlyOne = tokens.length === 1 ? tokens[0] : '';
   const items = [];
   let total = 0;
   for (let i = 0; i < dict.length; i += 1) {
@@ -431,7 +473,10 @@ export function searchDictionary(dict = [], query = '', { limit = 40, hay, maker
     if (!d) continue;
     if (wantMaker && String(d.maker || '') !== wantMaker) continue;
     if (wantCategory && String(d.category || 'other') !== wantCategory) continue;
-    const hit = !q || stack[i].includes(q) || (janQuery && String(d.jan || '').includes(qJan));
+    let hit;
+    if (!tokens.length) hit = true;
+    else if (onlyOne) hit = stack[i].includes(onlyOne) || (janQuery !== '' && String(d.jan || '').includes(janQuery));
+    else hit = matchesAllTokens(tokens, stack[i], normalizeJAN(d.jan || ''));
     if (!hit) continue;
     total += 1;
     if (items.length < max) items.push(d);

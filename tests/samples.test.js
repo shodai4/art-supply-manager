@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import {
   SAMPLE_SEEDS, SAMPLE_ID_PREFIX, SAMPLE_FLAG_KEY, sampleItems, mergeSampleItems,
   shouldSeedSamples, readSampleSeeded, writeSampleSeeded,
+  isSampleItemId, presentSampleIds, hasSampleItems, removeSampleItems,
 } from '../samples.js';
 import {
   blankState, createItem, isValidJAN, lookupJAN, isEmptyStock, computeShoppingList,
@@ -188,9 +189,13 @@ test('画面の導線（空の一覧・設定）と配信ファイルへの登�
   const workflow = read('.github/workflows/ios-build.yml');
   const pkg = JSON.parse(read('package.json'));
 
-  // 設定の「お試し」から入れられる
+  // 設定の「サンプル」から入れる・消すができる（入っていれば「消す」に切り替わる）
   assert.match(html, /id="sampleCard"/);
-  assert.match(html, /id="btnAddSamples" data-add-samples>サンプルを入れる</);
+  assert.match(html, /<h2 class="card-t">サンプル<\/h2>/);
+  assert.match(html, /id="btnAddSamples" data-sample-toggle>サンプルを入れる</);
+  assert.match(app, /function renderSampleCard\(\)[\s\S]{0,500}'サンプルを消す'/);
+  assert.match(app, /function removeSamples\(\)[\s\S]{0,300}removeSampleItems\(state\)/);
+  assert.match(app, /\[data-sample-toggle\][\s\S]{0,200}hasSampleItems\(state\)[\s\S]{0,120}removeSamples\(\)[\s\S]{0,60}addSamples\(\)/);
   // 空の一覧にも同じボタンが出る（文字は短く）
   assert.match(app, /data-add-samples>サンプルを入れる</);
   assert.match(app, /seedSamplesOnFirstRun\(\)/);
@@ -203,12 +208,104 @@ test('画面の導線（空の一覧・設定）と配信ファイルへの登�
 
   // キャッシュ・iOSビルド・Service Worker に新しいファイルが入っている
   assert.match(sw, /'\.\/samples\.js'/);
-  assert.match(sw, /art-supply-manager-v31/);
+  assert.match(sw, /art-supply-manager-v32/);
   assert.match(build, /'samples\.js'/);
   // CI（iOSビルド）は app.js / index.html の変更で走る（samples.js は build.mjs 経由で www/ へ入る）
   assert.match(workflow, /- 'app\.js'/);
   assert.match(workflow, /- 'scripts\/\*\*'/);
   // キャッシュバスティングは package.json の版と揃える
   assert.match(html, new RegExp(`app\\.js\\?v=${pkg.version.replace(/\./g, '\\.')}`));
-  assert.equal(pkg.version, '1.12.1');
+  assert.equal(pkg.version, '1.12.2');
+});
+
+/* ---------------- 設定の「サンプルを消す」（入れ直しもできる） ---------------- */
+
+test('サンプルのIDかどうかの判定（自分で登録した画材は対象外）', () => {
+  for (const id of ['sample-01', 'sample-02', 'sample-08']) assert.equal(isSampleItemId(id), true, id);
+  assert.equal(isSampleItemId('sample-09'), false, 'サンプルに無いIDは消さない');
+  assert.equal(isSampleItemId('sample-'), false);
+  assert.equal(isSampleItemId('i123abc'), false, '自分で登録した画材');
+  assert.equal(isSampleItemId(''), false);
+  assert.equal(isSampleItemId(undefined), false);
+});
+
+test('サンプルが入っているかを判定できる（入っていればボタンは「消す」）', () => {
+  const empty = blankState();
+  assert.equal(hasSampleItems(empty), false);
+  assert.deepEqual(presentSampleIds(empty), []);
+
+  const seeded = mergeSampleItems(empty, sampleItems(TODAY)).state;
+  assert.equal(hasSampleItems(seeded), true);
+  assert.equal(presentSampleIds(seeded).length, 8);
+  // 在庫が空の状態（全部消した）でも判定は落ちない
+  assert.equal(hasSampleItems({ items: [] }), false);
+  assert.equal(hasSampleItems({}), false);
+  assert.deepEqual(presentSampleIds({ items: null }), []);
+});
+
+test('「サンプルを消す」はサンプル8点だけを消し、自分で登録した画材とフォルダは残す', () => {
+  const base = mergeSampleItems(blankState(), sampleItems(TODAY)).state;
+  const mine = createItem({ name: '自分のゲッソ', maker: '自分', folderId: 'atelier' });
+  const alsoMine = createItem({ name: '自分の筆', maker: '自分', folderId: 'stock' });
+  const state = { ...base, items: [mine, ...base.items, alsoMine] };
+
+  const { state: next, removed } = removeSampleItems(state);
+  assert.equal(removed, 8);
+  assert.deepEqual(next.items.map((it) => it.id).sort(), [mine.id, alsoMine.id].sort());
+  assert.ok(next.items.some((it) => it.name === '自分のゲッソ'), '自分の画材が消えた');
+  // フォルダ（サンプルが入っていた場所）は片付けない
+  assert.equal(next.folders.length, state.folders.length);
+  assert.deepEqual(next.folders.map((f) => f.id), state.folders.map((f) => f.id));
+  assert.equal(hasSampleItems(next), false);
+  // 設定など、ほかの項目はそのまま
+  assert.equal(next.settings, state.settings);
+});
+
+test('サンプルのフォルダに自分の画材があっても、フォルダごと消さない', () => {
+  const base = mergeSampleItems(blankState(), sampleItems(TODAY)).state;
+  // sample-01〜08 が入っているフォルダ（atelier 等）に、自分の画材を1点ずつ足す
+  const mine = SAMPLE_SEEDS.map((seed, i) => createItem({ name: `自分の画材${i}`, folderId: seed.folderId }));
+  const state = { ...base, items: [...base.items, ...mine] };
+
+  const { state: next, removed } = removeSampleItems(state);
+  assert.equal(removed, 8);
+  assert.equal(next.items.length, mine.length);
+  for (const folder of new Set(SAMPLE_SEEDS.map((s) => s.folderId))) {
+    assert.ok(next.folders.some((f) => f.id === folder), `フォルダ ${folder} が消えた`);
+    assert.ok(next.items.some((it) => it.folderId === folder), `フォルダ ${folder} の中身が消えた`);
+  }
+});
+
+test('入れる→消す→また入れる、を何度でも繰り返せる（二重に入らない）', () => {
+  let state = blankState();
+  for (let round = 0; round < 3; round += 1) {
+    const added = mergeSampleItems(state, sampleItems(TODAY));
+    assert.equal(added.added, 8, `${round + 1}回目に入れられない`);
+    state = added.state;
+    assert.equal(state.items.length, 8);
+    assert.equal(new Set(state.items.map((it) => it.id)).size, 8, '同じIDが二重に入った');
+
+    const removed = removeSampleItems(state);
+    assert.equal(removed.removed, 8);
+    state = removed.state;
+    assert.equal(state.items.length, 0);
+  }
+  // 消したあとは「入れた印」が残るので、勝手に戻らない（ボタンで入れる）
+  assert.equal(shouldSeedSamples({ items: state.items, seeded: true }), false);
+});
+
+test('サンプルを消すときに、サンプルを自分用に書き換えていてもIDで判定して消す（区別できる）', () => {
+  const base = mergeSampleItems(blankState(), sampleItems(TODAY)).state;
+  const edited = { ...base.items[0], name: '書き換えた名前', qty: 9 };
+  const state = { ...base, items: [edited, ...base.items.slice(1)] };
+  const { state: next, removed } = removeSampleItems(state);
+  assert.equal(removed, 8, 'IDがサンプルなら消す（ユーザーが書き換えてもサンプル扱い）');
+  assert.equal(next.items.length, 0);
+});
+
+test('サンプルが入っていないときの「消す」は何も変えない', () => {
+  const state = blankState();
+  const out = removeSampleItems(state);
+  assert.equal(out.removed, 0);
+  assert.equal(out.state, state, '状態を作り直さない');
 });

@@ -253,6 +253,38 @@ export function shouldSeedSamples({ items = [], seeded = false } = {}) {
   return !Array.isArray(items) || items.length === 0;
 }
 
+/** サンプルの画材IDか（sample-01〜08。自分で登録した画材は対象外） */
+export function isSampleItemId(id) {
+  const key = String(id ?? '');
+  return SAMPLE_SEEDS.some((seed) => seed.id === key);
+}
+
+/** いま在庫に入っているサンプルのID（SAMPLE_SEEDS の順・重複なし） */
+export function presentSampleIds(state = {}) {
+  const ids = new Set((Array.isArray(state?.items) ? state.items : []).map((it) => String(it?.id ?? '')));
+  return SAMPLE_SEEDS.map((seed) => seed.id).filter((id) => ids.has(id));
+}
+
+/** サンプルが入っているか（設定のボタンを「入れる／消す」で切り替える判定） */
+export function hasSampleItems(state = {}) {
+  return presentSampleIds(state).length > 0;
+}
+
+/**
+ * サンプルの画材（sample-01〜08）だけを取り除く。
+ * 自分で登録した画材は絶対に消さない。サンプルは最初からあるフォルダ（アトリエ等）に入るので、
+ * フォルダ自体は片付けない（ユーザーの置き場所・空のフォルダの使い勝手を変えない）。
+ * 何度でも入れ直せるよう、取り除いても「入れた印」は消さない（勝手に戻さない）。
+ * @returns {{state: object, removed: number}}
+ */
+export function removeSampleItems(state = {}) {
+  const items = Array.isArray(state?.items) ? state.items : [];
+  const next = items.filter((it) => !isSampleItemId(it?.id));
+  const removed = items.length - next.length;
+  if (!removed) return { state, removed: 0 };
+  return { state: { ...state, items: next }, removed };
+}
+
 /** 「サンプルを入れた」印を読む（localStorage が無い環境でも落ちない） */
 export function readSampleSeeded(storage) {
   try {

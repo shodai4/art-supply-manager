@@ -73,8 +73,9 @@ test('検索・絞り込み（キーワード/メーカー/カテゴリ/残量/�
     createItem({ name: 'ジェッソ', maker: 'ホルベイン', category: 'medium', folderId: 'stock', status: 'empty', jan: '4900669001997' }),
   ];
   assert.equal(filterItems(items, { query: 'ホルベイン' }).length, 2);
-  assert.equal(filterItems(items, { query: 'げっそ' }).length, 0); // ひらがなは完全一致しない
+  assert.equal(filterItems(items, { query: 'じぇっそ' }).length, 1); // ひらがなでもカタカナにヒットする
   assert.equal(filterItems(items, { query: 'ジェッソ' }).length, 1);
+  assert.equal(filterItems(items, { query: 'ホルベイン ジェッソ' }).length, 1); // スペース区切りはAND
   assert.equal(filterItems(items, { folderId: 'home' }).length, 1);
   assert.equal(filterItems(items, { category: 'oil' }).length, 1);
   assert.equal(filterItems(items, { shortageOnly: true }).length, 2);
