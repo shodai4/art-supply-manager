@@ -210,5 +210,5 @@ test('画面の導線（空の一覧・設定）と配信ファイルへの登�
   assert.match(workflow, /- 'scripts\/\*\*'/);
   // キャッシュバスティングは package.json の版と揃える
   assert.match(html, new RegExp(`app\\.js\\?v=${pkg.version.replace(/\./g, '\\.')}`));
-  assert.equal(pkg.version, '1.12.0');
+  assert.equal(pkg.version, '1.12.1');
 });
