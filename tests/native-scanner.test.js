@@ -135,6 +135,10 @@ test('カメラ画面は WebView の画面から直接出し、出なければ�
   assert.match(swift, /private func rejectActive\(_ message: String, code: String = "cancelled"\)/);
   // 閉じるボタン（利用者のキャンセル）だけは静かに閉じる
   assert.match(swift, /self\.rejectActive\("読み取りをやめました", code: "cancelled"\)/);
+  // カメラは全画面で出す（pageSheet のスワイプで閉じられて JS が待ち続けるのを防ぐ）
+  assert.match(swift, /controller\.modalPresentationStyle = \.fullScreen/);
+  // 閉じるボタンを通らずに閉じられたときも viewDidDisappear から一度だけ知らせる
+  assert.match(swift, /override func viewDidDisappear\(_ animated: Bool\) \{[\s\S]{0,600}didNotifyClose = true\n\s*onClose\?\(\)/);
   // 閉じるときはカメラ画面そのものを閉じる
   assert.match(swift, /vc\.dismiss\(animated: false, completion: nil\)/);
 });

@@ -89,6 +89,8 @@ public class ArtBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin {
         let controller = ArtBarcodeScannerController()
         controller.requestedFormats = formats
         controller.cameraPosition = (camera == "user") ? .front : .back
+        // カメラは全画面で出す（pageSheet だとスワイプで閉じられ、閉じたことが JS に伝わらない）
+        controller.modalPresentationStyle = .fullScreen
         controller.onCode = { [weak self] value, format in
             guard let self = self, let pending = self.activeCall else { return }
             self.activeCall = nil
@@ -178,6 +180,8 @@ final class ArtBarcodeScannerController: UIViewController, AVCaptureMetadataOutp
     private var isConfigured = false
     private var lastValue = ""
     private var lastAt = Date.distantPast
+    /// 閉じたことを JS へ一度だけ伝えたか（閉じるボタン・スワイプ・親の dismiss のどれでも）
+    private var didNotifyClose = false
 
     private let statusLabel = UILabel()
     private let countLabel = UILabel()
@@ -204,6 +208,11 @@ final class ArtBarcodeScannerController: UIViewController, AVCaptureMetadataOutp
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         stopSession()
+        // 閉じるボタンを通らずに閉じられた（スワイプ・親の dismiss）ときも、JS を待たせない
+        let closed = isBeingDismissed || presentingViewController == nil || navigationController?.isBeingDismissed == true
+        guard closed, !didNotifyClose else { return }
+        didNotifyClose = true
+        onClose?()
     }
 
     override func viewDidLayoutSubviews() {
@@ -431,9 +440,7 @@ final class ArtBarcodeScannerController: UIViewController, AVCaptureMetadataOutp
 
     @objc private func closeTapped() {
         stopSession()
-        dismiss(animated: false) { [weak self] in
-            self?.onClose?()
-        }
+        dismiss(animated: false, completion: nil) // 閉じたことは viewDidDisappear から伝える
     }
 
     @objc private func flipTapped() {
