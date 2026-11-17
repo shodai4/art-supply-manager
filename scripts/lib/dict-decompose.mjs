@@ -493,6 +493,7 @@ export function decompose(entry, ctx) {
   const specText = [...specsFromBrackets, ...notes.specs].filter((s) => s && [...s].length > 1).join(' ').trim();
   if (specText && series) series = `${series} ${specText}`.trim();
   series = series
+    .replace(/\s*-\s*(?=厚|幅口|並厚|特厚)(?=\S)/g, ' ') // 「バックボード - 厚 10枚組」の余分な「-」
     .replace(/\s*-\s*(厚|幅|径|サイズ|用|付|入|タイプ|セット|込)$/g, '')
     .replace(/\s{2,}/g, ' ').trim();
 
