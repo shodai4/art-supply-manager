@@ -27,6 +27,7 @@ import {
   createAscClient,
   describeApiError,
   pickBuild,
+  fetchBuildList,
   fetchBuildByNumber,
   waitForBuildValid,
   ensureEncryptionCompliance,
@@ -302,6 +303,42 @@ test('waitForBuildValid: 15分待っても VALID にならなければタイム�
   );
   // 20秒おきに 4 回程度（0秒・20秒・40秒・60秒の手前で打ち切り）
   assert.ok(calls.length >= 3 && calls.length <= 5, `呼び出し回数: ${calls.length}`);
+});
+
+test('waitForBuildValid: タイムアウト時は直近のビルド番号を添えて知らせる', async () => {
+  const { fetchImpl } = makeFetch([
+    {
+      match: `GET /v1/apps/${APP_ID}/builds`,
+      respond: { data: [buildPayload({ id: 'B', version: '77', state: 'PROCESSING' })] },
+    },
+  ]);
+  const client = createAscClient({ jwtFactory: 'token', fetchImpl, sleep: async () => {}, maxRetries: 0 });
+  let clock = 1_700_000_000_000;
+
+  await assert.rejects(
+    () =>
+      waitForBuildValid(client, {
+        appId: APP_ID,
+        buildNumber: '42',
+        timeoutMs: 40_000,
+        intervalMs: 20_000,
+        sleep: async () => {
+          clock += 20_000;
+        },
+        now: () => clock,
+      }),
+    /直近のビルド: 77\(PROCESSING\)/,
+  );
+});
+
+test('fetchBuildList: アプリ配下のビルド一覧をそのまま返す', async () => {
+  const { fetchImpl, calls } = makeFetch([
+    { match: `GET /v1/apps/${APP_ID}/builds`, respond: { data: [buildPayload({ id: 'A' }), buildPayload({ id: 'B', version: '43' })] } },
+  ]);
+  const client = createAscClient({ jwtFactory: 'token', fetchImpl, sleep: async () => {}, maxRetries: 0 });
+  const builds = await fetchBuildList(client, { appId: APP_ID });
+  assert.equal(builds.length, 2);
+  assert.equal(calls.length, 1);
 });
 
 /* ------------------------------------------------------------------ *
