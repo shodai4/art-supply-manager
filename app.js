@@ -12,7 +12,7 @@ import {
   FAVORITE_FOLDER_ID, FAVORITE_FOLDER, isFavoriteFolder, favoriteItems, countFavorites,
   toggleSelection, isSelected, selectAllIds, pruneSelection, searchDictionary, dictionaryHaystack,
   isMakerGroupOn, withSortMode,
-  groupByFolder,
+  groupByFolder, findItemByJanInFolder, itemsByJanInOtherFolders,
 } from './core.js';
 import {
   FREE_ITEM_LIMIT, FREE_FOLDER_LIMIT, PRO_BENEFITS, isPro, itemQuota, folderQuota,
@@ -39,9 +39,10 @@ import {
 import {
   chooseScanStrategy, isNativeShell, nativeScannerPlugin, loadVendorScanner, VENDOR_SCANNER_PATH,
   DEFAULT_FACING, toggleFacing, facingLabel, facingConstraints, scannerFacingConfig, canChooseFacing,
+  nativeScanOptions, vendorScannerOptions, vendorStartConfig,
 } from './scanner.js';
 import {
-  createScanSession, resetScanSession, checkCooldown, markScanned, applyScan,
+  createScanSession, resetScanSession, checkCooldown, markScanned, applyScan, scanFolderId,
   scanLogCount, describeScanLog,
 } from './scan-flow.js';
 import { shouldOpenExternally, openInExternalBrowser } from './links.js';
@@ -1361,7 +1362,7 @@ function openItemSheet(id, preset = {}) {
   if (!it && !canAddItem(state, state.settings).ok) { openProSheet('item'); return; }
   ui.editingId = it ? it.id : null;
   $('sheetItemTitle').firstChild.textContent = it ? '画材を編集' : '画材を追加';
-  const data = it || createItem({ folderId: ui.folderId === 'all' ? state.folders[0].id : ui.folderId, ...preset });
+  const data = it || createItem({ folderId: scanFolderId(state, ui.folderId), ...preset });
   $('fName').value = data.name || '';
   $('fMaker').value = data.maker || '';
   $('fCategoryInput').innerHTML = CATEGORIES.map((c) => `<option value="${c.id}">${c.label}</option>`).join('');
@@ -2099,6 +2100,14 @@ function showScanStatus(msg, tone = '') {
   el.hidden = false;
   el.className = `scan-status${tone ? ` ${tone}` : ''}`;
   el.textContent = msg;
+  // ネイティブ読取中はカメラ画面がアプリの上に出ているので、同じ文をカメラ側にも渡す
+  const native = scannerLive ? nativeScannerPlugin(window) : null;
+  if (native?.setStatus) {
+    try {
+      const sent = native.setStatus({ message: msg, count: scanLogCount(scanLog) });
+      if (sent && typeof sent.catch === 'function') sent.catch(() => {});
+    } catch (e) { /* カメラが閉じているときの失敗は無視 */ }
+  }
 }
 
 function hideScanStatus() {
@@ -2154,24 +2163,28 @@ async function startScanner() {
 
   // 1) Capacitor のネイティブスキャナ（iOSアプリで最優先）
   if (strategy === 'native') {
-    // ネイティブのスキャナは1回で閉じるので、連続モードでは読み取るたびに開き直す
+    // ネイティブのスキャナはカメラ画面を開いたまま、読み取るたびに1本を返す。
+    // 連続モードでは同じ画面で待ち受け直すので、読み取るたびに開き直さない（速い）。
     const runNative = async () => {
       scannerLive = true;
       while (scannerLive) {
         let value = '';
         try {
-          const { barcodes } = await native.startScan({ formats: ['EAN_13', 'EAN_8', 'UPC_A', 'CODE_128'] });
+          const { barcodes } = await native.startScan(nativeScanOptions(scanFacing));
           value = barcodes?.[0]?.rawValue || '';
         } catch (e) {
-          console.warn('ネイティブスキャナ失敗', e);
+          const cancelled = e?.code === 'cancelled' || e?.code === 'stopped';
+          console.warn('ネイティブスキャナ終了', e);
           scannerLive = false;
-          // 連続モードの途中で閉じた（キャンセル）ときは、エラー扱いにしない
-          if (!scanContinuous || scanLogCount(scanLog) === 0) showScanMsg('カメラを起動できません。手入力をどうぞ');
+          // 自分で閉じるボタンを押した（キャンセル）ときは、エラー扱いにしない
+          if (!cancelled && (!scanContinuous || scanLogCount(scanLog) === 0)) showScanMsg('カメラを起動できません。手入力をどうぞ');
           return;
         }
         if (!value) { scannerLive = false; showScanMsg('読み取れませんでした'); return; }
         onScan(value);
-        if (!scanContinuous) { scannerLive = false; return; }
+        if (scanContinuous) continue; // 連続モードは開いたまま次の1本を待つ
+        if (scannerLive) continue;    // 受け付けなかった（13桁でない等）→ 開いたカメラで待ち受け直す
+        return;
       }
     };
     runNative();
@@ -2222,11 +2235,11 @@ async function startScanner() {
     const holder = document.createElement('div');
     holder.id = 'qrReader';
     $('scanBox').appendChild(holder);
-    const inst = new Html5Qrcode('qrReader', { verbose: false });
+    const inst = new Html5Qrcode('qrReader', vendorScannerOptions(window));
     scanner = inst;
     // qrbox（ライブラリが描く枠）は使わない。映像を切り取らずに枠の中央へ収めるため、
     // ガイド枠は自前の .reticle（.scan-box の中央）で出す。
-    await inst.start(scannerFacingConfig(scanFacing), { fps: 10 },
+    await inst.start(scannerFacingConfig(scanFacing), vendorStartConfig(),
       (text) => { onScan(text); }, () => {});
     if (token !== scanStartToken) return;
     scannerLive = true;
@@ -2255,6 +2268,14 @@ async function startScanner() {
 /** 同梱スキャナの停止を待つ上限（ミリ秒）。止まらない版でも切り替えを詰まらせない */
 function stopScanner() {
   scannerLive = false;
+  // ネイティブ読取中ならカメラ画面も閉じる（開いていないときは何もしない）
+  const nativeNow = nativeScannerPlugin(window);
+  if (nativeNow?.stopScan) {
+    try {
+      const closing = nativeNow.stopScan();
+      if (closing && typeof closing.catch === 'function') closing.catch(() => {});
+    } catch (e) { console.warn('ネイティブカメラの停止に失敗', e); }
+  }
   if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(rafId);
   rafId = 0;
   const video = $('scanVideo');
@@ -2350,11 +2371,20 @@ $('btnManualLookup').addEventListener('click', () => {
   stopScanner(); closeSheet('sheetScan'); applyJAN(jan);
 });
 
-/** JAN からフォームを開く（辞書一致なら自動補完、未収録なら新規登録へ） */
+/**
+ * JAN からフォームを開く（辞書一致なら自動補完、未収録なら新規登録へ）。
+ *
+ * 同じJANでも保管場所（フォルダ）が違えば別の在庫として扱う：
+ * - いまのフォルダに同じJANがあれば、その1点を＋1（編集したいときは一覧から）
+ * - 別のフォルダにしか無いときは、そちらは触らず、いまのフォルダへ新しく登録する
+ */
 function applyJAN(jan) {
   const hit = lookupJAN(jan, mergedDict);
   const maker = detectMaker(jan);
-  const existing = state.items.find((i) => i.jan === jan);
+  const targetFolder = scanFolderId(state, ui.folderId);
+  const existing = findItemByJanInFolder(state.items, jan, targetFolder);
+  const others = itemsByJanInOtherFolders(state.items, jan, targetFolder).length;
+  const elsewhereNote = others ? `（ほかのフォルダに${others}点・ここに新しく登録）` : '';
   if (existing) {
     toast(`登録済み: ${existing.name}（在庫を＋しました）`);
     state = upsertItem(state, adjustStock(recordPurchase(existing, 1), 1));
@@ -2362,14 +2392,17 @@ function applyJAN(jan) {
     return;
   }
   if (hit) {
-    toast(`辞書で見つかりました: ${hit.name}`);
+    toast(`辞書で見つかりました: ${hit.name}${elsewhereNote}`);
     openItemSheet(null, {
       name: hit.name, maker: hit.maker, brand: hit.brand, category: hit.category,
       colorName: hit.colorName, colorCode: hit.code, size: hit.size, jan: hit.jan, qty: 1,
+      folderId: targetFolder,
     });
   } else {
-    toast('辞書に未収録のJANです。新規登録できます');
-    openItemSheet(null, { jan, maker: maker?.maker || '', qty: 1 });
+    toast(others
+      ? `ほかのフォルダに${others}点あります。このフォルダに新規登録できます`
+      : '辞書に未収録のJANです。新規登録できます');
+    openItemSheet(null, { jan, maker: maker?.maker || '', qty: 1, folderId: targetFolder });
   }
 }
 
@@ -2617,19 +2650,22 @@ function dictPreset(d) {
   };
 }
 
-/** 辞書の商品を、そのまま自分の在庫へ入れる */
+/** 辞書の商品を、そのまま自分の在庫へ入れる（入れ先はいま見ているフォルダ） */
 function addDictToStock(d) {
   if (!d) return;
   if (!canAddItem(state, state.settings).ok) { openProSheet('item'); return; }
+  const folderId = scanFolderId(state, ui.folderId);
+  // 別のフォルダに同じJANがあっても、このフォルダの在庫として独立して追加する
+  const others = itemsByJanInOtherFolders(state.items, d.jan, folderId).length;
   const item = createItem({
     ...dictPreset(d),
-    folderId: ui.folderId === 'all' ? state.folders[0].id : ui.folderId,
+    folderId,
     qty: 1,
   });
   state = upsertItem(state, item);
   save();
   render();
-  toast(`「${item.name}」を在庫に追加しました`);
+  toast(`「${item.name}」を在庫に追加しました${others ? '（別のフォルダにもあり）' : ''}`);
 }
 
 /** 検索タブの描画（メーカー・カテゴリで絞り、結果からそのまま在庫へ追加） */
@@ -2664,7 +2700,11 @@ function renderSearchTab() {
   $('dictTabNote').textContent = `内蔵辞書 ${mergedDict.length.toLocaleString('ja-JP')}件から探して、そのまま在庫に追加できます${cond ? `（${cond}）` : ''}`;
   $('dictResCount').textContent = `${total.toLocaleString('ja-JP')}件`;
 
-  const owned = new Set(state.items.map((i) => i.jan).filter(Boolean));
+  const ownedFolder = scanFolderId(state, ui.folderId);
+  const ownedJan = (it) => Boolean(it.jan);
+  const owned = new Set(state.items.filter((i) => ownedJan(i) && String(i.folderId) === ownedFolder).map((i) => i.jan));
+  // 同じJANが別のフォルダにあるか（このフォルダにも足せることを軽く伝えるためだけに使う）
+  const elsewhere = new Set(state.items.filter((i) => ownedJan(i) && String(i.folderId) !== ownedFolder).map((i) => i.jan));
   // 1件の行は「商品名＋色・容量」だけ。メーカーは見出しに出すので繰り返さず、JANも出さない。
   // 辞書の商品名の先頭に付いているメーカー名（例:「ホルベイン 油絵具 ウルトラマリン」）も落とす
   const nameOf = (d) => displayName({ name: d.name || d.colorName || '', maker: d.maker || '', brand: d.brand || '' });
@@ -2672,7 +2712,7 @@ function renderSearchTab() {
     const sub = dictionaryRowDetail(d);
     const btn = owned.has(d.jan)
       ? '<span class="dres-have">登録済み</span>'
-      : `<button class="dres-add" data-dict-add="${esc(d.jan)}" aria-label="${esc(nameOf(d) || 'この商品')}を在庫に追加">追加</button>`;
+      : `<button class="dres-add" data-dict-add="${esc(d.jan)}" aria-label="${esc(nameOf(d) || 'この商品')}を在庫に追加${elsewhere.has(d.jan) ? '（ほかのフォルダにあり）' : ''}">追加</button>`;
     return `
     <div class="dres">
       <button class="dres-main" data-dict-pick="${esc(d.jan)}">

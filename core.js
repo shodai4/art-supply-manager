@@ -432,6 +432,34 @@ export function itemMaker(item) {
   return String(item?.maker || item?.brand || '').trim();
 }
 
+/* ---------------- 同じ画材（同じJAN）を保管場所ごとに持つ ---------------- */
+// 同じJANの画材でも、保管場所（folderId）が違えば別の在庫として扱う。
+// 「自宅に1本・アトリエに1本」のように場所を分けて数えたいときのため、
+// JAN だけで探すのではなく「JAN × フォルダ」で探す。
+
+/**
+ * 同じJANの画材を、指定した保管場所の中から探す。
+ * JAN が空の画材は対象外（JANなしの画材同士を同じ物とみなさない）。
+ */
+export function findItemByJanInFolder(items = [], jan = '', folderId = '') {
+  const d = normalizeJAN(jan);
+  if (!d) return null;
+  const folder = String(folderId ?? '');
+  return (Array.isArray(items) ? items : []).find((it) => normalizeJAN(it?.jan) === d && String(it?.folderId ?? '') === folder) || null;
+}
+
+/**
+ * 同じJANで、指定した保管場所の外にある画材（別のフォルダにある同じ画材）。
+ * 「ほかのフォルダにも〇個あり」の案内に使う。
+ */
+export function itemsByJanInOtherFolders(items = [], jan = '', folderId = '') {
+  const d = normalizeJAN(jan);
+  if (!d) return [];
+  const folder = String(folderId ?? '');
+  return (Array.isArray(items) ? items : [])
+    .filter((it) => normalizeJAN(it?.jan) === d && String(it?.folderId ?? '') !== folder);
+}
+
 /* ---------------- 複数選択（一括移動） ---------------- */
 
 /** 選択の切り替え（IDの配列で持つ。画面のSetからも呼べる形） */

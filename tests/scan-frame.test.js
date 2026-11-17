@@ -12,7 +12,8 @@ const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 test('同梱スキャナに qrbox を渡さない（ライブラリの枠と自前の枠を二重にしない）', () => {
   const app = read('app.js');
   assert.equal(/qrbox:\s*\{/.test(app), false, 'qrbox を渡すと映像の切り取りで枠がズレる');
-  assert.match(app, /await inst\.start\(scannerFacingConfig\(scanFacing\), \{ fps: 10 \},/);
+  // 読み取る種類（EAN/UPC/CODE128）に絞り、fps は vendorStartConfig で上げている
+  assert.match(app, /await inst\.start\(scannerFacingConfig\(scanFacing\), vendorStartConfig\(\),/);
 });
 
 test('映像は幅いっぱい・高さは映像の縦横比のまま（切り取らない）', () => {

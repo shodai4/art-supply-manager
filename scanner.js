@@ -66,6 +66,48 @@ export function chooseScanStrategy({ hasNativePlugin = false, hasBarcodeDetector
   return 'manual';
 }
 
+/* ---------------- ネイティブ読取（iOS: AVFoundation）の指定 ---------------- */
+
+/** ネイティブ読取で認識するバーコードの種類（画材のJANは EAN-13 が基本） */
+export const NATIVE_SCAN_FORMATS = ['EAN_13', 'EAN_8', 'UPC_A', 'CODE_128'];
+
+/**
+ * ネイティブ読取に渡すオプション。
+ * カメラの向きも一緒に渡す（プラグイン側は内カメラの切替ボタンも持っている）。
+ */
+export function nativeScanOptions(facing) {
+  return { formats: [...NATIVE_SCAN_FORMATS], camera: normalizeFacing(facing) };
+}
+
+/* ---------------- 同梱スキャナ（html5-qrcode）の高速化 ---------------- */
+
+/** web フォールバックの読み取り回数/秒（JAN 4種に絞った上で、少し上げて待たせない） */
+export const WEB_SCAN_FPS = 24;
+
+/**
+ * 同梱スキャナに渡す設定（読む種類を EAN/UPC/CODE128 だけに絞って1コマの解析を軽くする）。
+ * 古い版で Html5QrcodeSupportedFormats が無いときは、余計な指定をせず既定のままにする。
+ */
+export function vendorScannerOptions(win = typeof window !== 'undefined' ? window : undefined) {
+  const formats = vendorSupportedFormats(win);
+  return formats.length ? { verbose: false, formatsToSupport: formats } : { verbose: false };
+}
+
+/** 同梱スキャナの開始オプション（fps と、使えるならブラウザの高速検出） */
+export function vendorStartConfig(fps = WEB_SCAN_FPS) {
+  return { fps, experimentalFeatures: { useBarCodeDetectorIfSupported: true } };
+}
+
+/** 同梱スキャナが対応している形式の番号（EAN-13 など4種ぶん） */
+export function vendorSupportedFormats(win = typeof window !== 'undefined' ? window : undefined) {
+  const enumObj = win?.__Html5QrcodeLibrary__?.Html5QrcodeSupportedFormats
+    || win?.Html5QrcodeSupportedFormats
+    || null;
+  if (!enumObj) return [];
+  const names = ['EAN_13', 'EAN_8', 'UPC_A', 'CODE_128'];
+  return names.map((n) => enumObj[n]).filter((v) => typeof v === 'number');
+}
+
 /** Capacitor のネイティブ実行中か（ブラウザ表示では false） */
 export function isNativeShell(win = typeof window !== 'undefined' ? window : undefined) {
   return Boolean(win && win.Capacitor && (win.Capacitor.isNativePlatform?.() || win.Capacitor.isNative));

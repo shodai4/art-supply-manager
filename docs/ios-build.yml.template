@@ -34,6 +34,7 @@ on:
       - 'capacitor.config.json'
       - 'package.json'
       - 'package-lock.json'
+      - 'plugins/**'
       - 'scripts/**'
       - 'resources/**'
       - 'vendor/**'
@@ -123,6 +124,10 @@ jobs:
           test -f www/index.html
           test -f www/links.js
           test -f www/vendor/html5-qrcode.min.js
+          # バーコード読取のネイティブ化（AVFoundation）が Podfile と plugin 登録に入っているか
+          test -f plugins/art-barcode-scanner/ArtBarcodeScanner.podspec
+          grep -q "pod 'ArtBarcodeScanner'" ios/App/Podfile
+          grep -q 'ArtBarcodeScannerPlugin' ios/App/App/capacitor.config.json
           /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$PLIST"
           /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$PLIST" || true
 

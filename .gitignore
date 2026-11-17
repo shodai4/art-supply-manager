@@ -6,3 +6,5 @@ npm-debug.log*
 .preview/
 www/
 ios/
+!plugins/art-barcode-scanner/ios/
+!plugins/art-barcode-scanner/ios/**

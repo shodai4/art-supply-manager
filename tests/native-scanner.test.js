@@ -1,0 +1,153 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import {
+  NATIVE_SCAN_FORMATS, nativeScanOptions, vendorScannerOptions, vendorStartConfig,
+  vendorSupportedFormats, WEB_SCAN_FPS, chooseScanStrategy,
+} from '../scanner.js';
+import {
+  SCANNER_POD, SCANNER_PLUGIN_CLASS, addScannerPod, verifyPodfileContent, configurePodfileContent,
+  configureCapConfigContent, verifyCapConfigContent,
+} from '../scripts/configure-ios.mjs';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
+const EMOJI = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/u;
+
+/* ---------------- ネイティブ（AVFoundation）への渡し方 ---------------- */
+
+test('ネイティブ読取には JAN の4形式とカメラの向きを渡す', () => {
+  assert.deepEqual(NATIVE_SCAN_FORMATS, ['EAN_13', 'EAN_8', 'UPC_A', 'CODE_128']);
+  assert.deepEqual(nativeScanOptions('environment'), {
+    formats: ['EAN_13', 'EAN_8', 'UPC_A', 'CODE_128'], camera: 'environment',
+  });
+  assert.deepEqual(nativeScanOptions('user'), {
+    formats: ['EAN_13', 'EAN_8', 'UPC_A', 'CODE_128'], camera: 'user',
+  });
+  // 壊れた値は外カメラに倒す（プラグイン側の既定と同じ）
+  assert.equal(nativeScanOptions('front').camera, 'environment');
+  assert.equal(nativeScanOptions(undefined).camera, 'environment');
+  // 呼び出し側の配列を書き換えない
+  const opts = nativeScanOptions('user');
+  opts.formats.push('QR_CODE');
+  assert.equal(NATIVE_SCAN_FORMATS.includes('QR_CODE'), false);
+});
+
+test('ネイティブのプラグインがあれば、ブラウザの方式より先に選ぶ', () => {
+  assert.equal(chooseScanStrategy({ hasNativePlugin: true }), 'native');
+  assert.equal(chooseScanStrategy({ hasNativePlugin: true, hasBarcodeDetector: true }), 'native');
+  assert.equal(chooseScanStrategy({ hasNativePlugin: false, hasBarcodeDetector: true }), 'barcode-detector');
+});
+
+/* ---------------- Web フォールバック（html5-qrcode）の高速化 ---------------- */
+
+test('同梱スキャナは EAN/UPC/CODE128 だけを読み、fps を上げる', () => {
+  const fakeWin = { __Html5QrcodeLibrary__: { Html5QrcodeSupportedFormats: { EAN_13: 9, EAN_8: 10, UPC_A: 11, CODE_128: 12, QR_CODE: 0 } } };
+  assert.deepEqual(vendorSupportedFormats(fakeWin), [9, 10, 11, 12]);
+  const opts = vendorScannerOptions(fakeWin);
+  assert.equal(opts.verbose, false);
+  assert.deepEqual(opts.formatsToSupport, [9, 10, 11, 12]);
+  assert.equal(WEB_SCAN_FPS, 24);
+  assert.deepEqual(vendorStartConfig(), { fps: 24, experimentalFeatures: { useBarCodeDetectorIfSupported: true } });
+  // 形式の一覧が無い版（古い・別名）では、余計な指定をせずに既定のまま動かす
+  assert.deepEqual(vendorScannerOptions({}), { verbose: false });
+  assert.deepEqual(vendorSupportedFormats(undefined), []);
+});
+
+/* ---------------- 画面（app.js）との繋ぎ ---------------- */
+
+test('iOS ではネイティブ読取を開き、閉じたときはカメラも閉じる', () => {
+  const app = read('app.js');
+  // ネイティブに形式と向きを渡す
+  assert.match(app, /await native\.startScan\(nativeScanOptions\(scanFacing\)\)/);
+  // 読んだあと、受け付けなかったときは開いたまま待ち受け直す（開き直さない）
+  assert.match(app, /if \(scanContinuous\) continue;[\s\S]{0,120}if \(scannerLive\) continue;/);
+  // 閉じるボタンで閉じた（キャンセル）ときはエラー表示にしない
+  assert.match(app, /const cancelled = e\?\.code === 'cancelled' \|\| e\?\.code === 'stopped';/);
+  assert.match(app, /if \(!cancelled && \(!scanContinuous \|\| scanLogCount\(scanLog\) === 0\)\)/);
+  // 止めるときはネイティブのカメラ画面も閉じる
+  assert.match(app, /function stopScanner\(\) \{[\s\S]{0,300}nativeNow\?\.stopScan/);
+  // 読み取り中の案内は、カメラ画面側にも渡す
+  assert.match(app, /native\.setStatus\(\{ message: msg, count: scanLogCount\(scanLog\) \}\)/);
+  // 同梱スキャナも形式を絞って fps を上げる
+  assert.match(app, /new Html5Qrcode\('qrReader', vendorScannerOptions\(window\)\)/);
+  assert.match(app, /await inst\.start\(scannerFacingConfig\(scanFacing\), vendorStartConfig\(\),/);
+  assert.equal(/fps: 10/.test(app), false, '古い fps: 10 が残っている');
+});
+
+/* ---------------- ネイティブプラグイン本体 ---------------- */
+
+test('AVFoundation のハードウェア検出で読む軽量プラグインが入っている', () => {
+  const swift = read('plugins/art-barcode-scanner/ios/Sources/ArtBarcodeScannerPlugin.swift');
+  assert.match(swift, /import AVFoundation/);
+  assert.match(swift, /AVCaptureSession/);
+  assert.match(swift, /AVCaptureMetadataOutput/);
+  assert.match(swift, /\.ean13, \.ean8, \.upce, \.code128/);
+  // JS からは Capacitor.Plugins.BarcodeScanner として見える（scanner.js の名前と一致）
+  assert.match(swift, /public let jsName = "BarcodeScanner"/);
+  assert.match(swift, /@objc\(ArtBarcodeScannerPlugin\)/);
+  for (const method of ['startScan', 'stopScan', 'setStatus', 'isSupported']) {
+    assert.match(swift, new RegExp(`CAPPluginMethod\\(name: "${method}"`), `${method} が pluginMethods に無い`);
+  }
+  // 読み取った1本を barcodes[0].rawValue で返す（app.js の受け取り方と合わせる）
+  assert.match(swift, /"barcodes": \[\s*\["rawValue": value/);
+  // 画面を閉じる・カメラを切り替える手立てがある
+  assert.match(swift, /@objc private func closeTapped\(\)/);
+  assert.match(swift, /@objc private func flipTapped\(\)/);
+  assert.equal(EMOJI.test(swift), false, 'Swift に絵文字がある');
+});
+
+test('プラグインはリポジトリ内のローカル Pod（外部の CocoaPods 依存なし）', () => {
+  const spec = read('plugins/art-barcode-scanner/ArtBarcodeScanner.podspec');
+  const pkg = JSON.parse(read('plugins/art-barcode-scanner/package.json'));
+  assert.match(spec, /s\.name = 'ArtBarcodeScanner'/);
+  assert.match(spec, /s\.source_files = 'ios\/Sources/);
+  assert.match(spec, /s\.dependency 'Capacitor'/);
+  assert.equal(/s\.dependency '(?!Capacitor')/.test(spec), false, 'Capacitor 以外の Pod に依存している');
+  assert.equal(pkg.capacitor.ios.name, 'ArtBarcodeScanner');
+  assert.match(SCANNER_POD, /^pod 'ArtBarcodeScanner', :path => '\.\.\/\.\.\/plugins\/art-barcode-scanner'$/);
+});
+
+test('Podfile にローカル Pod を1行だけ入れ、cap sync で消えない位置に置く', () => {
+  const podfile = "platform :ios, '15.0'\nuse_frameworks!\n\ndef capacitor_pods\n  pod 'Capacitor'\nend\n\ntarget 'App' do\n  capacitor_pods\nend\n";
+  const out = configurePodfileContent(podfile);
+  assert.ok(out.content.includes(SCANNER_POD), 'ローカル Pod の行がありません');
+  const targetAt = out.content.indexOf("target 'App' do");
+  assert.ok(out.content.indexOf(SCANNER_POD) > targetAt, 'target ブロックの外に入っている');
+  // 2回目は増やさない
+  const again = addScannerPod(out.content);
+  assert.equal(again, out.content);
+  assert.equal((again.match(/pod 'ArtBarcodeScanner'/g) || []).length, 1);
+  assert.deepEqual(verifyPodfileContent(out.content), []);
+  // 抜けたら気づく
+  assert.match(verifyPodfileContent(out.content.replace(SCANNER_POD, ''))[0], /ArtBarcodeScanner/);
+});
+
+test('capacitor.config.json の packageClassList に読取プラグインを登録する（他のプラグインは残す）', () => {
+  assert.equal(SCANNER_PLUGIN_CLASS, 'ArtBarcodeScannerPlugin');
+  const before = JSON.stringify({ appId: 'com.shodai4.artsupplymanager', packageClassList: ['CapacitorCommunityAdmob'] }, null, '\t');
+  const out = configureCapConfigContent(before);
+  assert.equal(out.modified, true);
+  const config = JSON.parse(out.content);
+  assert.equal(config.appId, 'com.shodai4.artsupplymanager', '既存の設定を消してはいけない');
+  assert.deepEqual(config.packageClassList, ['CapacitorCommunityAdmob', 'ArtBarcodeScannerPlugin']);
+  assert.deepEqual(verifyCapConfigContent(out.content), []);
+  // 2回目は何も変えない
+  assert.equal(configureCapConfigContent(out.content).modified, false);
+  // 抜けたら気づく／JSONが壊れていたら知らせる
+  assert.match(verifyCapConfigContent(before)[0], /ArtBarcodeScannerPlugin/);
+  assert.match(configureCapConfigContent('{').error, /読み取れません/);
+  assert.match(verifyCapConfigContent('{')[0], /読み取れません/);
+});
+
+test('CI は plugins/ の変更でもビルドし、Pod とプラグイン登録を検査する', () => {
+  for (const rel of ['.github/workflows/ios-build.yml', 'docs/ios-build.yml.template']) {
+    const wf = read(rel);
+    assert.match(wf, /- 'plugins\/\*\*'/, `${rel} に plugins/ の監視がない`);
+    assert.match(wf, /test -f plugins\/art-barcode-scanner\/ArtBarcodeScanner\.podspec/);
+    assert.match(wf, /grep -q "pod 'ArtBarcodeScanner'" ios\/App\/Podfile/);
+    assert.match(wf, /grep -q 'ArtBarcodeScannerPlugin' ios\/App\/App\/capacitor\.config\.json/);
+  }
+});

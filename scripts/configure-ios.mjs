@@ -21,6 +21,9 @@ export const PODFILE_LOCK_PATH = process.env.IOS_PODFILE_LOCK_PATH
 export const PROJECT_PATH = process.env.IOS_PROJECT_PATH
   ? path.resolve(process.env.IOS_PROJECT_PATH)
   : path.join(ROOT, 'ios', 'App', 'App.xcodeproj', 'project.pbxproj');
+export const CAP_CONFIG_PATH = process.env.IOS_CAP_CONFIG_PATH
+  ? path.resolve(process.env.IOS_CAP_CONFIG_PATH)
+  : path.join(ROOT, 'ios', 'App', 'App', 'capacitor.config.json');
 
 // ホーム画面・アプリ内に出す正式名称の短縮表記（正式名称は「アトリコ〜画材の在庫を管理するアプリ〜」）
 export const APP_DISPLAY_NAME = 'アトリコ';
@@ -221,6 +224,14 @@ export function compareVersions(a, b) {
 // プラグインが想定する 2.x 系に固定して、CI のビルドを通す。
 export const ADMOB_UMP_POD = "pod 'GoogleUserMessagingPlatform', '~> 2.7'";
 
+// バーコード読取のネイティブ化（AVFoundation のハードウェア検出）。
+// 外部の CocoaPods 依存は張らず、リポジトリ内の plugins/art-barcode-scanner を
+// ローカル Pod として読む（pod install でアプリのターゲットに組み込まれる）。
+// リポジトリ直下からの相対パスで書く（Podfile は ios/App にある）。
+export const SCANNER_POD = "pod 'ArtBarcodeScanner', :path => '../../plugins/art-barcode-scanner'";
+/** Pod に入っている Swift クラス名（capacitor.config.json の packageClassList に書く） */
+export const SCANNER_PLUGIN_CLASS = 'ArtBarcodeScannerPlugin';
+
 /** Podfile の platform :ios を最低バージョンに揃え、AdMob の UMP を 2.x に固定する */
 export function configurePodfileContent(input, minimum = MINIMUM_IOS_VERSION) {
   const source = String(input == null ? '' : input);
@@ -231,11 +242,11 @@ export function configurePodfileContent(input, minimum = MINIMUM_IOS_VERSION) {
     const content = anchor.test(source)
       ? source.replace(anchor, (_m, keep) => `${line}\n${keep}`)
       : `${line}\n${source}`;
-    const withPin = addUmpPin(content);
+    const withPin = addScannerPod(addUmpPin(content));
     return { content: withPin, modified: withPin !== source, added: true };
   }
   const upgraded = source.replace(pattern, (_m, head, tail) => `${head}${minimum}${tail}`);
-  const content = addUmpPin(upgraded);
+  const content = addScannerPod(addUmpPin(upgraded));
   return { content, modified: content !== source, added: false };
 }
 
@@ -266,7 +277,54 @@ export function verifyPodfileContent(content, minimum = MINIMUM_IOS_VERSION) {
   }
   const pins = (source.match(/pod 'GoogleUserMessagingPlatform'/g) || []).length;
   if (pins !== 1) return [`GoogleUserMessagingPlatform の指定が ${pins} 件あります（1件であるべき）`];
+  const scanners = (source.match(/pod 'ArtBarcodeScanner'/g) || []).length;
+  if (scanners !== 1) return [`ArtBarcodeScanner（バーコード読取）の指定が ${scanners} 件あります（1件であるべき）`];
   return [];
+}
+
+/**
+ * バーコード読取のローカル Pod を、target ブロックの中に1行だけ入れる。
+ * 外部の pod を取ってこないので、CI でもネットワークの当たり外れが無い。
+ */
+export function addScannerPod(content) {
+  const source = String(content == null ? '' : content);
+  if (source.includes("pod 'ArtBarcodeScanner'")) return source;
+  const target = /^([ \t]*)target[ \t]+['"]App['"][ \t]+do[ \t]*$/m.exec(source);
+  if (target) {
+    const at = target.index + target[0].length;
+    return `${source.slice(0, at)}\n${target[1]}  ${SCANNER_POD}${source.slice(at)}`;
+  }
+  // target がまだ無い（素の Podfile）ときは、末尾に置いておく
+  return `${source.replace(/\s*$/, '')}\n${SCANNER_POD}\n`;
+}
+
+/**
+ * ios/App/App/capacitor.config.json の packageClassList に、ネイティブの読取プラグインを加える。
+ * cap sync は node_modules のプラグインだけを列挙するので、ローカル Pod の分はここで足す
+ * （この名前が無いと、JS 側の Capacitor.Plugins.BarcodeScanner が生まれない）。
+ */
+export function configureCapConfigContent(input, className = SCANNER_PLUGIN_CLASS) {
+  const source = String(input == null ? '' : input);
+  let config;
+  try {
+    config = JSON.parse(source);
+  } catch (e) {
+    return { content: source, modified: false, error: 'capacitor.config.json を読み取れません' };
+  }
+  const list = Array.isArray(config.packageClassList) ? config.packageClassList : [];
+  if (list.includes(className)) return { content: source, modified: false, list };
+  const next = { ...config, packageClassList: [...list, className] };
+  return { content: `${JSON.stringify(next, null, '\t')}\n`, modified: true, list: next.packageClassList };
+}
+
+export function verifyCapConfigContent(content, className = SCANNER_PLUGIN_CLASS) {
+  try {
+    const config = JSON.parse(String(content == null ? '' : content));
+    const list = Array.isArray(config.packageClassList) ? config.packageClassList : [];
+    return list.includes(className) ? [] : [`capacitor.config.json の packageClassList に ${className} がありません`];
+  } catch (e) {
+    return ['capacitor.config.json を読み取れません（JSONとして壊れています）'];
+  }
 }
 
 /**
@@ -310,6 +368,7 @@ export function verifyProjectContent(content, minimum = MINIMUM_IOS_VERSION) {
 /** 実ファイルに適用（存在しないファイルは黙って飛ばす） */
 export function applyAll({
   plistPath = PLIST_PATH, podfilePath = PODFILE_PATH, projectPath = PROJECT_PATH, lockPath = PODFILE_LOCK_PATH,
+  capConfigPath = CAP_CONFIG_PATH,
 } = {}) {
   const results = [];
   if (fs.existsSync(plistPath)) {
@@ -337,6 +396,13 @@ export function applyAll({
     } else {
       results.push({ file: 'Podfile.lock', action: 'kept', problems: [] });
     }
+  }
+  if (fs.existsSync(capConfigPath)) {
+    const before = fs.readFileSync(capConfigPath, 'utf8');
+    const { content, modified, error } = configureCapConfigContent(before);
+    if (modified) fs.writeFileSync(capConfigPath, content, 'utf8');
+    const problems = error ? [error] : verifyCapConfigContent(content);
+    results.push({ file: 'capacitor.config.json', action: modified ? 'updated' : 'verified', problems });
   }
   if (fs.existsSync(projectPath)) {
     const before = fs.readFileSync(projectPath, 'utf8');

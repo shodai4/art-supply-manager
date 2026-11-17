@@ -1,9 +1,12 @@
 // バーコードの連続スキャン（カメラを閉じずに続けて在庫へ反映する）ロジック。
 // DOM に触らないので node --test で検証できる。
 // 画面側（app.js）は「クールダウン → 状態の更新 → ログ」の順でこの関数を呼ぶだけにする。
+//
+// 同じJANの画材は、保管場所（folderId）ごとに別の在庫として数える。
+// 「自宅に1本・アトリエに1本」を分けて持ちたいので、読み取りも「JAN × フォルダ」で探す。
 import {
   normalizeJAN, isValidJAN, detectMaker, lookupJAN, createItem, adjustStock,
-  recordPurchase, upsertItem, DEFAULT_FOLDERS,
+  recordPurchase, upsertItem, findItemByJanInFolder, itemsByJanInOtherFolders, DEFAULT_FOLDERS,
 } from './core.js';
 import { canAddItem } from './pro.js';
 
@@ -55,9 +58,13 @@ export function markScanned(session, jan, now = Date.now()) {
 
 /**
  * JANの種類を見分ける（状態は変えない）。
- * registered = 登録済み / dictionary = 辞書にある未登録 / unknown = 未収録 / invalid = 読取値が不正
+ * registered = その保管場所に登録済み / dictionary = 辞書にある未登録 / unknown = 未収録 / invalid = 読取値が不正
+ *
+ * folderId を渡すと、そのフォルダにある同じJANだけを「登録済み」とみなす
+ * （別のフォルダにある同じJANは登録済みにしない＝新しい場所に独立して登録できる）。
+ * 渡さないときは、これまでどおりフォルダを問わず探す。
  */
-export function classifyJAN(jan, { items = [], dict = [], prefixes } = {}) {
+export function classifyJAN(jan, { items = [], dict = [], prefixes, folderId } = {}) {
   const d = normalizeJAN(jan);
   if (!/^\d{13}$/.test(d)) {
     return { kind: 'invalid', jan: d, message: '13桁のJANではありません' };
@@ -65,7 +72,11 @@ export function classifyJAN(jan, { items = [], dict = [], prefixes } = {}) {
   if (!isValidJAN(d)) {
     return { kind: 'invalid', jan: d, message: 'JANのチェックディジットが合いません' };
   }
-  const existing = (items || []).find((it) => normalizeJAN(it?.jan) === d);
+  const list = Array.isArray(items) ? items : [];
+  const scope = String(folderId ?? '');
+  const existing = scope
+    ? findItemByJanInFolder(list, d, scope)
+    : list.find((it) => normalizeJAN(it?.jan) === d) || null;
   if (existing) return { kind: 'registered', jan: d, item: existing };
   const entry = lookupJAN(d, dict);
   if (entry) return { kind: 'dictionary', jan: d, entry };
@@ -91,15 +102,18 @@ export function draftName(jan, maker = '') {
 /**
  * 1回の読み取りを状態へ反映する（純粋関数）。
  *
- * - 登録済み: 在庫を＋1（買い足しログも既存の recordPurchase と同じ扱い）
+ * - 同じ保管場所に登録済み: 在庫を＋1（買い足しログも既存の recordPurchase と同じ扱い）
  * - 辞書ヒット: 辞書の内容で在庫1のまま自動登録
  * - 未収録: メーカー名＋JANで仮登録（あとで一覧・編集から直せる）
+ * - 別のフォルダにしか同じJANが無い: その画材は触らず、いまのフォルダに新しく登録する
  * - 無料上限: 新規登録だけ止める（登録済みの＋1は上限に関係なく通す）
  *
- * @returns {{state:object, result:{kind:'incremented'|'added'|'drafted'|'limit'|'invalid', jan:string, label:string, name:string, message:string, item?:object, qty?:number}}}
+ * @returns {{state:object, result:{kind:'incremented'|'added'|'drafted'|'limit'|'invalid', jan:string, label:string, name:string, message:string, item?:object, qty?:number, otherFolders?:number}}}
  */
 export function applyScan(state, jan, { dict = [], prefixes, folderId, now = new Date().toISOString() } = {}) {
-  const found = classifyJAN(jan, { items: state?.items || [], dict, prefixes });
+  // 読み取り先のフォルダは最初に1つ決める（探すのも、新規登録するのも同じ場所）
+  const targetFolder = scanFolderId(state, folderId);
+  const found = classifyJAN(jan, { items: state?.items || [], dict, prefixes, folderId: targetFolder });
   if (found.kind === 'invalid') {
     return {
       state,
@@ -109,6 +123,10 @@ export function applyScan(state, jan, { dict = [], prefixes, folderId, now = new
     };
   }
 
+  // 同じJANが別のフォルダにあるかは、案内に添えるためだけに数える（その画材は触らない）
+  const otherFolders = itemsByJanInOtherFolders(state?.items || [], found.jan, targetFolder).length;
+  const elsewhere = otherFolders ? `（ほかのフォルダに${otherFolders}点）` : '';
+
   if (found.kind === 'registered') {
     const prev = found.item;
     const next = adjustStock(recordPurchase(prev, 1, now), 1);
@@ -117,18 +135,17 @@ export function applyScan(state, jan, { dict = [], prefixes, folderId, now = new
       state: upsertItem(state, next),
       result: {
         kind: 'incremented', jan: found.jan, label: '＋1', name: prev.name || found.jan, item: next, qty,
-        message: `${prev.name || found.jan} を＋1（${qty}）`, changed: true,
+        message: `${prev.name || found.jan} を＋1（${qty}）`, changed: true, otherFolders,
       },
     };
   }
 
-  const targetFolder = scanFolderId(state, folderId);
   const allowed = canAddItem(state, state.settings);
   const limitResult = (name) => ({
     state,
     result: {
       kind: 'limit', jan: found.jan, label: '上限', name,
-      message: `無料は${allowed.quota.limit}点まで（新規登録を止めました）`, changed: false,
+      message: `無料は${allowed.quota.limit}点まで（新規登録を止めました）`, changed: false, otherFolders,
     },
   });
 
@@ -153,7 +170,7 @@ export function applyScan(state, jan, { dict = [], prefixes, folderId, now = new
       state: upsertItem(state, item),
       result: {
         kind: 'added', jan: found.jan, label: '登録', name: item.name, item,
-        message: `${item.name} を登録`, changed: true,
+        message: `${item.name} を登録${elsewhere}`, changed: true, otherFolders,
       },
     };
   }
@@ -177,7 +194,7 @@ export function applyScan(state, jan, { dict = [], prefixes, folderId, now = new
     state: upsertItem(state, item),
     result: {
       kind: 'drafted', jan: found.jan, label: '仮登録', name, item,
-      message: `${name} を仮登録`, changed: true,
+      message: `${name} を仮登録${elsewhere}`, changed: true, otherFolders,
     },
   };
 }
