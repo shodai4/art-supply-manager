@@ -80,9 +80,9 @@ test('検索タブ: ヒットした全メーカーの見出しを返す（50件�
   assert.deepEqual(groups.map((g) => g.maker), [...groups.map((g) => g.maker)].sort(compareMakerName));
   // 検索語で絞っても、同じ条件の searchDictionary と同じ件数
   const hit = groupDictionarySearch(JAN_DICTIONARY, 'ぺんてる');
-  assert.equal(hit.total, 523);
+  assert.equal(hit.total, 532);
   assert.deepEqual(hit.groups.map((g) => g.maker), ['ぺんてる']);
-  assert.equal(hit.groups[0].items.length, 523);
+  assert.equal(hit.groups[0].items.length, 532);
   // メーカー選択でも同じ（1社ぶんの見出し）
   const one = groupDictionarySearch(JAN_DICTIONARY, '', { maker: 'ニチバン' });
   assert.deepEqual(one.groups.map((g) => g.maker), ['ニチバン']);
