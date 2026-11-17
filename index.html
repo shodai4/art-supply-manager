@@ -15,7 +15,7 @@ try {
 } catch (e) { /* 保存が読めないときはライト */ }
 </script>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="styles.css?v=1.17.0">
+<link rel="stylesheet" href="styles.css?v=1.18.0">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 </head>
@@ -378,6 +378,10 @@ try {
     </div>
     <div class="field"><label for="fStatusInput">残量</label><select id="fStatusInput"></select></div>
     <div class="field"><label for="fFolderInput">保管場所</label><select id="fFolderInput"></select></div>
+    <div class="field" id="addPlaceField" hidden>
+      <button type="button" class="btn mini wide" id="btnAddPlace">＋ 別の場所に追加</button>
+      <p class="micro" style="margin:6px 0 0">同じ画材を別のフォルダにも1点置けます（数量は場所ごとに別で数えます）</p>
+    </div>
     <div class="field">
       <label>お気に入り</label>
       <button type="button" class="favtoggle" id="fFav" aria-pressed="false">
@@ -499,6 +503,13 @@ try {
   <div class="ftree" id="folderMoveOptions"></div>
 </div>
 
+<!-- 別の場所に追加（同じ画材を別のフォルダにも置く） -->
+<div class="sheet" id="sheetAddPlace" role="dialog" aria-modal="true" aria-labelledby="addPlaceTitle">
+  <h2 id="addPlaceTitle">別の場所に追加<button class="close" data-close="sheetAddPlace" aria-label="閉じる"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></h2>
+  <p class="hint" id="addPlaceNote" style="margin:0 0 10px"></p>
+  <div class="ftree" id="addPlaceOptions"></div>
+</div>
+
 <!-- 辞書一覧シート -->
 <div class="sheet" id="sheetDict" role="dialog" aria-modal="true" aria-labelledby="dictTitle">
   <h2 id="dictTitle">JAN辞書<button class="close" data-close="sheetDict" aria-label="閉じる"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></h2>
@@ -525,6 +536,7 @@ try {
     <div class="gstep"><b>在庫の＋と−</b><span>一覧のカードにある「−」「＋」で、編集を開かずに在庫数を増減できます。0になると「要補充」に切り替わります。</span></div>
     <div class="gstep"><b>お気に入り</b><span>カードの星を押すと、フォルダの先頭にある「お気に入り」に入ります。もう一度押すと外れます（元のフォルダにもそのまま残ります）。編集シートの中でも入/切できます。</span></div>
     <div class="gstep"><b>フォルダ（保管場所）</b><span>在庫タブのフォルダをタップして中へ。フォルダを長押しすると、編集・移動・削除ができます。フォルダの中では上の家アイコンで戻れます。フォルダの中に子フォルダも作れます。</span></div>
+    <div class="gstep"><b>同じ画材を別の場所にも</b><span>家とアトリエのように同じ画材を分けて持ちたいときは、編集シートかカードの「＋ 別の場所」から別のフォルダにも1点置けます（数量は場所ごとに数えます）。2か所以上にある画材は、一覧で「計 4点」の1枚にまとまり、フォルダごとの行からそのまま増減できます。</span></div>
     <div class="gstep"><b>まとめて移動する</b><span>右上の⋯から「複数選択」を選び、画材を選んで「移動」を押すと、別のフォルダへまとめて移せます。</span></div>
     <div class="gstep"><b>メーカー別に見る</b><span>下の「メーカー」タブで、メーカーごとのまとまりを開いて見られます。</span></div>
     <div class="gstep"><b>絞込・並替・表示</b><span>右上の「⋯」にまとめています。絞込・並替・グリッド/リスト・複数選択・フォルダの並びがここから使えます。</span></div>
@@ -579,6 +591,6 @@ try {
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<script type="module" src="app.js?v=1.17.0"></script>
+<script type="module" src="app.js?v=1.18.0"></script>
 </body>
 </html>

@@ -460,6 +460,198 @@ export function itemsByJanInOtherFolders(items = [], jan = '', folderId = '') {
     .filter((it) => normalizeJAN(it?.jan) === d && String(it?.folderId ?? '') !== folder);
 }
 
+/* ---------------- 同じ画材が複数の保管場所にあるときのまとめ表示 ---------------- */
+// 「1つのフォルダにしか無い画材」は、これまでどおり1行で見せる。
+// 同じJANの画材が2つ以上のフォルダに分かれているときだけ、1つの親カードに畳んで
+// 「計 4点」と、フォルダごとの行（┣ / └）を出す。数量は場所ごとに別で数える。
+
+/** フォルダの並び順の索引（画面のフォルダと同じ順に並べるため） */
+function folderOrderIndex(folders = []) {
+  const at = new Map();
+  (Array.isArray(folders) ? folders : []).forEach((f, i) => at.set(String(f?.id ?? ''), i));
+  return at;
+}
+
+/** まとまりの中の合計数（数量の合計） */
+export function sumItemQty(items = []) {
+  return (Array.isArray(items) ? items : []).reduce((sum, it) => {
+    const q = Math.floor(Number(it?.qty) || 0);
+    return sum + (q > 0 ? q : 0);
+  }, 0);
+}
+
+/**
+ * まとまりの見出しに使う名前（いちばん多く使われている表記。同数なら先頭）。
+ * 古い表記のまま登録された点が混ざっていても、多数決で見出しが安定する。
+ */
+export function commonItemName(items = []) {
+  const counts = new Map();
+  for (const it of Array.isArray(items) ? items : []) {
+    const name = String(it?.name || '').trim();
+    if (!name) continue;
+    counts.set(name, (counts.get(name) || 0) + 1);
+  }
+  let best = '';
+  let bestCount = 0;
+  for (const [name, count] of counts) {
+    if (count > bestCount) { best = name; bestCount = count; }
+  }
+  return best;
+}
+
+/**
+ * 一覧に出す行を作る。同じJANの画材が2つ以上のフォルダに分かれているものだけを1つにまとめる。
+ *
+ *   [{ type: 'group', jan, items, total, favorite, name, sample }]  … まとめた親
+ *   [{ type: 'item', item }]                                        … いつもどおりの1行
+ *
+ * 並びは渡された items の順（お気に入り先頭・並び順は呼び出し側のまま）。
+ * JAN が空の画材、同じフォルダに2点あるだけの画材はまとめない。
+ */
+export function groupItemsAcrossFolders(items = [], folders = []) {
+  const list = Array.isArray(items) ? items : [];
+  const byJan = new Map();
+  for (const it of list) {
+    const d = normalizeJAN(it?.jan);
+    if (!d) continue;
+    if (!byJan.has(d)) byJan.set(d, []);
+    byJan.get(d).push(it);
+  }
+  if (!byJan.size) return list.map((item) => ({ type: 'item', item }));
+
+  const order = folderOrderIndex(folders);
+  const rank = (it) => {
+    const i = order.get(String(it?.folderId ?? ''));
+    return i === undefined ? order.size : i;
+  };
+  const folderCount = (members) => new Set(members.map((m) => String(m?.folderId ?? ''))).size;
+
+  const rows = [];
+  const done = new Set();
+  for (const it of list) {
+    const d = normalizeJAN(it?.jan);
+    const members = d ? byJan.get(d) : null;
+    if (!members || members.length < 2 || folderCount(members) < 2) {
+      rows.push({ type: 'item', item: it });
+      continue;
+    }
+    if (done.has(d)) continue;
+    done.add(d);
+    const sorted = [...members].sort((a, b) => rank(a) - rank(b));
+    rows.push({
+      type: 'group',
+      jan: d,
+      items: sorted,
+      total: sumItemQty(sorted),
+      favorite: sorted.some((m) => m?.favorite === true),
+      name: commonItemName(sorted),
+      sample: sorted[0],
+    });
+  }
+  return rows;
+}
+
+/** ほかに同じ画材があるフォルダの数（タイルの「他1か所」用。無ければ0） */
+export function countOtherPlaces(items = [], item = null) {
+  const d = normalizeJAN(item?.jan);
+  if (!d) return 0;
+  const here = String(item?.folderId ?? '');
+  const folders = new Set();
+  for (const it of Array.isArray(items) ? items : []) {
+    if (normalizeJAN(it?.jan) !== d) continue;
+    const fid = String(it?.folderId ?? '');
+    if (fid !== here) folders.add(fid);
+  }
+  return folders.size;
+}
+
+/**
+ * 「他：アトリエ 1点」— いま開いているフォルダの外に同じ画材があることを短く伝える。
+ * フォルダを1つだけ開いているときの添え書きに使う（無ければ空文字）。
+ * @param {{max?:number}} opts 何か所まで名前を出すか（残りは「ほか◯か所」）
+ */
+export function otherPlaceSummary(items = [], item = null, folders = [], { max = 2 } = {}) {
+  const d = normalizeJAN(item?.jan);
+  if (!d) return '';
+  const here = String(item?.folderId ?? '');
+  const names = new Map((Array.isArray(folders) ? folders : []).map((f) => [String(f?.id ?? ''), String(f?.name || '未分類')]));
+  const totals = new Map();
+  for (const it of Array.isArray(items) ? items : []) {
+    if (normalizeJAN(it?.jan) !== d) continue;
+    const fid = String(it?.folderId ?? '');
+    if (fid === here) continue;
+    const q = Math.floor(Number(it?.qty) || 0);
+    totals.set(fid, (totals.get(fid) || 0) + (q > 0 ? q : 0));
+  }
+  if (!totals.size) return '';
+  const order = folderOrderIndex(folders);
+  const rank = (id) => (order.get(id) === undefined ? order.size : order.get(id));
+  const rows = [...totals.entries()].sort((a, b) => rank(a[0]) - rank(b[0]));
+  const shown = Math.max(1, Math.trunc(Number(max) || 1));
+  const parts = rows.slice(0, shown).map(([fid, qty]) => `${names.get(fid) || '未分類'} ${qty}点`);
+  const rest = rows.length - parts.length;
+  return `他：${parts.join('・')}${rest > 0 ? ` ほか${rest}か所` : ''}`;
+}
+
+/* ---------------- 別の場所に追加（同じ画材をもう1点、別のフォルダに置く） ---------------- */
+
+/** 追加できなかった理由の文言（画面のトーストにそのまま出す） */
+export const ADD_PLACE_ERRORS = {
+  'no-source': '追加する画材が見つかりません',
+  'no-folder': '追加先のフォルダを選んでください',
+  'same-folder': 'この画材はもうそのフォルダにあります',
+  exists: 'そのフォルダには、同じJANの画材がすでにあります',
+  limit: '無料プランで登録できる点数がいっぱいです',
+};
+
+/** 追加できなかった理由を文言にする（知らない理由は無難な1行） */
+export function describeAddPlaceError(error) {
+  return ADD_PLACE_ERRORS[String(error || '')] || '追加できませんでした';
+}
+
+/**
+ * 同じ画材を、別のフォルダへ「独立した1点」として追加する。
+ *
+ * - 写すのは画材の情報（商品名・メーカー・ブランド・カテゴリ・色名・色番号・号数・JAN・
+ *   ショップ・画像URL）だけ。数量は qty（既定1）、メモ・価格・購入ログ・お気に入り・
+ *   写真は写さない（別の在庫なので、その場所の分だけを数える）。
+ * - 今のアイテムは動かさない（フォルダ移動とは別の操作）。IDは必ず新しく振る。
+ * - 同じフォルダに同じJANがあれば作らない（二重登録を防ぐ）。
+ * - limit（無料プランの上限）を超えるときは作らない。
+ *
+ * @returns {{ok:boolean, error:string, items:object[], item:object|null}}
+ */
+export function addItemToAnotherFolder(items = [], sourceId = '', folderId = '', { qty = 1, limit = Number.POSITIVE_INFINITY, now = new Date().toISOString() } = {}) {
+  const list = Array.isArray(items) ? items : [];
+  const fail = (error) => ({ ok: false, error, items: list, item: null });
+  const src = list.find((it) => String(it?.id) === String(sourceId));
+  if (!src) return fail('no-source');
+  const target = String(folderId ?? '');
+  if (!target) return fail('no-folder');
+  if (String(src.folderId ?? '') === target) return fail('same-folder');
+  const jan = normalizeJAN(src.jan);
+  if (jan && findItemByJanInFolder(list, jan, target)) return fail('exists');
+  if (list.length >= Number(limit)) return fail('limit');
+
+  const copy = createItem({
+    name: src.name,
+    maker: src.maker,
+    brand: src.brand,
+    category: src.category,
+    colorName: src.colorName,
+    colorCode: src.colorCode,
+    size: src.size,
+    jan: src.jan,
+    shop: src.shop,
+    imageUrl: src.imageUrl,
+    folderId: target,
+    qty,
+    createdAt: now,
+    updatedAt: now,
+  });
+  return { ok: true, error: '', items: [...list, copy], item: copy };
+}
+
 /* ---------------- 複数選択（一括移動） ---------------- */
 
 /** 選択の切り替え（IDの配列で持つ。画面のSetからも呼べる形） */

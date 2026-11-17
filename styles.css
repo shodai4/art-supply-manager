@@ -379,6 +379,59 @@ button, a, select, label, summary, .hbtn, .vpill, .fab, .tabbar button { touch-a
 .badge.warn { background: var(--warn-soft); color: var(--warn); }
 .badge.bad { background: var(--bad-soft); color: var(--bad); }
 
+/* ---------- 同じ画材が複数の場所にあるときのまとめ（計 N点 ＋ ┣/└ の行） ---------- */
+/* 親カードは1枚だけ出し、中にフォルダごとの行を縦に並べる。
+   グリッド表示でも横幅いっぱいを使う（grid-column で1行を占有する） */
+.jg {
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  padding: 6px 8px 6px; margin: 6px 12px; box-shadow: var(--shadow-2);
+}
+.tgrid .jg { margin: 0; grid-column: 1 / -1; }
+.jg-head { display: flex; align-items: center; gap: 8px; }
+.jg-head .thumb {
+  flex: 0 0 auto; width: 30px; height: 30px; border-radius: 8px; position: relative;
+  display: grid; place-items: center; background: var(--surface-2); color: var(--ink-2); overflow: hidden;
+}
+.jg-head .thumb .ic { width: 18px; height: 18px; }
+.jg-head .thumb img.shelfimg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: var(--img-pad); }
+.jg-head .thumb img.shelfimg.imgfail { display: none; }
+.jg-head .thumb.hasimg .ic { display: none; }
+.jg-head .it-name { font-size: 13.5px; }
+.jg-total { background: var(--accent-soft); color: var(--on-accent-soft); }
+.jg-places { flex: 0 0 auto; font-size: 10.5px; font-weight: 700; color: var(--muted-ink); }
+.jg-tree { margin-top: 4px; padding-top: 3px; border-top: 1px dashed var(--line); }
+.jg-row { display: flex; align-items: center; gap: 4px; padding: 1px 0; min-width: 0; }
+.jg-branch { flex: 0 0 auto; width: 12px; font-size: 12px; color: var(--ink-3); }
+.jg-folder { max-width: 40%; }
+.jg-pen {
+  flex: 0 0 auto; width: 24px; height: 24px; border-radius: 7px; border: 1px solid var(--line);
+  background: var(--surface); display: grid; place-items: center; color: var(--muted-ink);
+}
+.jg-pen .ic { width: 12px; height: 12px; }
+.jg-step { flex: 0 0 auto; margin-left: auto; display: flex; align-items: center; gap: 2px; }
+.jg-step .step {
+  width: 24px; height: 24px; padding: 0; border-radius: 7px; border: 1px solid var(--line);
+  background: var(--surface); font-size: 14px; line-height: 1; font-weight: 700; color: var(--ink);
+}
+.jg-step .step:active { background: var(--accent-soft); }
+.jg-step .qty { min-width: 26px; text-align: center; font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.jg-step .qty small { font-size: 9px; margin-left: 1px; color: var(--ink-2); }
+.jg-row.zero .qty { color: var(--ink-3); }
+/* 親カードの末尾の「＋ 別の場所に追加」（押しやすい横幅） */
+.jg-add {
+  display: block; width: 100%; margin-top: 4px; padding: 7px 0;
+  border: 1px dashed var(--line); border-radius: 9px; background: var(--surface);
+  font-size: 12px; font-weight: 700; color: var(--accent);
+}
+.jg-add:active { background: var(--accent-soft); }
+/* フォルダを1つだけ開いているときの「他：アトリエ 1点」（行の下に小さく1行） */
+.it-other {
+  display: block; margin-top: 1px; font-size: 10px; line-height: 1.3; color: var(--ink-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* グリッドのタイルは幅が狭いので「他1か所」だけ（読み上げ・長押しの説明は title に入れる） */
+.tile .tother { font-size: 9.5px; line-height: 1.2; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 main { padding: 0; }
 .lede { margin: 12px 12px 0; font-size: 12px; color: var(--ink-2); }
 .card {

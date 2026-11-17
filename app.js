@@ -15,6 +15,8 @@ import {
   isMakerGroupOn, withSortMode,
   groupByFolder, findItemByJanInFolder, itemsByJanInOtherFolders,
   syncItemsWithDictionary, describeSyncItemsResult, SYNC_ITEMS_CONFIRM_TEXT,
+  groupItemsAcrossFolders, otherPlaceSummary, countOtherPlaces,
+  addItemToAnotherFolder, describeAddPlaceError,
 } from './core.js';
 import {
   FREE_ITEM_LIMIT, FREE_FOLDER_LIMIT, PRO_BENEFITS, isPro, itemQuota, folderQuota,
@@ -83,6 +85,7 @@ let ui = {
   openMakers: new Set(), // メーカー別タブで開いているまとまり
   editingId: null,
   moveIds: [],
+  addPlaceId: null,      // 「別の場所に追加」で複製する元の画材
   folderEditId: null,
   costKey: 'category',   // 画材費の内訳（カテゴリ / メーカー）
   selectMode: false,     // 複数選択モード
@@ -644,6 +647,8 @@ function renderItemSection() {
   renderTilesInto($('itemList'), list, {
     emptyKey: fav ? 'favorites' : 'items',
     showFolder: ui.folderId === 'all' || fav,
+    // フォルダを1つだけ開いているときは、まとめずに「他：アトリエ1」を添える
+    otherPlaces: ui.folderId !== 'all' && !fav && !ui.query,
   });
 }
 
@@ -662,9 +667,10 @@ function renderMakerView() {
   $('makerGroups').innerHTML = groups.map((g) => {
     const open = ui.openMakers.has(g.key);
     const sorted = favoritesFirst(sortItems(g.items, state.settings.sort));
+    // メーカーの中は複数のフォルダが混ざるので、同じJANは「計 N点 ＋ /└」にまとめる
     const body = !open ? '' : (ui.layout === 'list'
-      ? `<div class="mlist">${sorted.map((it) => itemRow(it)).join('')}</div>`
-      : `<div class="tgrid">${sorted.map((it) => itemTile(it, { showFolder: true })).join('')}</div>`);
+      ? `<div class="mlist">${itemsBodyHtml(sorted, { showFolder: true, forceList: true })}</div>`
+      : itemsBodyHtml(sorted, { showFolder: true }));
     return `<section class="mg${open ? ' open' : ''}">
       <button type="button" class="mghead" data-maker-group="${esc(g.key)}" aria-expanded="${open ? 'true' : 'false'}">
         <svg class="ic chev" aria-hidden="true"><use href="#i-chevron"/></svg>
@@ -724,6 +730,9 @@ function itemTile(it, opts = {}) {
   const qty = Number(it.qty) || 0;
   const fav = it.favorite === true;
   const label = `${displayName(it)} ${qty}点${out ? ' 要補充' : low ? ' 少なめ' : ''}${fav ? ' お気に入り' : ''}`;
+  // フォルダを1つだけ開いているときの添え書き（タイルは幅が狭いので「他1か所」だけ）
+  const otherPlaces = opts.otherPlaces ? countOtherPlaces(state.items, it) : 0;
+  const otherNote = otherPlaces ? `他${otherPlaces}か所` : '';
   const selected = ui.selectMode && isSelected(ui.selected, it.id);
   const selectAttrs = ui.selectMode
     ? ` data-select="${esc(it.id)}" aria-pressed="${selected ? 'true' : 'false'}"`
@@ -744,6 +753,7 @@ function itemTile(it, opts = {}) {
         ${ui.selectMode ? '<span class="selmark" aria-hidden="true"></span>' : ''}
       </span>
       <span class="tname">${esc(displayName(it))}</span>
+      ${otherNote ? `<span class="tother" title="${esc(otherPlaceSummary(state.items, it, state.folders))}">${esc(otherNote)}</span>` : ''}
     </button>
     ${ui.selectMode ? '' : `<span class="tilefoot">${star}${stepper}</span>`}
   </div>`;
@@ -765,6 +775,8 @@ function itemRow(it, opts = {}) {
   const fav = it.favorite === true;
   // 右端のボタンは鉛筆（編集）ではなくお気に入りの星。編集は商品名のタップから開く
   const star = ui.selectMode ? '' : `<button type="button" class="icon-btn favbtn${fav ? ' on' : ''}" data-fav="${esc(it.id)}" aria-pressed="${fav ? 'true' : 'false'}" aria-label="${fav ? 'お気に入りをはずす' : 'お気に入りにする'}"><svg class="ic" aria-hidden="true"><use href="#${fav ? 'i-star-solid' : 'i-star'}"/></svg></button>`;
+  // フォルダを1つだけ開いているときの「他：アトリエ 1点」（行の幅は使わず、次の行に小さく）
+  const others = opts.otherPlaces ? otherPlaceSummary(state.items, it, state.folders) : '';
   return `
   <article class="item${isEmpty ? ' item-card--empty' : ''}${ui.selectMode ? ' selecting' : ''}${selected ? ' sel' : ''}" data-empty="${isEmpty ? '1' : '0'}" data-id="${esc(it.id)}"${selectAttrs}>
     <span class="thumb"><svg class="ic" aria-hidden="true" style="color:${esc(thumbColor)}"><use href="#${thumbIcon}"/></svg>${shelfImage(it)}${ui.selectMode ? '<span class="selmark" aria-hidden="true"></span>' : ''}</span>
@@ -774,6 +786,7 @@ function itemRow(it, opts = {}) {
         ${first}
         <span class="badge ${st.tone}" title="${esc(st.label)}">${esc(st.short || st.label)}</span>
       </div>
+      ${others ? `<div class="it-other">${esc(others)}</div>` : ''}
     </div>
     <div class="it-side">
       <button class="step" data-step="-1" data-id="${esc(it.id)}" aria-label="1減らす">−</button>
@@ -800,6 +813,74 @@ function viewBlocks(items, group) {
   return [{ label: '', items }];
 }
 
+/**
+ * 同じ画材が複数のフォルダにあるときの親カード。
+ * 見出しに画材名・画像・合計数（計 4点）・星（どれかお気に入りなら点灯）を出し、
+ * 中に各フォルダの行を ┣ / └ のツリーで並べる。行からは、そのまま数量の増減・
+ * フォルダ移動（移動＝この1点を移す）・詳細編集ができる。
+ * 親の星は、そのJANの点をまとめてお気に入りにする（どれか1つでも入っていれば外す）。
+ */
+function janGroupCard(g, opts = {}) {
+  const it = g.sample || g.items[0] || {};
+  const glyph = GLYPH[it.category];
+  const thumbColor = glyph ? glyph.color : guessColor(it);
+  const thumbIcon = glyph ? glyph.icon : 'i-tube';
+  const isEmpty = !(g.total > 0);
+  const fav = g.favorite === true;
+  const star = `<button type="button" class="icon-btn favbtn${fav ? ' on' : ''}" data-fav-group="${esc(g.jan)}" aria-pressed="${fav ? 'true' : 'false'}" aria-label="${fav ? 'この画材のお気に入りをすべて外す' : 'この画材をすべてお気に入りにする'}"><svg class="ic" aria-hidden="true"><use href="#${fav ? 'i-star-solid' : 'i-star'}"/></svg></button>`;
+  const rows = g.items.map((m, i) => {
+    const f = folderOf(m.folderId);
+    const last = i === g.items.length - 1;
+    const qty = Number(m.qty) || 0;
+    return `
+      <div class="jg-row${qty === 0 ? ' zero' : ''}">
+        <span class="jg-branch" aria-hidden="true">${last ? '└' : '┣'}</span>
+        <button type="button" class="folder-tag jg-folder" data-move="${esc(m.id)}" aria-label="${esc(f.name)}から別のフォルダへ移す">${esc(f.name)} ▾</button>
+        <button type="button" class="icon-btn jg-pen" data-edit="${esc(m.id)}" aria-label="詳細を編集"><svg class="ic" aria-hidden="true"><use href="#i-pen"/></svg></button>
+        <span class="jg-step" role="group" aria-label="${esc(f.name)}の在庫数">
+          <button type="button" class="step" data-step="-1" data-id="${esc(m.id)}" aria-label="1減らす">−</button>
+          <b class="qty">${qty}<small>点</small></b>
+          <button type="button" class="step" data-step="1" data-id="${esc(m.id)}" aria-label="1増やす">＋</button>
+        </span>
+      </div>`;
+  }).join('');
+  const name = displayName({ ...it, name: g.name || it.name });
+  return `
+  <article class="jg${isEmpty ? ' item-card--empty' : ''}" data-jan="${esc(g.jan)}" style="--c:${esc(thumbColor)}">
+    <div class="jg-head">
+      <span class="thumb"><svg class="ic" aria-hidden="true" style="color:${esc(thumbColor)}"><use href="#${thumbIcon}"/></svg>${shelfImage(it)}</span>
+      <div class="it-main">
+        <h3 class="it-name">${esc(name)}</h3>
+        <div class="it-sub">
+          <span class="badge jg-total">計 ${g.total}点</span>
+          <span class="jg-places">${g.items.length}か所</span>
+        </div>
+      </div>
+      <div class="it-side">${star}</div>
+    </div>
+    <div class="jg-tree">${rows}</div>
+    <button type="button" class="jg-add" data-addplace="${esc(it.id)}">＋ 別の場所に追加</button>
+  </article>`;
+}
+
+/**
+ * 画材群の中身（タイル／行／まとめカード）を作る。
+ * 同じJANが2つ以上のフォルダに分かれている画材だけを「計 N点 ＋ ┣/└」にまとめる
+ * （画面で複数のフォルダが混ざって並んでいる一覧でのみ意味がある。
+ * 選択中・買い物リストではまとめない）。
+ */
+function itemsBodyHtml(items, opts = {}) {
+  const plain = opts.noJanGroup || ui.selectMode;
+  const rows = plain
+    ? items.map((item) => ({ type: 'item', item }))
+    : groupItemsAcrossFolders(items, state.folders);
+  const list = opts.forceList || ui.layout === 'list';
+  const body = rows.map((row) => (row.type === 'group'
+    ? janGroupCard(row, opts)
+    : (list ? itemRow(row.item, opts) : itemTile(row.item, opts)))).join('');
+  return list ? body : `<div class="tgrid">${body}</div>`;
+}
+
 /** アイテム群をグリッド／リストで描画（見出しつきのグループ対応） */
 function renderTilesInto(el, items, opts = {}) {
   if (!items.length) {
@@ -817,16 +898,13 @@ function renderTilesInto(el, items, opts = {}) {
     const head = g.label
       ? `<div class="mhead"${g.folderId ? ` data-folder-head="${esc(g.folderId)}"` : ''}><span>${esc(g.label)}</span><b>${g.items.length}</b></div>`
       : '';
-    const body = (opts.forceList || ui.layout === 'list')
-      ? g.items.map((it) => itemRow(it, opts)).join('')
-      : `<div class="tgrid">${g.items.map((it) => itemTile(it, opts)).join('')}</div>`;
-    return head + body;
+    return head + itemsBodyHtml(g.items, opts);
   }).join('');
 }
 
 function renderShopping() {
   renderTilesInto($('shoppingList'), computeShoppingList(state.items), {
-    group: false, emptyKey: 'shopping', shopChip: true, forceList: true,
+    group: false, emptyKey: 'shopping', shopChip: true, forceList: true, noJanGroup: true,
   });
 }
 
@@ -1327,6 +1405,21 @@ document.addEventListener('click', (e) => {
   // 子フォルダを作る
   const addChild = e.target.closest('[data-add-child]');
   if (addChild) { addFolderAt(addChild.dataset.addChild); return; }
+  // まとめカードの星: 同じJANの点をまとめてお気に入りにする／外す
+  const favGroup = e.target.closest('[data-fav-group]');
+  if (favGroup) {
+    e.preventDefault();
+    e.stopPropagation();
+    const jan = normalizeJAN(favGroup.dataset.favGroup);
+    const members = state.items.filter((i) => normalizeJAN(i.jan) === jan);
+    if (!jan || !members.length) return;
+    const next = !members.every((m) => m.favorite === true);
+    state = { ...state, items: state.items.map((i) => (normalizeJAN(i.jan) === jan ? toggleFavorite(i, next) : i)) };
+    save();
+    render();
+    toast(next ? 'お気に入りにしました（お気に入りフォルダに入ります）' : 'お気に入りをはずしました');
+    return;
+  }
   // お気に入り（星）の切り替え。カードのタップ（編集シート）へは伝えない
   const favBtn = e.target.closest('[data-fav]');
   if (favBtn) {
@@ -1365,6 +1458,9 @@ document.addEventListener('click', (e) => {
     if (next.qty === 0) toast('使い切りました。補充リストに入れています');
     return;
   }
+  // 同じ画材を別のフォルダにも置く（移動ではない。今の1点は残る）
+  const addPlace = e.target.closest('[data-addplace]');
+  if (addPlace) { e.preventDefault(); e.stopPropagation(); openAddPlaceSheet(addPlace.dataset.addplace); return; }
   const edit = e.target.closest('[data-edit]');
   // フォルダ移動・通販のチップは、行全体のタップ（編集）より先に見る
   const mv = e.target.closest('[data-move]');
@@ -1398,6 +1494,8 @@ function openItemSheet(id, preset = {}) {
   // 保管場所は階層をインデントで見せる（値はIDのまま）
   $('fFolderInput').innerHTML = folderOptions(state.folders, { noneLabel: null })
     .map((o) => `<option value="${esc(o.id)}">${'　'.repeat(o.depth)}${esc(o.label)}</option>`).join('');
+  // 「＋ 別の場所に追加」は、保存済みの画材を編集しているときだけ出す
+  $('addPlaceField').hidden = !it;
   $('fFolderInput').value = data.folderId;
   // お気に入り（特別フォルダ）への登録も編集シートから入/切できる
   setFormFavorite(data.favorite === true);
@@ -2028,6 +2126,61 @@ $('moveOptions').addEventListener('click', (e) => {
     else toast(`${name} へ移動しました`);
     render();
   } catch (err) { toast(err.message); }
+});
+
+/* ---------------- 別の場所に追加（同じ画材を別のフォルダにも置く） ---------------- */
+/**
+ * 追加先のフォルダを、1行1フォルダの縦ツリーで出す。
+ * 既にこの画材（同じJAN）があるフォルダと、いまいるフォルダは選べない（登録済み・いまここ）。
+ */
+function addPlaceTreeHtml(source) {
+  const jan = normalizeJAN(source?.jan);
+  return folderOptions(state.folders, { noneLabel: null }).map((o) => {
+    const depth = Math.max(0, Number(o.depth) || 0);
+    const guide = depth > 0 ? '<span class="ftree-guide" aria-hidden="true">└</span>' : '';
+    const here = String(o.id) === String(source?.folderId ?? '');
+    const has = !here && jan ? Boolean(findItemByJanInFolder(state.items, jan, o.id)) : false;
+    const note = here ? '<span class="ftree-here">いまここ</span>' : has ? '<span class="ftree-here">登録済み</span>' : '';
+    const off = here || has;
+    return `<button class="ftree-row" data-addplace-folder="${esc(o.id)}" style="--d:${depth}"${off ? ' disabled' : ''}>${guide}<span class="ftree-name">${esc(o.label)}</span>${note}</button>`;
+  }).join('');
+}
+
+function openAddPlaceSheet(id) {
+  const src = state.items.find((i) => i.id === id);
+  if (!src) return;
+  // 新しく1点増えるので、無料プランの上限はここで見る
+  if (!canAddItem(state, state.settings).ok) { openProSheet('item'); return; }
+  const jan = normalizeJAN(src.jan);
+  // JANがあるときは、置けるフォルダが残っていなければその旨を伝える
+  const targets = folderOptions(state.folders, { noneLabel: null })
+    .filter((o) => String(o.id) !== String(src.folderId) && !(jan && findItemByJanInFolder(state.items, jan, o.id)));
+  if (!targets.length) { toast('置ける別のフォルダがありません（フォルダを追加すると選べます）'); return; }
+  ui.addPlaceId = src.id;
+  $('addPlaceNote').textContent = `「${displayName(src)}」を別のフォルダにも1点置きます（数量は場所ごとに別で数えます）`;
+  $('addPlaceOptions').innerHTML = addPlaceTreeHtml(src);
+  openSheet('sheetAddPlace');
+}
+
+$('addPlaceOptions').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-addplace-folder]');
+  if (!b || b.disabled || !ui.addPlaceId) return;
+  const res = addItemToAnotherFolder(state.items, ui.addPlaceId, b.dataset.addplaceFolder, {
+    limit: isPro(state.settings) ? Number.POSITIVE_INFINITY : FREE_ITEM_LIMIT,
+  });
+  if (!res.ok) { toast(describeAddPlaceError(res.error)); return; }
+  const name = folderOf(b.dataset.addplaceFolder).name;
+  state = { ...state, items: res.items };
+  save();
+  closeSheet('sheetAddPlace');
+  render();
+  toast(`${name} にも追加しました`);
+});
+
+$('btnAddPlace').addEventListener('click', () => {
+  if (!ui.editingId) return;
+  closeSheet('sheetItem');
+  openAddPlaceSheet(ui.editingId);
 });
 
 /* ---------------- バーコード読取 ---------------- */

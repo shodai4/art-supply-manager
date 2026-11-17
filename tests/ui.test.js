@@ -198,8 +198,9 @@ test('一覧はメーカー別タブで見て、絞込・並替は右上の⋯�
   assert.match(app, /aria-expanded=/);
   // 見出しを押すと開け閉めできる
   assert.match(app, /closest\('\[data-maker-group\]'\)[\s\S]{0,200}ui\.openMakers\.(add|delete)/);
-  // 開いた中はグリッド／リストの設定に従う
-  assert.match(app, /ui\.layout === 'list'[\s\S]{0,160}itemRow\(it\)/);
+  // 開いた中はグリッド／リストの設定に従う（中身は itemsBodyHtml が itemRow / itemTile を選ぶ）
+  assert.match(app, /ui\.layout === 'list'[\s\S]{0,160}itemsBodyHtml\(sorted/);
+  assert.match(app, /function itemsBodyHtml[\s\S]{0,600}itemRow\(row\.item, opts\) : itemTile\(row\.item, opts\)/);
 
   // 絞込・並替・表示・複数選択・フォルダの並びは右上の⋯に集約
   const more = html.slice(html.indexOf('id="sheetMore"'), html.indexOf('id="sheetFolderOrder"'));
