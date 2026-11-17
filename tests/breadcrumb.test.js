@@ -1,0 +1,72 @@
+/**
+ * フォルダを開いたときのパンくず（家 › 親 › 子 › 孫）。
+ *
+ *   1) ルート（家）から現在地までの階層を並べる
+ *   2) 途中の階層をタップしたら、その階層へ一気に移動できる
+ *   3) 幅が足りないときは折り返して全階層を見せる（横スクロールで隠さない）
+ */
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { blankState, addFolder, folderChain } from '../core.js';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const read = (name) => fs.readFileSync(path.join(ROOT, name), 'utf8');
+
+/** 家 > アトリエ > 赤ちゃん > 価格 の3階層を作る */
+function deepState() {
+  let s = blankState();
+  s = addFolder(s, { name: 'アトリエ', parentId: 'home' });
+  const atelier = s.folders.at(-1).id;
+  s = addFolder(s, { name: '赤ちゃん', parentId: atelier });
+  const baby = s.folders.at(-1).id;
+  s = addFolder(s, { name: '価格', parentId: baby });
+  const price = s.folders.at(-1).id;
+  return { s, atelier, baby, price };
+}
+
+test('パンくずの階層は家から現在地まで順に並ぶ（家 › アトリエ › 赤ちゃん › 価格）', () => {
+  const { s, price } = deepState();
+  assert.deepEqual(folderChain(s.folders, price).map((f) => f.name), ['家', 'アトリエ', '赤ちゃん', '価格']);
+  // 途中の階層のIDも取れる（タップでその階層へ移動するため）
+  const chain = folderChain(s.folders, price);
+  assert.equal(chain.at(-1).id, price);
+  assert.ok(chain.slice(0, -1).every((f) => f.id));
+});
+
+test('画面: パンくず欄に階層を並べ、各階層をタップで移動できる', () => {
+  const html = read('index.html');
+  const app = read('app.js');
+  const css = read('styles.css');
+
+  // 家ボタン（#btnHome）＋動的に作る階層（#crumbTrail）＋上へ（#btnUp）
+  for (const id of ['crumb', 'btnHome', 'crumbTrail', 'btnUp']) {
+    assert.ok(html.includes(`id="${id}"`), `#${id} がありません`);
+  }
+  // 現在地の階層は folderChain で組み立て、行ごとに data-crumb を持たせる
+  assert.match(app, /const chain = open \? folderChain\(state\.folders, ui\.folderId\) : \[\];/);
+  assert.match(app, /data-crumb="\$\{esc\(f\.id\)\}"/);
+  assert.match(app, /aria-current="page"/);
+  // タップでその階層へ（ui.folderId を切り替えて描き直す）
+  assert.match(app, /\$\('crumbTrail'\)\.addEventListener\('click', \(e\) => \{[\s\S]{0,400}ui\.folderId = id;[\s\S]{0,200}render\(\);/);
+  // 古い1行表示（#crumbName）は残っていない
+  assert.equal(/id="crumbName"/.test(html), false, '古い現在地の表示（#crumbName）が残っている');
+});
+
+test('パンくずは横幅が足りなければ折り返す（横スクロールで隠さない）', () => {
+  const css = read('styles.css');
+  const crumb = /^\.crumb\s*\{([^}]*)\}/m.exec(css);
+  assert.ok(crumb, '.crumb のスタイルがありません');
+  assert.match(crumb[1], /flex-wrap:\s*wrap/, 'パンくず全体が折り返さない');
+  const trail = /^\.crumb \.trail\s*\{([^}]*)\}/m.exec(css);
+  assert.ok(trail, '.crumb .trail のスタイルがありません');
+  assert.match(trail[1], /flex-wrap:\s*wrap/, '階層の並びが折り返さない');
+  assert.equal(/overflow-x/.test(trail[1]), false, '横スクロールで隠している');
+  // 各階層は1行に収まる範囲で省略し、折り返しで全部見せる
+  const name = /^\.crumb \.cbtn\.name\s*\{([^}]*)\}/m.exec(css);
+  assert.ok(name, '.crumb .cbtn.name のスタイルがありません');
+  assert.match(name[1], /text-overflow:\s*ellipsis/);
+  assert.match(name[1], /white-space:\s*nowrap/);
+});

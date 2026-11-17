@@ -160,6 +160,7 @@ function renderDictionaryState() {
   const state = $('dictSyncState');
   if (state) state.textContent = describeSyncState(dictSync, { cachedCount: extraEntries.length });
   if ($('sheetDict')?.classList.contains('open')) renderDictList($('dictQ').value);
+  if (ui.tab === 'search') renderSearchTab();
 }
 
 /** jan-extra.json を取りに行って合成する（起動時・「辞書を更新」） */
@@ -447,6 +448,7 @@ function render() {
   renderItemSection();
   renderMakerView();
   renderShopping();
+  renderSearchTab();
   renderFolders();
   renderSettings();
   renderFilterSheet();
@@ -454,7 +456,7 @@ function render() {
   document.querySelectorAll('#tabbar button').forEach((b) => {
     b.setAttribute('aria-selected', String(b.dataset.tab === ui.tab));
   });
-  for (const t of ['stock', 'maker', 'shopping', 'settings']) $(`view-${t}`).hidden = t !== ui.tab;
+  for (const t of ['stock', 'maker', 'shopping', 'search', 'settings']) $(`view-${t}`).hidden = t !== ui.tab;
   const fabVisible = (ui.tab === 'stock' || ui.tab === 'maker' || ui.tab === 'shopping') && !ui.selectMode;
   $('btnAdd').style.visibility = fabVisible ? 'visible' : 'hidden';
   $('btnScan').style.visibility = fabVisible ? 'visible' : 'hidden'; // 右下の＋の上（読取）
@@ -499,11 +501,18 @@ function hasFilters() {
   return ui.category !== 'all' || ui.status !== 'all' || ui.maker !== 'all' || ui.favoriteOnly;
 }
 
-/** フォルダを開いているときだけ、ヘッダーの下に大きい現在地を出す */
+/** フォルダを開いているときだけ、ヘッダーの下に現在地のパンくず（家 › 親 › 子 › 孫）を出す */
 function renderCrumb() {
   const open = ui.folderId !== 'all';
   $('crumb').hidden = !open || ui.tab !== 'stock';
-  $('crumbName').textContent = open ? folderOf(ui.folderId).name : '';
+  // 途中の階層をタップすると、そこへ一気に移動できる（幅が足りないときはCSSで折り返す）
+  const chain = open ? folderChain(state.folders, ui.folderId) : [];
+  $('crumbTrail').innerHTML = chain.map((f, i) => {
+    const here = i === chain.length - 1;
+    const sep = i ? '<span class="sep" aria-hidden="true">›</span>' : '';
+    const label = here ? ' aria-current="page"' : ` aria-label="${esc(f.name)}へ移動"`;
+    return `${sep}<button class="cbtn name${here ? ' here' : ''}" data-crumb="${esc(f.id)}"${label}>${esc(f.name)}</button>`;
+  }).join('');
   // 残り枠は数字だけ（例: 12 / 100点）
   const q = itemQuota(state, state.settings);
   $('quotaNote').textContent = describeQuota(q);
@@ -849,6 +858,8 @@ function setProPreview(on) {
   save();
   closeSheet('sheetPro');
   render();
+  // Proの間は広告を出さない（終了したら戻す）
+  adBanner.sync();
   toast(on ? 'Proプレビューを有効にしました' : 'Proプレビューを終了しました');
 }
 
@@ -1017,6 +1028,17 @@ $('btnHome').addEventListener('click', () => {
   window.scrollTo({ top: 0 });
 });
 $('btnUp').addEventListener('click', () => goUp());
+// パンくず（家 › 親 › 子 › 孫）の途中の階層をタップしたら、その階層へ移動する
+$('crumbTrail').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-crumb]');
+  if (!b) return;
+  const id = b.dataset.crumb;
+  if (!id || id === ui.folderId) return;
+  ui.folderId = id;
+  if (ui.selectMode) exitSelect();
+  render();
+  window.scrollTo({ top: 0 });
+});
 $('btnSearch').addEventListener('click', () => {
   ui.searchOpen = !ui.searchOpen;
   // 検索は在庫から探す（他のタブで押したら在庫へ）
@@ -1757,6 +1779,22 @@ $('btnFolderRemove').addEventListener('click', () => {
   toast(`「${res.movedTo}」へ中身を移動しました`);
 });
 
+/**
+ * フォルダの移動先を、1行1フォルダの縦ツリーにする（深さはインデント・親子は └ で表す）。
+ * 親でも子でも孫でも、その行をタップすればそのままそこへ移動できる。
+ * @param {Array<{id:string,label:string,depth:number}>} options folderOptions() の結果
+ * @param {{selected?:string, attr?:string}} opts いまいる場所（ハイライト）とタップを受ける属性名
+ */
+function folderTreeHtml(options, { selected = '', attr = 'data-tomove' } = {}) {
+  return options.map((o) => {
+    const depth = Math.max(0, Number(o.depth) || 0);
+    const on = String(o.id) === String(selected);
+    const guide = depth > 0 ? '<span class="ftree-guide" aria-hidden="true">└</span>' : '';
+    const here = on ? '<span class="ftree-here">いまここ</span>' : '';
+    return `<button class="ftree-row" ${attr}="${esc(o.id)}" style="--d:${depth}" aria-pressed="${on}">${guide}<span class="ftree-name">${esc(o.label)}</span>${here}</button>`;
+  }).join('');
+}
+
 /** フォルダの移動先（最上位＋各フォルダ。自分と自分の配下は選べない） */
 function openFolderMoveSheet(id) {
   const f = state.folders.find((x) => x.id === id);
@@ -1765,11 +1803,10 @@ function openFolderMoveSheet(id) {
   const exclude = folderSubtreeIds(state.folders, id); // 循環を防ぐ
   const cur = folderParentId(f);
   $('folderMoveNote').textContent = `「${f.name}」の移動先を選んでください（自分の中には移せません）`;
-  $('folderMoveOptions').innerHTML = folderOptions(state.folders, { exclude, noneLabel: '最上位（トップ）' })
-    .map((o) => {
-      const on = String(o.id) === cur;
-      return `<button class="pill move" data-folder-parent="${esc(o.id)}" style="--d:${o.depth}" aria-pressed="${on}">${esc(o.label)}${on ? '・いまここ' : ''}</button>`;
-    }).join('');
+  $('folderMoveOptions').innerHTML = folderTreeHtml(
+    folderOptions(state.folders, { exclude, noneLabel: '最上位（トップ）' }),
+    { selected: cur, attr: 'data-folder-parent' },
+  );
   closeSheet('sheetFolderMenu');
   openSheet('sheetFolderMove');
 }
@@ -1792,11 +1829,7 @@ $('folderMoveOptions').addEventListener('click', (e) => {
 function openMoveSheet(ids) {
   ui.moveIds = [...ids];
   $('moveTitle').firstChild.textContent = ui.moveIds.length > 1 ? `${ui.moveIds.length}件を移動` : 'フォルダへ移動';
-  $('moveOptions').innerHTML = folderOptions(state.folders, { noneLabel: null })
-    .map((o) => {
-      const parents = folderChain(state.folders, o.id).slice(0, -1).map((f) => f.name).join(' / ');
-      return `<button class="pill move" data-tomove="${esc(o.id)}" style="--d:${o.depth}">${esc(o.label)}${parents ? ` <span class="mpath">${esc(parents)}</span>` : ''}</button>`;
-    }).join('');
+  $('moveOptions').innerHTML = folderTreeHtml(folderOptions(state.folders, { noneLabel: null }));
   openSheet('sheetMove');
 }
 $('moveOptions').addEventListener('click', (e) => {
@@ -2379,6 +2412,154 @@ $('dictFindList').addEventListener('click', (e) => {
   applyDictEntry(d);
 });
 
+/* ---------------- 検索タブ（内蔵JAN辞書のカタログ検索） ---------------- */
+// 3.7万件を相手にするので、入力は少し待ってから（デバウンス）絞り、
+// 描画するのは上位 DICT_TAB_LIMIT 件だけにする（件数は全件を数えて出す）。
+const DICT_TAB_LIMIT = 50;
+const DICT_TAB_DEBOUNCE_MS = 180;
+let dictTabQuery = '';
+let dictTabMaker = '';
+let dictTabCategory = '';
+let dictTabTimer = 0;
+let dictTabBuiltFor = null; // メーカーの選択肢を作った辞書（辞書が変わったら作り直す）
+
+/** 検索タブで選べるメーカー（件数の多い順） */
+function dictMakerList() {
+  const counts = new Map();
+  for (const d of mergedDict) {
+    const name = String(d.maker || 'メーカー不明');
+    counts.set(name, (counts.get(name) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ja'))
+    .map(([name, count]) => ({ name, count }));
+}
+
+/** いま選んでいるメーカーにあるカテゴリと件数（全体を見るときは出さない） */
+function dictCategoryList() {
+  const counts = new Map();
+  for (const d of mergedDict) {
+    if (String(d.maker || 'メーカー不明') !== dictTabMaker) continue;
+    const id = String(d.category || 'other');
+    counts.set(id, (counts.get(id) || 0) + 1);
+  }
+  return CATEGORIES.filter((c) => counts.get(c.id)).map((c) => ({ id: c.id, label: c.label, count: counts.get(c.id) }));
+}
+
+/** 辞書の1件を、画材の登録フォーム／在庫に使う形へ */
+function dictPreset(d) {
+  return {
+    name: d.name || d.colorName || '',
+    maker: d.maker || '',
+    brand: d.brand || '',
+    category: CATEGORIES.some((c) => c.id === d.category) ? d.category : 'other',
+    colorName: d.colorName || '',
+    colorCode: d.code || '',
+    size: d.size || '',
+    jan: d.jan || '',
+  };
+}
+
+/** 辞書の商品を、そのまま自分の在庫へ入れる */
+function addDictToStock(d) {
+  if (!d) return;
+  if (!canAddItem(state, state.settings).ok) { openProSheet('item'); return; }
+  const item = createItem({
+    ...dictPreset(d),
+    folderId: ui.folderId === 'all' ? state.folders[0].id : ui.folderId,
+    qty: 1,
+  });
+  state = upsertItem(state, item);
+  save();
+  render();
+  toast(`「${item.name}」を在庫に追加しました`);
+}
+
+/** 検索タブの描画（メーカー・カテゴリで絞り、結果からそのまま在庫へ追加） */
+function renderSearchTab() {
+  if (ui.tab !== 'search') return;
+  // メーカーの選択肢（辞書が変わったときだけ作り直す）
+  const sel = $('dictMakerSel');
+  if (dictTabBuiltFor !== mergedDict) {
+    dictTabBuiltFor = mergedDict;
+    sel.innerHTML = `<option value="">すべてのメーカー（${mergedDict.length.toLocaleString('ja-JP')}件）</option>`
+      + dictMakerList().map((m) => `<option value="${esc(m.name)}">${esc(m.name)}（${m.count.toLocaleString('ja-JP')}）</option>`).join('');
+  }
+  sel.value = dictTabMaker;
+  if (sel.value !== dictTabMaker) { dictTabMaker = ''; dictTabCategory = ''; } // 辞書の更新で消えたメーカーは「すべて」へ
+
+  // メーカーを選ぶと、そのメーカーにあるカテゴリでさらに絞れる
+  const cats = dictTabMaker ? dictCategoryList() : [];
+  const showCats = cats.length > 1;
+  $('dictCatSec').hidden = !showCats;
+  if (showCats) {
+    $('dictCatChips').innerHTML = [
+      `<button class="fchip" data-dict-cat="" aria-pressed="${dictTabCategory === ''}">すべて</button>`,
+      ...cats.map((c) => `<button class="fchip" data-dict-cat="${esc(c.id)}" aria-pressed="${dictTabCategory === c.id}">${esc(c.label)}（${c.count}）</button>`),
+    ].join('');
+    if (dictTabCategory && !cats.some((c) => c.id === dictTabCategory)) dictTabCategory = '';
+  }
+
+  const { items: hit, total } = searchDictionary(mergedDict, dictTabQuery, {
+    limit: DICT_TAB_LIMIT, hay: dictionaryHaystack(mergedDict), maker: dictTabMaker, category: dictTabCategory,
+  });
+  const cond = [dictTabMaker, dictTabCategory ? (CATEGORIES.find((c) => c.id === dictTabCategory)?.label || '') : ''].filter(Boolean).join(' / ');
+  $('dictTabNote').textContent = `内蔵辞書 ${mergedDict.length.toLocaleString('ja-JP')}件から探して、そのまま在庫に追加できます${cond ? `（${cond}）` : ''}`;
+  $('dictResCount').textContent = `${total.toLocaleString('ja-JP')}件`;
+
+  const owned = new Set(state.items.map((i) => i.jan).filter(Boolean));
+  const rows = hit.map((d) => {
+    const sub = [d.maker, d.colorName && d.colorName !== d.name ? d.colorName : '', d.size, d.code].filter(Boolean).join(' ・ ');
+    const btn = owned.has(d.jan)
+      ? '<span class="dres-have">登録済み</span>'
+      : `<button class="dres-add" data-dict-add="${esc(d.jan)}" aria-label="${esc(d.name || d.colorName || 'この商品')}を在庫に追加">追加</button>`;
+    return `
+    <div class="dres">
+      <button class="dres-main" data-dict-pick="${esc(d.jan)}">
+        <span class="dres-name">${esc(d.name || d.colorName)}</span>
+        <span class="dres-sub">${esc(sub)}</span>
+        <span class="dres-jan">${esc(d.jan)}</span>
+      </button>
+      ${btn}
+    </div>`;
+  }).join('');
+  $('dictResults').innerHTML = rows
+    ? rows + (total > hit.length ? `<p class="hint" style="margin:10px 12px">ほか ${(total - hit.length).toLocaleString('ja-JP')}件（言葉を足すと絞れます）</p>` : '')
+    : '<p class="hint" style="margin:12px">見つかりません。商品名・メーカー・JANの一部で探してみてください</p>';
+}
+
+$('dictQTab').addEventListener('input', (e) => {
+  const value = e.target.value;
+  clearTimeout(dictTabTimer);
+  dictTabTimer = setTimeout(() => { dictTabQuery = value; renderSearchTab(); }, DICT_TAB_DEBOUNCE_MS);
+});
+$('dictQTabClear').addEventListener('click', () => {
+  clearTimeout(dictTabTimer);
+  dictTabQuery = '';
+  $('dictQTab').value = '';
+  renderSearchTab();
+});
+$('dictMakerSel').addEventListener('change', (e) => {
+  dictTabMaker = e.target.value;
+  dictTabCategory = '';
+  render(); // カテゴリ欄の出し分けも含めて描き直す
+  window.scrollTo({ top: 0 });
+});
+$('dictCatChips').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-dict-cat]');
+  if (!b) return;
+  dictTabCategory = b.dataset.dictCat || '';
+  renderSearchTab();
+});
+$('dictResults').addEventListener('click', (e) => {
+  const add = e.target.closest('[data-dict-add]');
+  if (add) { addDictToStock(mergedDict.find((d) => d.jan === add.dataset.dictAdd)); return; }
+  const pick = e.target.closest('[data-dict-pick]');
+  if (!pick) return;
+  const d = mergedDict.find((x) => x.jan === pick.dataset.dictPick);
+  if (d) openItemSheet(null, dictPreset(d));
+});
+
 /* ---------------- チュートリアル（使い方） ---------------- */
 $('btnGuide').addEventListener('click', () => openSheet('sheetGuide'));
 
@@ -2414,4 +2595,5 @@ if (typeof window !== 'undefined') {
 
 // iOSアプリの最下部に AdMob バナー（本番ID）。Webブラウザでは何もしない。
 // バナーの高さは CSS 変数 --ad-h に入り、タブバー・ドック・FAB・一覧の下端を押し上げる。
-const adBanner = setupAdBanner();
+// Pro（プレビュー含む）の間は広告を出さず、その分だけタブバーとFABを下げる。
+const adBanner = setupAdBanner({ isPro: () => isPro(state.settings) });

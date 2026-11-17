@@ -416,10 +416,12 @@ export function dictionaryHaystack(dict = []) {
  * 辞書を手動で検索する。描画する分だけ返し、全体の件数は total で返す。
  * 数字だけの入力はJANの部分一致としても探す（4桁以上）。
  */
-export function searchDictionary(dict = [], query = '', { limit = 40, hay } = {}) {
+export function searchDictionary(dict = [], query = '', { limit = 40, hay, maker = '', category = '' } = {}) {
   const q = String(query ?? '').trim().toLowerCase();
   const qJan = normalizeJAN(query ?? '');
   const janQuery = /^\d{4,13}$/.test(qJan);
+  const wantMaker = String(maker ?? '').trim();
+  const wantCategory = String(category ?? '').trim();
   const stack = Array.isArray(hay) && hay.length === dict.length ? hay : dictionaryHaystack(dict);
   const max = Math.max(0, Math.trunc(Number(limit) || 0));
   const items = [];
@@ -427,6 +429,8 @@ export function searchDictionary(dict = [], query = '', { limit = 40, hay } = {}
   for (let i = 0; i < dict.length; i += 1) {
     const d = dict[i];
     if (!d) continue;
+    if (wantMaker && String(d.maker || '') !== wantMaker) continue;
+    if (wantCategory && String(d.category || 'other') !== wantCategory) continue;
     const hit = !q || stack[i].includes(q) || (janQuery && String(d.jan || '').includes(qJan));
     if (!hit) continue;
     total += 1;

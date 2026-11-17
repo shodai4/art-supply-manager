@@ -87,7 +87,7 @@ test('第2弾の導線（Pro案内・画材費・復元）がHTMLとapp.jsにあ
   assert.match(app, /from '\.\/pro\.js'/);
   assert.match(app, /canAddItem\(state, state\.settings\)/);
   assert.match(app, /canAddFolder\(state, state\.settings\)/);
-  // 色見本タブは廃止（タブバーは4つ）
+  // 色見本タブは廃止（タブバーは在庫・メーカー・補充・検索・設定の5つ）
   assert.equal(/data-tab="swatch"/.test(html), false, '色見本タブが残っている');
   assert.equal(/swatch/i.test(read('app.js')), false, 'app.js に色見本の処理が残っている');
   assert.match(app, /recordPurchase\(/);
@@ -342,19 +342,20 @@ test('下部はタブバーと広告だけ。操作はヘッダーの検索と�
   assert.equal(/\.dock\s*\{/.test(css), false, 'ドックのスタイルが残っている');
 });
 
-test('タブバーは4つ（在庫・メーカー・補充・設定）で均等に並ぶ', () => {
+test('タブバーは5つ（在庫・メーカー・補充・検索・設定）で均等に並ぶ', () => {
   const html = read('index.html');
   const css = read('styles.css');
   const bar = html.slice(html.indexOf('<nav class="tabbar"'), html.indexOf('</nav>', html.indexOf('<nav class="tabbar"')));
   const tabs = [...bar.matchAll(/data-tab="([a-z]+)"/g)].map((m) => m[1]);
-  assert.deepEqual(tabs, ['stock', 'maker', 'shopping', 'settings']);
+  assert.deepEqual(tabs, ['stock', 'maker', 'shopping', 'search', 'settings']);
   assert.equal(bar.includes('色見本'), false, '色見本タブが残っている');
   assert.equal(/data-tab="folders"/.test(bar), false, '「場所」タブが残っている');
-  // 375pxで4等分（flex: 1 1 0 + min-width: 0）
+  // 375pxで5等分（flex: 1 1 0 + min-width: 0 + 折り返さない）
   const btn = /^\.tabbar button\s*\{([^}]*)\}/m.exec(css);
   assert.ok(btn, '.tabbar button のスタイルがありません');
   assert.match(btn[1], /flex:\s*1 1 0/);
   assert.match(btn[1], /min-width:\s*0/);
+  assert.match(btn[1], /white-space:\s*nowrap/);
 });
 
 test('フォルダは長押しで「編集 / 移動 / 削除」のメニューが開く', () => {

@@ -15,7 +15,7 @@ try {
 } catch (e) { /* 保存が読めないときはライト */ }
 </script>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="styles.css?v=1.11.0">
+<link rel="stylesheet" href="styles.css?v=1.12.0">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 </head>
@@ -131,11 +131,10 @@ try {
     <button id="btnSearchClear" aria-label="検索をやめる"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button>
   </div>
 
-  <!-- フォルダを開いているときの大きな現在地（家・フォルダ名・上へ） -->
+  <!-- フォルダを開いているときの現在地（家 › 親 › 子 › 孫。各階層をタップで移動・幅が足りなければ折り返す） -->
   <nav class="crumb" id="crumb" aria-label="現在の場所" hidden>
     <button class="cbtn" id="btnHome" aria-label="保管場所へ戻る"><svg class="ic" aria-hidden="true"><use href="#i-home"/></svg></button>
-    <span class="sep" aria-hidden="true">›</span>
-    <span class="path" id="crumbName"></span>
+    <div class="trail" id="crumbTrail"></div>
     <button class="cbtn up" id="btnUp" aria-label="上へ戻る"><svg class="ic" aria-hidden="true"><use href="#i-up"/></svg></button>
   </nav>
 </header>
@@ -180,6 +179,41 @@ try {
   <section id="view-shopping" hidden>
     <p class="lede">補充が必要なもの</p>
     <div id="shoppingList"></div>
+  </section>
+
+  <!-- 検索（内蔵JAN辞書から探して、そのまま自分の在庫へ追加） -->
+  <section id="view-search" hidden>
+    <div class="card">
+      <div class="dict-search">
+        <input id="dictQTab" type="search" placeholder="商品名・メーカー・JAN" autocomplete="off" inputmode="search" enterkeyhint="search" aria-label="内蔵辞書を検索">
+        <button id="dictQTabClear" aria-label="検索をやめる"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button>
+      </div>
+      <p class="hint" id="dictTabNote" style="margin:8px 0 0"></p>
+    </div>
+    <div class="fsec">
+      <div class="sechead">
+        <svg class="ic" aria-hidden="true"><use href="#i-folder"/></svg>
+        <span>メーカー</span>
+      </div>
+      <div class="card" style="margin-top:0">
+        <select id="dictMakerSel" aria-label="メーカーで絞る"></select>
+      </div>
+    </div>
+    <div class="fsec" id="dictCatSec" hidden>
+      <div class="sechead">
+        <svg class="ic" aria-hidden="true"><use href="#i-grid"/></svg>
+        <span>カテゴリ</span>
+      </div>
+      <div class="chipwrap" id="dictCatChips"></div>
+    </div>
+    <div class="fsec">
+      <div class="sechead">
+        <svg class="ic" aria-hidden="true"><use href="#i-grid"/></svg>
+        <span>検索結果</span>
+        <b id="dictResCount">0</b>
+      </div>
+      <div id="dictResults"></div>
+    </div>
   </section>
 
   <!-- 設定 -->
@@ -273,6 +307,7 @@ try {
   <button data-tab="stock" aria-selected="true">在庫</button>
   <button data-tab="maker" aria-selected="false">メーカー</button>
   <button data-tab="shopping" aria-selected="false">補充</button>
+  <button data-tab="search" aria-selected="false">検索</button>
   <button data-tab="settings" aria-selected="false">設定</button>
 </nav>
 
@@ -439,7 +474,7 @@ try {
 <!-- 移動シート -->
 <div class="sheet" id="sheetMove" role="dialog" aria-modal="true" aria-labelledby="moveTitle">
   <h2 id="moveTitle">フォルダへ移動<button class="close" data-close="sheetMove" aria-label="閉じる"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></h2>
-  <div class="pill-row" id="moveOptions"></div>
+  <div class="ftree" id="moveOptions"></div>
 </div>
 
 <!-- フォルダの長押しメニュー（編集 / 移動 / 削除） -->
@@ -457,7 +492,7 @@ try {
 <div class="sheet" id="sheetFolderMove" role="dialog" aria-modal="true" aria-labelledby="folderMoveTitle">
   <h2 id="folderMoveTitle">移動先のフォルダ<button class="close" data-close="sheetFolderMove" aria-label="閉じる"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></h2>
   <p class="hint" id="folderMoveNote" style="margin:0 0 10px"></p>
-  <div class="pill-row" id="folderMoveOptions"></div>
+  <div class="ftree" id="folderMoveOptions"></div>
 </div>
 
 <!-- 辞書一覧シート -->
@@ -538,6 +573,6 @@ try {
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<script type="module" src="app.js?v=1.11.0"></script>
+<script type="module" src="app.js?v=1.12.0"></script>
 </body>
 </html>

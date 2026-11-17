@@ -102,12 +102,15 @@ test('画面: 複数選択の入口（⋯メニュー）・選択マーク・操
   assert.match(css, /\.tile\.sel \.sw|\.tile\.sel \.selmark/);
 });
 
-test('シートは開くたび先頭から・移動先は親までの経路だけを添える', () => {
+test('シートは開くたび先頭から・移動先は1行1フォルダの縦ツリー', () => {
   const app = read('app.js');
   // 前回のスクロール位置が残ると、開いた瞬間に中ほどが見えてしまう
   assert.match(app, /openSheet\('sheetItem'\);\n\s*\$\('sheetItem'\)\.scrollTop = 0;/);
-  // 「机まわり 家 / 机まわり」ではなく「机まわり 家」
-  assert.match(app, /folderChain\(state\.folders, o\.id\)\.slice\(0, -1\)/);
+  // 縦ツリーは深さのインデントで親子を表すので、行に親の経路を重ねて書かない
+  assert.match(app, /function folderTreeHtml\(options/);
+  assert.match(app, /\$\('moveOptions'\)\.innerHTML = folderTreeHtml\(folderOptions\(state\.folders/);
+  assert.match(app, /\$\('folderMoveOptions'\)\.innerHTML = folderTreeHtml\(/);
+  assert.equal(/mpath/.test(app), false, '移動先に親の経路（mpath）が残っている');
 });
 
 test('選択モードのときに増減・編集のボタンを塞がない（pointer-events を殺さない）', () => {

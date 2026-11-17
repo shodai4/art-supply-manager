@@ -112,7 +112,7 @@ test('余白はCSS変数 --ad-h で入れ、解除すると0に戻る', () => {
   assert.equal(env.attributes.get('data-ad-banner'), 'true');
   clearBannerLift(env.doc);
   assert.equal(env.style.get(AD_HEIGHT_VAR), '0px');
-  assert.equal(env.attributes.has('data-ad-banner'), false);
+  assert.equal(env.attributes.get('data-ad-banner'), 'false');
 });
 
 test('ネイティブでは初期化→バナー表示。読み込めた大きさに合わせて余白が決まる', async () => {
@@ -134,7 +134,7 @@ test('ネイティブでは初期化→バナー表示。読み込めた大き�
   // 出せなかったら余白を残さない（下に空白を作らない）
   env.listeners.get('bannerAdFailedToLoad')();
   assert.equal(env.style.get(AD_HEIGHT_VAR), '0px');
-  assert.equal(env.attributes.has('data-ad-banner'), false);
+  assert.equal(env.attributes.get('data-ad-banner'), 'false');
 
   // 二重初期化しない
   await banner.init();
@@ -148,12 +148,12 @@ test('Webブラウザでは初期化も表示もせず、余白も入れない',
   assert.equal(await banner.init(), false);
   assert.equal(env.calls.initialize.length, 0);
   assert.equal(env.calls.showBanner.length, 0);
-  assert.equal(env.attributes.has('data-ad-banner'), false);
+  assert.equal(env.attributes.get('data-ad-banner'), 'false');
   // プラグインが入っていてもネイティブでなければ出さない
   const noPlugin = fakeEnv({ native: true, withPlugin: false });
   const other = setupAdBanner({ win: noPlugin.win, doc: noPlugin.doc, log() {} });
   assert.equal(other.enabled, false);
-  assert.equal(noPlugin.attributes.has('data-ad-banner'), false);
+  assert.equal(noPlugin.attributes.get('data-ad-banner'), 'false');
 });
 
 /* ---------------- 画面の配線と余白（CSS） ---------------- */
@@ -161,16 +161,18 @@ test('Webブラウザでは初期化も表示もせず、余白も入れない',
 test('アプリは起動時にバナーを用意し、CSSはバナー分だけ下を持ち上げる', () => {
   const app = read('app.js');
   assert.match(app, /import \{ setupAdBanner \} from '\.\/admob\.js';/);
-  assert.match(app, /const adBanner = setupAdBanner\(\);/);
+  assert.match(app, /const adBanner = setupAdBanner\(\{ isPro: \(\) => isPro\(state\.settings\) \}\);/);
 
   const css = read('styles.css');
   // 既定は0（Web・広告が出ていないときは何も変わらない）
   assert.match(css, /:root\s*\{[^}]*--ad-h:\s*0px/);
   // 本文の下余白
   assert.match(css, /body\s*\{[^}]*padding-bottom:\s*calc\(var\(--tabbar-h\)[^;]*var\(--ad-h\)[^;]*env\(safe-area-inset-bottom\)/);
-  // タブバーはバナーの上
-  assert.match(css, /\.tabbar\s*\{[^}]*bottom:\s*calc\(var\(--ad-h\) \+ env\(safe-area-inset-bottom\)\)/);
-  assert.match(css, /body\[data-ad-banner="true"\] \.tabbar\s*\{[^}]*height:\s*var\(--tabbar-h\)[^}]*padding-bottom:\s*0/);
+  // タブバーは普段は画面最下部（セーフエリアは padding で確保）
+  assert.match(css, /\.tabbar\s*\{[^}]*bottom:\s*0;/);
+  assert.match(css, /\.tabbar\s*\{[^}]*padding-bottom:\s*env\(safe-area-inset-bottom\)/);
+  // バナーが出ている間だけ、バナーの高さぶん持ち上げる（セーフエリアを二重に空けない）
+  assert.match(css, /body\[data-ad-banner="true"\] \.tabbar\s*\{[^}]*bottom:\s*calc\(var\(--ad-h\) \+ env\(safe-area-inset-bottom\)\)[^}]*height:\s*var\(--tabbar-h\)[^}]*padding-bottom:\s*0/);
   // 下部操作ドックは廃止（タブバー＋バナーだけ）
   assert.equal(/\.dock\s*\{/.test(css), false);
   // 選択バー・FAB・トースト・シートも同じだけ持ち上げる
@@ -207,8 +209,8 @@ test('admob.js は配布物（www/・Service Worker）に入り、絵文字を�
   assert.match(pkg.dependencies['@capacitor-community/admob'], /^\^6\./);
   assert.equal(EMOJI.test(read('admob.js')), false, 'admob.js に絵文字があります');
   // バージョン（キャッシュの更新）
-  assert.match(sw, /art-supply-manager-v30/);
-  assert.equal(pkg.version, '1.11.0');
+  assert.match(sw, /art-supply-manager-v31/);
+  assert.equal(pkg.version, '1.12.0');
 });
 
 test('Podfile で UMP を 2.x に固定する（プラグインのSwiftが新しいSDKの改名で壊れるため）', () => {
@@ -257,4 +259,61 @@ test('Podfile.lock が UMP 3.x を持っていたら作り直す（cap sync が�
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+/* ---------------- Pro のときは広告を出さない ---------------- */
+
+test('Pro（プレビュー含む）の間は広告を出さず、終了したら戻す', async () => {
+  const env = fakeEnv();
+  let pro = true;
+  const banner = new AdBanner({ win: env.win, doc: env.doc, log() {}, isPro: () => pro });
+
+  // Proの間は初期化もしない・余白も空けない（タブバーは最下部まで下がる）
+  assert.equal(await banner.init(), false);
+  assert.equal(env.calls.initialize.length, 0);
+  assert.equal(env.calls.showBanner.length, 0);
+  assert.equal(env.style.get(AD_HEIGHT_VAR), '0px');
+  assert.equal(env.attributes.get('data-ad-banner'), 'false');
+
+  // Proを終了したら広告を出し、読み込めたら余白が戻る
+  pro = false;
+  await banner.sync();
+  assert.equal(env.calls.initialize.length, 1);
+  assert.equal(env.calls.showBanner.length, 1);
+  env.listeners.get('bannerAdLoaded')();
+  assert.equal(env.style.get(AD_HEIGHT_VAR), `${ADMOB_BANNER_FALLBACK_HEIGHT}px`);
+  assert.equal(env.attributes.get('data-ad-banner'), 'true');
+
+  // Proに戻したら hideBanner して余白を0に戻す
+  pro = true;
+  await banner.sync();
+  assert.equal(env.calls.hideBanner, 1);
+  assert.equal(env.style.get(AD_HEIGHT_VAR), '0px');
+  assert.equal(env.attributes.get('data-ad-banner'), 'false');
+
+  // 何度 sync しても増殖しない
+  await banner.sync();
+  assert.equal(env.calls.hideBanner, 1);
+
+  // もう一度Proを終了すれば、初期化は増やさずに再表示する
+  pro = false;
+  await banner.sync();
+  assert.equal(env.calls.initialize.length, 1);
+  assert.equal(env.calls.showBanner.length, 2);
+});
+
+test('起動時にProなら広告を用意しない（setupAdBanner）', () => {
+  const env = fakeEnv();
+  const banner = setupAdBanner({ win: env.win, doc: env.doc, log() {}, isPro: () => true });
+  assert.equal(banner.enabled, true);
+  assert.equal(env.calls.initialize.length, 0);
+  assert.equal(env.calls.showBanner.length, 0);
+  assert.equal(env.style.get(AD_HEIGHT_VAR), '0px');
+  assert.equal(env.attributes.get('data-ad-banner'), 'false');
+});
+
+test('アプリはProの切り替えで広告を出し入れする', () => {
+  const app = read('app.js');
+  assert.match(app, /setupAdBanner\(\{ isPro: \(\) => isPro\(state\.settings\) \}\)/);
+  assert.match(app, /function setProPreview\(on\) \{[\s\S]{0,400}adBanner\.sync\(\);/);
 });

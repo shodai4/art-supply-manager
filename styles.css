@@ -147,8 +147,8 @@ button, a, select, label, summary, .hbtn, .vpill, .fab, .tabbar button { touch-a
   background: var(--surface); display: grid; place-items: center; color: var(--ink-2);
 }
 
-/* フォルダを開いているときの現在地（家・フォルダ名・上へ） */
-.crumb { display: flex; align-items: center; gap: 8px; padding: 0 12px 10px; }
+/* フォルダを開いているときの現在地（家 › 親 › 子 › 孫。各階層をタップで移動・幅が足りないときは折り返す） */
+.crumb { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 0 12px 10px; }
 .crumb[hidden] { display: none; }
 .crumb .cbtn {
   flex: 0 0 auto; width: 44px; height: 42px; border-radius: 12px; border: 1px solid var(--line);
@@ -156,11 +156,16 @@ button, a, select, label, summary, .hbtn, .vpill, .fab, .tabbar button { touch-a
 }
 .crumb .cbtn .ic { width: 21px; height: 21px; }
 .crumb .cbtn:active { background: var(--surface-2); }
-.crumb .sep { font-size: 13px; color: var(--ink-3); }
-.crumb .path {
-  flex: 1 1 auto; min-width: 0; font-size: 15.5px; font-weight: 800; color: var(--ink);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+/* 階層の並び。画面幅に収まらないときは折り返して全階層を見せる（横スクロールで隠さない） */
+.crumb .trail { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; flex: 1 1 140px; min-width: 0; }
+.crumb .cbtn.name {
+  width: auto; max-width: 100%; padding: 0 10px; display: block;
+  font-size: 15px; font-weight: 800; color: var(--ink); line-height: 40px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left;
 }
+/* いまいる階層（タップしても何も変わらないので、少し沈んで見せる） */
+.crumb .cbtn.name.here { background: var(--surface-2); color: var(--ink); }
+.crumb .sep { flex: 0 0 auto; font-size: 13px; color: var(--ink-3); }
 .crumb .cbtn.up { margin-left: auto; }
 
 /* 在庫タブのまとまり（お気に入り・フォルダ・画材）の見出し */
@@ -402,16 +407,20 @@ main { padding: 0; }
 .fab.scan .ic { width: 21px; height: 21px; }
 
 .tabbar {
-  position: fixed; left: 0; right: 0; bottom: calc(var(--ad-h) + env(safe-area-inset-bottom)); z-index: 30; background: var(--surface); border-top: 1px solid var(--line);
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: var(--surface); border-top: 1px solid var(--line);
   display: flex; align-items: stretch; height: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
   padding-bottom: env(safe-area-inset-bottom);
 }
-/* バナーが出ている間は、タブバー自身のセーフエリア余白はバナー側が持つ（二重に空けない） */
-body[data-ad-banner="true"] .tabbar { height: var(--tabbar-h); padding-bottom: 0; }
+/* バナーが出ている間だけ、バナーの高さぶん持ち上げる（下の余白はバナー側が持つので二重に空けない） */
+body[data-ad-banner="true"] .tabbar {
+  bottom: calc(var(--ad-h) + env(safe-area-inset-bottom));
+  height: var(--tabbar-h); padding-bottom: 0;
+}
 .tabbar button {
-  flex: 1 1 0; min-width: 0; border: none; background: none; padding: 0 2px;
-  font-size: 12.5px; font-weight: 700; color: var(--ink-2); letter-spacing: .02em;
+  flex: 1 1 0; min-width: 0; border: none; background: none; padding: 0 1px;
+  font-size: 11.5px; font-weight: 700; color: var(--ink-2); letter-spacing: 0;
   display: grid; place-items: center; border-top: 2px solid transparent;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .tabbar button[aria-selected="true"] { color: var(--accent); border-top-color: var(--accent); }
 
@@ -457,8 +466,23 @@ body[data-ad-banner="true"] .tabbar { height: var(--tabbar-h); padding-bottom: 0
 .pill-row { display: flex; gap: 6px; flex-wrap: wrap; }
 .pill { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 8px 12px; font-size: 13px; }
 .pill[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--on-accent-soft); font-weight: 700; }
-/* 移動先は階層の深さでインデントする */
-.pill.move { margin-left: calc(var(--d, 0) * 12px); }
+/* 移動先は1行1フォルダの縦ツリー（深さでインデントし、親子は └ で表す） */
+.ftree {
+  display: flex; flex-direction: column; max-height: min(56vh, 420px); overflow-y: auto;
+  -webkit-overflow-scrolling: touch; border: 1px solid var(--line); border-radius: 12px;
+}
+.ftree-row {
+  display: flex; align-items: center; gap: 6px; width: 100%; min-height: 46px;
+  padding: 9px 12px 9px calc(12px + var(--d, 0) * 18px);
+  border: none; border-bottom: 1px solid var(--line); background: var(--surface);
+  font-size: 14.5px; font-weight: 600; color: var(--ink); text-align: left;
+}
+.ftree-row:last-child { border-bottom: none; }
+.ftree-row:active { background: var(--surface-2); }
+.ftree-row[aria-pressed="true"] { background: var(--accent-soft); color: var(--on-accent-soft); font-weight: 800; }
+.ftree-guide { flex: 0 0 auto; color: var(--ink-3); font-weight: 400; }
+.ftree-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ftree-here { flex: 0 0 auto; font-size: 10.5px; font-weight: 700; color: var(--muted-ink); }
 
 /* 辞書から探す（検索結果の行） */
 .dict-list { font-size: 12px; }
@@ -472,6 +496,35 @@ body[data-ad-banner="true"] .tabbar { height: var(--tabbar-h); padding-bottom: 0
 .dic-meta { color: var(--ink-2); }
 .dic-jan { font-family: ui-monospace, monospace; }
 .dic-src { font-size: 11px; }
+
+/* 検索タブ（内蔵辞書のカタログ検索） */
+.dict-search { display: flex; align-items: center; gap: 8px; }
+.dict-search input {
+  flex: 1 1 auto; min-width: 0; height: 38px; border: 1px solid var(--line); background: var(--surface);
+  border-radius: 10px; padding: 7px 12px; font-size: 16px;
+}
+.dict-search input:focus { outline: none; border-color: var(--accent-line); box-shadow: 0 0 0 3px rgba(47, 111, 208, .14); }
+.dict-search input::-webkit-search-cancel-button { -webkit-appearance: none; }
+.dict-search button {
+  flex: 0 0 auto; width: 38px; height: 38px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--surface); display: grid; place-items: center; color: var(--ink-2);
+}
+.dict-search button .ic { width: 18px; height: 18px; }
+#dictMakerSel {
+  width: 100%; height: 42px; border: 1px solid var(--line); border-radius: 10px; padding: 0 10px;
+  font-size: 15px; background: var(--surface); color: var(--ink);
+}
+.dres { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.dres-main { flex: 1 1 auto; min-width: 0; text-align: left; background: none; border: none; padding: 0; color: var(--ink); }
+.dres-name { display: block; font-size: 13.5px; font-weight: 700; line-height: 1.35; }
+.dres-sub { display: block; font-size: 11.5px; color: var(--ink-2); margin-top: 2px; }
+.dres-jan { display: block; font-family: ui-monospace, monospace; font-size: 10.5px; color: var(--ink-3); margin-top: 2px; }
+.dres-add {
+  flex: 0 0 auto; min-height: 40px; padding: 0 12px; border-radius: 10px;
+  border: 1px solid var(--accent-line); background: var(--accent-soft); color: var(--on-accent-soft);
+  font-size: 12.5px; font-weight: 800;
+}
+.dres-have { flex: 0 0 auto; font-size: 11px; font-weight: 700; color: var(--ink-3); }
 
 /* カメラ映像とガイド枠を同じ箱に収める。
    箱の高さは「映像の縦横比」で決まる（幅は枠いっぱい・高さはauto）ので、

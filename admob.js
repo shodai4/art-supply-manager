@@ -96,11 +96,11 @@ export function applyBannerLift(doc, height) {
   return h;
 }
 
-/** 持ち上げを解除する（広告が出ない・消えたとき。余白を残さない） */
+/** 持ち上げを解除する（広告が出ない・消えた・Proのとき。余白を残さない） */
 export function clearBannerLift(doc) {
   if (!doc?.documentElement) return;
   doc.documentElement.style.setProperty(AD_HEIGHT_VAR, '0px');
-  if (doc.body?.removeAttribute) doc.body.removeAttribute('data-ad-banner');
+  if (doc.body?.setAttribute) doc.body.setAttribute('data-ad-banner', 'false');
 }
 
 /**
@@ -108,14 +108,17 @@ export function clearBannerLift(doc) {
  * win / doc を渡せるのは node --test から動かすため。
  */
 export class AdBanner {
-  constructor({ win, doc, log } = {}) {
+  constructor({ win, doc, log, isPro } = {}) {
     this.win = win ?? (typeof window !== 'undefined' ? window : undefined);
     this.doc = doc ?? (typeof document !== 'undefined' ? document : undefined);
     this.log = typeof log === 'function' ? log : () => {};
     this.plugin = adMobPlugin(this.win);
     this.native = isNativeShell(this.win);
+    // Pro（プレビュー含む）の判定。関数で渡してもらい、切り替わったら sync() で追従する
+    this.isPro = typeof isPro === 'function' ? isPro : () => Boolean(isPro);
     this.started = false;
     this.visible = false;
+    this.adFreeActive = false; // Proで広告を消している状態
   }
 
   /** この環境で出すか（Webブラウザでは出さない） */
@@ -123,9 +126,21 @@ export class AdBanner {
     return shouldShowAdBanner({ native: this.native, hasPlugin: Boolean(this.plugin) });
   }
 
-  /** 初期化してバナーを出す（二重起動しない） */
+  /** Pro で広告を消す状態か（判定が失敗したら広告は出す） */
+  get adFree() {
+    try { return Boolean(this.isPro()); } catch { return false; }
+  }
+
+  /** 初期化してバナーを出す（二重起動しない・Proの間は出さない） */
   async init() {
-    if (!this.enabled || this.started) return false;
+    if (!this.enabled) { clearBannerLift(this.doc); return false; }
+    if (this.adFree) {
+      // Proの間は広告を出さない（タブバーはセーフエリア直上まで下がる）
+      this.adFreeActive = true;
+      clearBannerLift(this.doc);
+      return false;
+    }
+    if (this.started) return false;
     this.started = true;
     try {
       await this.plugin.initialize(bannerInitializeOptions());
@@ -137,6 +152,26 @@ export class AdBanner {
       clearBannerLift(this.doc);
       return false;
     }
+  }
+
+  /**
+   * Pro の切り替えに合わせて広告を消す／戻す（何度呼んでもよい）。
+   * Proなら即座に余白も 0 に戻し、タブバーとFABを画面最下部へ下げる。
+   */
+  async sync() {
+    if (!this.enabled) { clearBannerLift(this.doc); return false; }
+    if (this.adFree) {
+      if (this.adFreeActive) return false;
+      this.adFreeActive = true;
+      if (this.started) await this.hide();
+      else clearBannerLift(this.doc);
+      return false;
+    }
+    if (this.adFreeActive) {
+      this.adFreeActive = false;
+      return this.started ? this.show() : this.init();
+    }
+    return false;
   }
 
   /** 広告の状態に合わせて余白を合わせる */
@@ -152,7 +187,7 @@ export class AdBanner {
       const h = Number(info?.height) || 0;
       if (h > 0) { applyBannerLift(this.doc, h); this.visible = true; }
     });
-    // 読み込めたら予備の高さで先に余白を確保しておく（実測値で上書きされる）
+    // 実際に読み込めたときだけ余白を確保する（未配信・ロード失敗のときは下に空白を作らない）
     listen('bannerAdLoaded', () => {
       applyBannerLift(this.doc, ADMOB_BANNER_FALLBACK_HEIGHT);
       this.visible = true;
@@ -162,11 +197,16 @@ export class AdBanner {
       clearBannerLift(this.doc);
       this.visible = false;
     });
+    // 閉じられたときも余白を戻す
+    listen('bannerAdDismissed', () => {
+      clearBannerLift(this.doc);
+      this.visible = false;
+    });
   }
 
-  /** バナーを出す（出せなければ余白は 0 のまま） */
+  /** バナーを出す（出せなければ余白は 0 のまま。Proの間は出さない） */
   async show() {
-    if (!this.enabled) return false;
+    if (!this.enabled || this.adFree) return false;
     try {
       await this.plugin.showBanner(bannerShowOptions());
       return true;

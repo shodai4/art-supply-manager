@@ -246,7 +246,7 @@ test('画面: 階層フォルダの導線（フォルダのタイル・親の選
   assert.match(app, /data-add-folder/);
   assert.match(app, /folderSubtreeIds\(state\.folders/);
   assert.match(app, /folderPathLabel\(state\.folders/);
-  // 深さでインデントする
+  // 深さでインデントする（移動先は1行1フォルダの縦ツリー）
   assert.match(css, /\.folder-row[^{]*\{[^}]*padding-left:\s*calc\(var\(--d/);
-  assert.match(css, /\.pill\.move\s*\{[^}]*margin-left:\s*calc\(var\(--d/);
+  assert.match(css, /\.ftree-row[^{]*\{[^}]*padding:\s*9px 12px 9px calc\(12px \+ var\(--d/);
 });
