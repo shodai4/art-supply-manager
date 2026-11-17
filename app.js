@@ -55,6 +55,7 @@ import {
   AUTO_IMAGE_FILL_GAP_MS, AUTO_IMAGE_FILL_ROUNDS,
 } from './auto-image.js';
 import { setupAdBanner } from './admob.js';
+import { exportFile, exportFailureMessage } from './export-file.js';
 import {
   THEME_MODES, normalizeTheme, resolveTheme, themeColor, themeLabel, readStoredTheme,
   writeStoredTheme, prefersDark,
@@ -1041,19 +1042,21 @@ $('costTabs').addEventListener('click', (e) => {
   renderCost();
 });
 
-/** 画材一覧をCSV（BOM付きUTF-8・Excelでそのまま開ける）で保存 */
-function downloadCsv() {
+/** 画材一覧をCSV（BOM付きUTF-8・Excelでそのまま開ける）で保存
+ *  iOSアプリでは共有シート（“ファイル”に保存 等）、Webではダウンロード。 */
+async function downloadCsv() {
   if (!requirePro('cost')) return;
   const text = buildItemsCsvText(sortItems(state.items, 'maker'), state.folders);
-  const d = new Date();
-  const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
-  const blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `art-supply-${stamp}.csv`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 3000);
-  toast(`${state.items.length}件をCSVで保存しました`);
+  const count = state.items.length;
+  const result = await exportFile({ kind: 'csv', content: text });
+  if (result.ok) {
+    // 共有シート（“ファイル”に保存 等）で書き出したときも、Webのダウンロードと同じ言い方にそろえる
+    toast(result.method === 'share' ? `${count}件をCSVで書き出しました` : `${count}件をCSVで保存しました`);
+    return;
+  }
+  // 共有シートを閉じただけ（キャンセル）のときは何も出さない
+  const message = exportFailureMessage(result);
+  if (message) toast(message);
 }
 
 $('btnCsv').addEventListener('click', downloadCsv);
@@ -2386,15 +2389,14 @@ $('testPills').addEventListener('click', (e) => {
 });
 
 /* ---------------- 設定: 入出力 ---------------- */
-$('btnExport').addEventListener('click', () => {
-  const blob = new Blob([exportState(state)], { type: 'application/json' });
-  const a = document.createElement('a');
-  const d = new Date();
-  const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
-  a.href = URL.createObjectURL(blob);
-  a.download = `art-supply-backup-${stamp}.json`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+$('btnExport').addEventListener('click', async () => {
+  const result = await exportFile({ kind: 'json', content: exportState(state) });
+  if (!result.ok) {
+    // 共有シートを閉じただけ（キャンセル）のときは何も出さない
+    const message = exportFailureMessage(result);
+    if (message) toast(message);
+    return;
+  }
   toast(photoCount
     ? `バックアップを書き出しました（手元写真${photoCount}枚は端末内のみ・JSONに含みません）`
     : 'バックアップを書き出しました');

@@ -29,6 +29,7 @@ export const WEB_ASSETS = [
   'scan-flow.js',
   'auto-image.js',
   'admob.js',
+  'export-file.js',
   'app.js',
   'manifest.webmanifest',
   'icon.svg',
