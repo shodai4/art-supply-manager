@@ -289,8 +289,9 @@ final class ArtBarcodeScannerController: UIViewController, AVCaptureMetadataOutp
         if session.canAddOutput(output) {
             session.addOutput(output)
             output.setMetadataObjectsDelegate(self, queue: .main)
-            let wanted = wantedObjectTypes().filter { output.availableMetadataObjectTypes.contains($0) }
-            output.metadataObjectTypes = wanted.isEmpty ? [.ean13] : wanted
+            let available = output.availableMetadataObjectTypes
+            let wanted = wantedObjectTypes().filter { available.contains($0) }
+            output.metadataObjectTypes = wanted.isEmpty ? [AVMetadataObject.ObjectType.ean13] : wanted
             metadataOutput = output
         }
         session.commitConfiguration()
@@ -306,12 +307,12 @@ final class ArtBarcodeScannerController: UIViewController, AVCaptureMetadataOutp
     /// 読む種類（JAN の EAN-13 を基本に、EAN-8・UPC-E・CODE128 も受ける）
     private func wantedObjectTypes() -> [AVMetadataObject.ObjectType] {
         let map: [String: AVMetadataObject.ObjectType] = [
-            "EAN_13": .ean13,
-            "EAN_8": .ean8,
-            "UPC_A": .ean13,
-            "UPC_E": .upce,
-            "CODE_128": .code128,
-            "QR_CODE": .qr
+            "EAN_13": AVMetadataObject.ObjectType.ean13,
+            "EAN_8": AVMetadataObject.ObjectType.ean8,
+            "UPC_A": AVMetadataObject.ObjectType.ean13,
+            "UPC_E": AVMetadataObject.ObjectType.upce,
+            "CODE_128": AVMetadataObject.ObjectType.code128,
+            "QR_CODE": AVMetadataObject.ObjectType.qr
         ]
         var types: [AVMetadataObject.ObjectType] = []
         for name in requestedFormats {
@@ -319,7 +320,11 @@ final class ArtBarcodeScannerController: UIViewController, AVCaptureMetadataOutp
                 types.append(type)
             }
         }
-        return types.isEmpty ? [.ean13, .ean8, .upce, .code128] : types
+        if types.isEmpty {
+            return [AVMetadataObject.ObjectType.ean13, AVMetadataObject.ObjectType.ean8,
+                    AVMetadataObject.ObjectType.upce, AVMetadataObject.ObjectType.code128]
+        }
+        return types
     }
 
     private func cameraDevice(position: AVCaptureDevice.Position) -> AVCaptureDevice? {
@@ -373,14 +378,12 @@ final class ArtBarcodeScannerController: UIViewController, AVCaptureMetadataOutp
     }
 
     private func typeName(_ type: AVMetadataObject.ObjectType) -> String {
-        switch type {
-        case .ean13: return "EAN_13"
-        case .ean8: return "EAN_8"
-        case .upce: return "UPC_E"
-        case .code128: return "CODE_128"
-        case .qr: return "QR_CODE"
-        default: return "UNKNOWN"
-        }
+        if type == AVMetadataObject.ObjectType.ean13 { return "EAN_13" }
+        if type == AVMetadataObject.ObjectType.ean8 { return "EAN_8" }
+        if type == AVMetadataObject.ObjectType.upce { return "UPC_E" }
+        if type == AVMetadataObject.ObjectType.code128 { return "CODE_128" }
+        if type == AVMetadataObject.ObjectType.qr { return "QR_CODE" }
+        return "UNKNOWN"
     }
 
     // MARK: - 画面の操作
