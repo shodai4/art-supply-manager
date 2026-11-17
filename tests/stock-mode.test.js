@@ -172,6 +172,9 @@ test('ルートは「お気に入り / すべての画材」を横に2つ、下�
   // ルートで、検索も絞込もしていないときだけ出す
   assert.match(app, /const show = ui\.tab === 'stock' && ui\.stockMode !== 'maker' && !ui\.query && !hasFilters\(\) && root;/);
 
+  // フォルダ欄を出さないとき（特別フォルダ・検索中）は見出しの行ごと畳む
+  assert.match(app, /\$\('folderSecHead'\)\.hidden = !show;/);
+
   // ルートの一覧は未分類だけ。0件なら節ごと出さない
   assert.match(app, /if \(root && !ui\.query\) list = unfiledItems\(list, state\.folders\);/);
   assert.match(app, /\$\('itemSec'\)\.hidden = unfiledOnly && !hasFilters\(\) && list\.length === 0;/);

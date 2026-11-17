@@ -657,7 +657,8 @@ function renderFolderGrid() {
   const all = isAllFolder(ui.folderId);
   const show = ui.tab === 'stock' && ui.stockMode !== 'maker' && !ui.query && !hasFilters() && !fav && !all;
   $('folderGrid').hidden = !show;
-  // フォルダの一覧を出さないときは見出しも畳む（現在地はすぐ下のパンくずが伝える）
+  // フォルダの一覧を出さないときは見出しごと畳む（現在地はすぐ下のパンくずが伝える）
+  $('folderSecHead').hidden = !show;
   $('folderSecTitle').hidden = !show;
   if (!show) { $('folderGrid').innerHTML = ''; return; }
   const parentId = ui.folderId === 'all' ? '' : ui.folderId;
