@@ -105,6 +105,9 @@ test('検索タブに「シリーズ」のプルダウンがある（すべて�
   assert.match(app, /function dictSeriesList\(\) \{/);
   assert.match(app, /selSeries\.innerHTML = `<option value="">すべてのシリーズ（\$\{sum\.toLocaleString\('ja-JP'\)\}）<\/option>`/);
   assert.match(app, /\.map\(\(s\) => `<option value="\$\{esc\(s\.name\)\}">\$\{esc\(s\.name\)\}（\$\{s\.count\.toLocaleString\('ja-JP'\)\}）<\/option>`\)/);
+  // メーカーのプルダウンと同じ見た目（横幅いっぱい・同じ高さ）
+  const css = read('styles.css');
+  assert.match(css, /#dictMakerSel, #dictSeriesSel \{\n  width: 100%; height: 42px;/);
   // 絞った条件（メーカー・カテゴリ・検索語）が変わったときだけ作り直す
   assert.match(app, /const seriesKey = `\$\{dictTabMaker\}\\u0000\$\{dictTabCategory\}\\u0000\$\{dictTabQuery\}`;/);
   assert.match(app, /if \(selSeries\.dataset\.built !== seriesKey\)/);

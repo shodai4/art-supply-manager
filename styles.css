@@ -581,7 +581,7 @@ body[data-ad-banner="true"] .tabbar {
   background: var(--surface); display: grid; place-items: center; color: var(--ink-2);
 }
 .dict-search button .ic { width: 18px; height: 18px; }
-#dictMakerSel {
+#dictMakerSel, #dictSeriesSel {
   width: 100%; height: 42px; border: 1px solid var(--line); border-radius: 10px; padding: 0 10px;
   font-size: 15px; background: var(--surface); color: var(--ink);
 }
