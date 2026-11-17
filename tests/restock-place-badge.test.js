@@ -20,7 +20,8 @@ const css = read('styles.css');
 const itemRow = app.slice(app.indexOf('function itemRow('), app.indexOf('function viewBlocks('));
 
 test('補充タブの行には、場所の色の点つきでフォルダ名が小さく出る', () => {
-  assert.match(app, /function renderShopping\(\) \{\n  renderTilesInto\(\$\('shoppingList'\), computeShoppingList\(state\.items\), \{\n    group: false, emptyKey: 'shopping', shopChip: true, forceList: true, noJanGroup: true,/);
+  // 補充リストは「シリーズ ＋ 色名」の五十音順に並べて描く
+  assert.match(app, /function renderShopping\(\) \{[\s\S]{0,400}renderTilesInto\(\$\('shoppingList'\), list, \{\n    group: false, emptyKey: 'shopping', shopChip: true, forceList: true, noJanGroup: true, seriesLabel: true,/);
   // 通販ボタンの行（＝補充リスト）だけ、フォルダ名のバッジを添える
   assert.match(itemRow, /const placeChip = opts\.shopChip\n    \? `<span class="badge place" title="\$\{esc\(folderPathLabel\(state\.folders, it\.folderId, ' › '\)\)\}"><span class="pdot" style="background:\$\{esc\(f\.color\)\}"><\/span>\$\{esc\(f\.name\)\}<\/span>`\n    : '';/);
   assert.match(itemRow, /\? `\$\{placeChip\}<button class="folder-tag shop-chip" data-shop-for="\$\{esc\(it\.id\)\}">通販<\/button>`/);

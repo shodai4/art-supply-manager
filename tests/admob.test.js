@@ -172,8 +172,12 @@ test('アプリは起動時にバナーを用意し、CSSはバナー分だけ�
   // タブバーは普段は画面最下部（セーフエリアは padding で確保）
   assert.match(css, /\.tabbar\s*\{[^}]*bottom:\s*0;/);
   assert.match(css, /\.tabbar\s*\{[^}]*padding-bottom:\s*env\(safe-area-inset-bottom\)/);
-  // バナーが出ている間だけ、バナーの高さぶん持ち上げる（セーフエリアを二重に空けない）
-  assert.match(css, /body\[data-ad-banner="true"\] \.tabbar\s*\{[^}]*bottom:\s*calc\(var\(--ad-h\) \+ env\(safe-area-inset-bottom\)\)[^}]*height:\s*var\(--tabbar-h\)[^}]*padding-bottom:\s*0/);
+  // バナーが出ている間も下端は 0 のまま、中身だけをバナー＋セーフエリア分持ち上げる
+  // （バーの地色がバナーの背後と下のセーフエリアまで覆い、後ろの内容が透けない）
+  assert.match(css, /body\[data-ad-banner="true"\] \.tabbar\s*\{[^}]*height:\s*calc\(var\(--tabbar-h\) \+ var\(--ad-h\) \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(css, /body\[data-ad-banner="true"\] \.tabbar\s*\{[^}]*padding-bottom:\s*calc\(var\(--ad-h\) \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(css, /\.tabbar\s*\{[^}]*bottom:\s*0;/);
+  assert.equal(/body\[data-ad-banner="true"\] \.tabbar\s*\{[^}]*[\n;]\s*bottom:\s*calc/.test(css), false, 'タブバーが上に浮いてバナー裏が透明になっている');
   // 下部操作ドックは廃止（タブバー＋バナーだけ）
   assert.equal(/\.dock\s*\{/.test(css), false);
   // 選択バー・FAB・トースト・シートも同じだけ持ち上げる
@@ -213,8 +217,8 @@ test('admob.js は配布物（www/・Service Worker）に入り、絵文字を�
   assert.match(pkg.dependencies['@capacitor-community/admob'], /^\^6\./);
   assert.equal(EMOJI.test(read('admob.js')), false, 'admob.js に絵文字があります');
   // バージョン（キャッシュの更新）
-  assert.match(sw, /art-supply-manager-v47/);
-  assert.equal(pkg.version, '1.25.0');
+  assert.match(sw, /art-supply-manager-v48/);
+  assert.equal(pkg.version, '1.26.0');
 });
 
 test('Podfile で UMP を 2.x に固定する（プラグインのSwiftが新しいSDKの改名で壊れるため）', () => {

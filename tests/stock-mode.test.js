@@ -91,7 +91,7 @@ test('「メーカーごと」は持っている画材をメーカー別にま�
   assert.match(app, /label: '未設定'/);
 
   // 中身（長押し・スワイプ・数量±・お気に入り）は在庫と同じカードを使う
-  assert.match(app, /itemsBodyHtml\(sorted, \{ showFolder: true \}\)/);
+  assert.match(app, /itemsBodyHtml\(list, \{ showFolder: true \}\)/);
   assert.match(app, /function itemsBodyHtml[\s\S]{0,600}itemRow\(row\.item, opts\) : itemTile\(row\.item, opts\)/);
 
   // 五十音順（カタカナ・ひらなが混ざっても）に並ぶ

@@ -850,6 +850,136 @@ export function dictionarySeriesList(dict = [], query = '', { hay, maker = '', c
 }
 
 /**
+ * メーカーの中をシリーズごとにまとめる（カタログタブと在庫の「メーカーごと」で共通）。
+ * - 名前のあるシリーズは五十音順。ただし件数が少ない（既定5件未満）シリーズは
+ *   見出しを増やしても探しにくいので、名前の無い商品と一緒に末尾の「その他」にまとめる。
+ * - まとまりの name が '' のものが「その他」（見出しはその他、中身は普通の商品行）。
+ *
+ * @returns {Array<{name:string, total:number, items:Array<object>}>}
+ */
+export function groupDictionaryBySeries(items = [], { minSeriesItems = MIN_SERIES_ITEMS } = {}) {
+  const at = new Map();
+  for (const d of Array.isArray(items) ? items : []) {
+    const name = String(d?.series || '').trim();
+    if (!at.has(name)) at.set(name, []);
+    at.get(name).push(d);
+  }
+  const min = Math.max(1, Math.trunc(Number(minSeriesItems) || 1));
+  const named = [];
+  const rest = [...(at.get('') || [])];
+  for (const [name, list] of at) {
+    if (!name) continue;
+    if (list.length >= min) named.push({ name, total: list.length, items: list });
+    else rest.push(...list);
+  }
+  named.sort((a, b) => compareSeriesName(a.name, b.name));
+  // シリーズの中も五十音順（色名・号数は numeric で自然に並ぶ）
+  for (const g of named) g.items.sort(compareSeriesColor);
+  rest.sort(compareSeriesColor);
+  return [...named, ...(rest.length ? [{ name: '', total: rest.length, items: rest }] : [])];
+}
+
+/** シリーズ見出しを出す最小の件数（これ未満は「その他」にまとめる） */
+export const MIN_SERIES_ITEMS = 5;
+
+/**
+ * シリーズ単位で分けるかどうかの共通ルール（カタログ・在庫の「メーカーごと」で同じ）。
+ * 見出しを持つシリーズが2つ以上あり、どれもまとめるだけの件数（既定5件以上）があるときだけ分ける。
+ * 小さすぎるシリーズは groupDictionaryBySeries が「その他」へ寄せるので、
+ * ここに残るシリーズは十分な件数を持つものだけになる。
+ */
+export function shouldGroupBySeries(seriesGroups = [], { minItems = MIN_SERIES_ITEMS } = {}) {
+  const named = (Array.isArray(seriesGroups) ? seriesGroups : [])
+    .filter((s) => String(s?.name || '').trim());
+  if (named.length < 2) return false;
+  const each = Math.max(1, Math.trunc(Number(minItems) || 1));
+  return named.every((s) => (Number(s?.total) || 0) >= each);
+}
+
+/**
+ * 一覧の並び（シリーズ → 色名/名前の五十音順。No.0〜No.10 なども自然に並ぶ）。
+ * カタログのシリーズの中身・補充タブで同じものを使う。
+ */
+export function compareSeriesColor(a = {}, b = {}) {
+  const sa = String(a?.series || '').trim();
+  const sb = String(b?.series || '').trim();
+  if (sa !== sb) {
+    const bySeries = compareSeriesName(sa, sb);
+    if (bySeries) return bySeries;
+  }
+  const la = catalogItemLabel(a);
+  const lb = catalogItemLabel(b);
+  const byLabel = la.localeCompare(lb, 'ja', { numeric: true, sensitivity: 'base' });
+  if (byLabel) return byLabel;
+  return String(a?.name || '').localeCompare(String(b?.name || ''), 'ja', { numeric: true });
+}
+
+/**
+ * カタログの行に出す名前（シリーズ ＋ 色名）。号数・色番号は行の補足（dictionaryRowDetail）に回す。
+ * - シリーズも色名も無ければ、元の商品名に戻す（空欄にしない）
+ * - 色名がシリーズ名に含まれているとき（例: シリーズ「コピックスケッチ」・色名「スケッチ」）は繰り返さない
+ */
+export function catalogItemLabel(entry = {}) {
+  const series = String(entry?.series || '').trim();
+  const color = String(entry?.colorName || '').trim();
+  const name = String(entry?.name || '').trim();
+  const parts = [];
+  if (series) parts.push(series);
+  if (color && !series.includes(color) && !parts.includes(color)) parts.push(color);
+  const label = parts.join(' ');
+  return label || name || color || series || '';
+}
+
+/**
+ * シリーズ名の並び（五十音順）。ja ロケールの照合を使い、
+ * かなの種類（ひらがな・カタカナ）や濃淡だけで違う名前は、既存の読み比べで決める。
+ */
+export function compareSeriesName(a, b) {
+  const sa = String(a ?? '');
+  const sb = String(b ?? '');
+  if (sa === sb) return 0;
+  const byLocale = sa.localeCompare(sb, 'ja', { numeric: true, sensitivity: 'base' });
+  if (byLocale !== 0) return byLocale;
+  return compareMakerName(sa, sb);
+}
+
+/**
+ * シリーズ見出しの開閉計画（planDictGroups のシリーズ版）。
+ * - 検索語で絞っているときは、当たったシリーズを自動で開く（手で閉じたものは閉じたまま）
+ * - 何も絞っていないときは閉じたまま（見出しだけを並べ、タップで中を開く）
+ * - 開いたシリーズは page 件ずつ描き、残りは rest として「もっと見る」に回す
+ * - 自動展開が広がるときは budget 件で打ち切る（開いていない見出しは件数だけ出す）
+ */
+export function planSeriesGroups(seriesGroups = [], {
+  autoOpen = false, open = new Set(), closed = new Set(), more = new Map(),
+  page = DICT_MAKER_PAGE, budget = DICT_AUTO_OPEN_ROWS,
+} = {}) {
+  const opened = open instanceof Set ? open : new Set(open || []);
+  const closedSet = closed instanceof Set ? closed : new Set(closed || []);
+  const moreMap = more instanceof Map ? more : new Map(Object.entries(more || {}));
+  const perPage = Math.max(1, Math.trunc(Number(page) || DICT_MAKER_PAGE));
+  let left = autoOpen ? Math.max(0, Math.trunc(Number(budget) || 0)) : 0;
+  return (Array.isArray(seriesGroups) ? seriesGroups : []).map((s) => {
+    const name = String(s?.name ?? '');
+    const all = Array.isArray(s?.items) ? s.items : [];
+    const tapped = opened.has(name);
+    // シリーズ名の無いまとまりは、見出しを持たないので常に中身を出す
+    const auto = autoOpen && !closedSet.has(name);
+    const extra = Math.max(0, Math.trunc(Number(moreMap.get(name)) || 0));
+    const want = Math.min(all.length, perPage + extra);
+    let show = 0;
+    if (name === '') show = want; // 見出しの無い「その他」は既定で開く（見出しを押せば閉じられる）
+    else if (closedSet.has(name) && !tapped) show = 0;
+    else if (tapped || extra > 0) show = want;
+    else if (auto && left > 0) {
+      show = Math.min(want, left);
+      left -= show;
+    }
+    return { name, total: all.length, open: show > 0, shown: all.slice(0, show), rest: all.length - show };
+  });
+}
+
+/**
  * 検索タブの行に添える補足（色・容量）。
  * 商品名にすでに入っているものは繰り返さない（例:「... 59ml ウルトラマリンブルー」に
  * 色名と容量をもう一度並べない）。残るものが無ければ空文字。

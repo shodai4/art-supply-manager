@@ -238,8 +238,8 @@ test('検索タブの行はシリーズ名を淡く出し、メーカー名の�
   assert.match(app, /splitSeriesFromName\(full, d\.series\)/);
   assert.match(app, /<span class="dres-series">\$\{esc\(parts\.head\)\}<\/span>/);
   assert.match(css, /\.dres-series \{/);
-  // メーカー名で始まる商品名は displayName で落とす（見出しと二重にしない）
-  assert.match(app, /const nameOf = \(d\) => displayName\(/);
+  // 行の名前は「シリーズ ＋ 色名」（どちらも無ければ商品名。メーカー名は見出しに出るので繰り返さない）
+  assert.match(app, /const nameOf = \(d\) => catalogItemLabel\(d\);/);
 });
 
 /* ---------------- 6) 同期 ---------------- */

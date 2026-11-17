@@ -7,7 +7,8 @@ import {
   NATIVE_SCAN_FORMATS, nativeScanOptions, vendorScannerOptions, vendorStartConfig,
   vendorSupportedFormats, WEB_SCAN_FPS, chooseScanStrategy,
 } from '../scanner.js';
-import { withTimeout, NATIVE_SCAN_OPEN_TIMEOUT_MS } from '../scan-guard.js';
+import { withTimeout } from '../scan-guard.js';
+import { createOpenGate, NATIVE_SCAN_OPEN_TIMEOUT_MS } from '../scan-open-gate.js';
 import {
   SCANNER_POD, SCANNER_PLUGIN_CLASS, addScannerPod, verifyPodfileContent, configurePodfileContent,
   configureCapConfigContent, verifyCapConfigContent,
@@ -61,13 +62,17 @@ test('同梱スキャナは EAN/UPC/CODE128 だけを読み、fps を上げる',
 
 test('iOS ではネイティブ読取を開き、開けないときはアプリ内カメラへ倒す', () => {
   const app = read('app.js');
-  // ネイティブに形式と向きを渡す（カメラ画面が開かないまま固まらないよう上限つきで待つ）
-  assert.match(app, /withTimeout\(\s*native\.startScan\(nativeScanOptions\(scanFacing\)\),\s*NATIVE_SCAN_OPEN_TIMEOUT_MS,/);
+  // ネイティブに形式と向きを渡す。待ち方は「カメラ画面が出た合図」までだけ時間を数え、
+  // 出たあとは読み取るまで待つ（読み取り中に時間切れで切り替わらない）
+  assert.match(app, /createOpenGate\(\{ enable: scanOpenedSubscribed \}\)/);
+  assert.match(app, /gate\.wait\(native\.startScan\(nativeScanOptions\(scanFacing\)\)\)/);
+  assert.match(app, /native\.addListener\('scanOpened'/);
+  assert.equal(/withTimeout\(\s*native\.startScan/.test(app), false, '読み取り全体に時間切れを掛けている');
   // 読んだあと、受け付けなかったときは開いたまま待ち受け直す（開き直さない）
   assert.match(app, /if \(scanContinuous\) continue;[\s\S]{0,120}if \(scannerLive\) continue;/);
   // 閉じるボタンで閉じた（キャンセル）ときはエラー表示にしない
   assert.match(app, /const cancelled = e\?\.code === 'cancelled' \|\| e\?\.code === 'stopped';/);
-  assert.match(app, /if \(cancelled\) return;/);
+  assert.match(app, /if \(cancelled\) \{[\s\S]{0,160}return;/);
   // カメラ画面を開けないときは、黙って固まらずにアプリ内カメラ（html5-qrcode）へ切り替える
   assert.match(app, /await startInlineScanner\(token, 'カメラ画面を開けませんでした。アプリ内カメラで読み取ります'\);/);
   assert.match(app, /async function startInlineScanner\(token, note = ''\)/);
@@ -82,7 +87,8 @@ test('iOS ではネイティブ読取を開き、開けないときはアプリ�
 });
 
 test('ネイティブの起動待ちは上限で切れ、タイムアウトは code=timeout で返る', async () => {
-  assert.equal(NATIVE_SCAN_OPEN_TIMEOUT_MS, 5000);
+  // 合図が来ないままの上限（カメラ画面が出たらこの上限は解除される）
+  assert.equal(NATIVE_SCAN_OPEN_TIMEOUT_MS, 8000);
   // すぐ決まるものはそのまま通る
   assert.equal(await withTimeout(Promise.resolve('ok'), 50), 'ok');
   // 断られたものはそのまま伝わる（キャンセルは従来どおり静かに閉じる）
@@ -147,12 +153,12 @@ test('新しく足した部品は版を付けたURLか別ファイルに置き�
   const app = read('app.js');
   const sw = read('sw.js');
   const { WEB_ASSETS } = await import('../scripts/build.mjs');
-  // ネイティブ起動の打ち切りは scan-guard.js（新しい URL なので古い写しが無い）から取る。
+  // ネイティブ起動の関門は scan-open-gate.js（新しい URL なので古い写しが無い）から取る。
   // scanner.js は URL に版が付かないので、そこへ新しい名前を足すと古い写しでアプリが起動しなくなる。
-  assert.match(app, /import \{ withTimeout, NATIVE_SCAN_OPEN_TIMEOUT_MS \} from '\.\/scan-guard\.js';/);
-  assert.equal(/withTimeout[^;]*from '\.\/scanner\.js'/.test(app), false, 'scanner.js から新しい名前を取っている');
-  assert.ok(WEB_ASSETS.includes('scan-guard.js'), 'scan-guard.js が www/ に入らない');
-  assert.ok(sw.includes("'./scan-guard.js'"), 'scan-guard.js がキャッシュに入らない');
+  assert.match(app, /import \{ createOpenGate \} from '\.\/scan-open-gate\.js';/);
+  assert.equal(/createOpenGate[^;]*from '\.\/scanner\.js'/.test(app), false, 'scanner.js から新しい名前を取っている');
+  assert.ok(WEB_ASSETS.includes('scan-open-gate.js'), 'scan-open-gate.js が www/ に入らない');
+  assert.ok(sw.includes("'./scan-open-gate.js'"), 'scan-open-gate.js がキャッシュに入らない');
   // app.js が読む自分の部品は、すべて www/ の一覧にある（入れ忘れるとアプリ内で固まる）
   const imports = [...app.matchAll(/from '\.\/([\w.-]+\.js)'/g)].map((m) => m[1]);
   assert.ok(imports.length > 5, `app.js の import が足りない: ${imports.length}`);

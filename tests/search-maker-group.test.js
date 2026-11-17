@@ -76,7 +76,7 @@ test('画面: メーカー見出しで分けて描き、見出しはタップで
   assert.match(app, /<use href="#i-chevron"\/>/);
   assert.match(app, /<span>\$\{esc\(g\.maker\)\}<\/span><b>\$\{g\.total\.toLocaleString\('ja-JP'\)\}<\/b>/);
   // 閉じているメーカーの中身は描かない（見出しだけ）
-  assert.match(app, /\$\{g\.open \? `\$\{g\.shown\.map\(rowOf\)\.join\(''\)\}/);
+  assert.match(app, /\$\{g\.open \? bodyOf\(g\) : ''\}/);
   assert.match(css, /\.dgrouphead\s*\{[^}]*font-size:\s*11\.5px[^}]*font-weight:\s*800/);
   assert.match(css, /\.dgroup\.open \.dgrouphead \.chev\s*\{[^}]*transform:\s*rotate\(90deg\)/);
   // 見出しの区切り線（最初の見出しには付けない）
@@ -91,9 +91,10 @@ test('画面: 結果の各行からメーカー名とJANのグレー表示を消
   assert.equal(/dres-jan/.test(app), false, 'JANの表示が残っている');
   assert.equal(/\.dres-jan/.test(css), false, 'JANのスタイルが残っている');
   // 行の中身は「商品名＋色・容量」だけ（メーカーは見出しに出す）
-  assert.match(app, /const sub = dictionaryRowDetail\(d\);/);
-  // 辞書の商品名の先頭に付くメーカー名も落とす（見出しと二重にならない）
-  assert.match(app, /const nameOf = \(d\) => displayName\(\{ name: d\.name \|\| d\.colorName \|\| '', maker: d\.maker \|\| '', brand: d\.brand \|\| '' \}\)/);
+  // 補足の行は、いま出している名前に含まれないものだけ（色名を2度書かない）
+  assert.match(app, /const sub = dictionaryRowDetail\(\{ name: nameOf\(d\), colorName: d\.colorName, size: d\.size \}\);/);
+  // 名前は「シリーズ ＋ 色名」（どちらも無ければ商品名）にする＝メーカー名も二重にならない
+  assert.match(app, /const nameOf = \(d\) => catalogItemLabel\(d\);/);
   // シリーズ名は淡く、色名・号数は濃く出す（「シリーズ名＋色名＋号数」で読める）
   assert.match(app, /<span class="dres-name">\$\{nameHtml\(d\)\}<\/span>/);
   assert.match(app, /const parts = splitSeriesFromName\(full, d\.series\)/);

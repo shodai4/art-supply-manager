@@ -6,6 +6,7 @@ import {
   exportState, importState, summarize, blankState, isEmptyStock, toggleFavorite, favoritesFirst,
   isValidJAN, normalizeJAN, detectMaker, lookupJAN, itemMaker, listMakers, groupByMaker,
   groupDictionarySearch, planDictGroups, compareMakerName, DICT_MAKER_PAGE,
+  groupDictionaryBySeries, planSeriesGroups, shouldGroupBySeries, catalogItemLabel, compareSeriesColor,
   dictionaryRowDetail, dictionarySeriesList,
   splitSeriesFromName,
   normalizeImageUrl, recordPurchase, costSummary, costRows, buildItemsCsvText, mergeStates,
@@ -47,7 +48,7 @@ import {
   DEFAULT_FACING, toggleFacing, facingLabel, facingConstraints, scannerFacingConfig, canChooseFacing,
   nativeScanOptions, vendorScannerOptions, vendorStartConfig,
 } from './scanner.js';
-import { withTimeout, NATIVE_SCAN_OPEN_TIMEOUT_MS } from './scan-guard.js';
+import { createOpenGate } from './scan-open-gate.js';
 import {
   createScanSession, resetScanSession, checkCooldown, markScanned, applyScan, scanFolderId,
   scanLogCount, describeScanLog,
@@ -541,6 +542,10 @@ function render() {
   $('stockMakerView').hidden = ui.tab !== 'stock' || stockMode !== 'maker';
   placeStockSeg();
   for (const t of ['stock', 'shopping', 'catalog', 'settings']) $(`view-${t}`).hidden = t !== ui.tab;
+  // 右上の虫眼鏡と⋯は「在庫」タブのときだけ出す（他のタブはヘッダーをスッキリさせる）
+  const stockTab = ui.tab === 'stock';
+  $('btnSearch').hidden = !stockTab;
+  $('btnMore').hidden = !stockTab;
   const fabVisible = (ui.tab === 'stock' || ui.tab === 'shopping') && !ui.selectMode;
   $('btnAdd').style.visibility = fabVisible ? 'visible' : 'hidden';
   $('btnScan').style.visibility = fabVisible ? 'visible' : 'hidden'; // 右下の＋の上（読取）
@@ -561,8 +566,7 @@ function syncBottomMetrics() {
 window.addEventListener('resize', syncBottomMetrics);
 
 function renderHeader() {
-  const s = summarize(state.items);
-  $('hdrTotal').textContent = `全${s.kinds}種`;
+  // 見出しは「アトリコ」だけ（種数は右上の「N / 100点」で足りる）
 }
 
 /** 右上の検索と⋯（絞込・並替・表示・選択・フォルダの並びをここに集約） */
@@ -716,6 +720,10 @@ function renderItemSection() {
 }
 
 /** メーカー別: メーカーごとに開いて中を見る（見出しに件数。在庫タブの「メーカーごと」） */
+// 在庫タブ「メーカーごと」の中の「シリーズ」の開閉（キーは「メーカー\0シリーズ」）
+const makerOpenSeries = new Set();
+const makerClosedSeries = new Set();
+
 function renderMakerView() {
   if (!$('makerGroups')) return;
   const items = state.items;
@@ -727,13 +735,37 @@ function renderMakerView() {
     $('makerGroups').innerHTML = '<div class="empty"><b>まだ画材がありません</b>右下の＋ か 読取 から登録できます</div>';
     return;
   }
+  /** 中身の描画（リスト／グリッド）。同じJANは「計 N点 ＋ /└」にまとめる */
+  const bodyOf = (list) => (ui.layout === 'list'
+    ? `<div class="mlist">${itemsBodyHtml(list, { showFolder: true, forceList: true })}</div>`
+    : itemsBodyHtml(list, { showFolder: true }));
+  /**
+   * メーカーの中身。シリーズが複数あるメーカーは「シリーズ見出し → タップで画材」、
+   * シリーズ未設定・1シリーズ・極端に少ないメーカーは、これまでどおり画材をそのまま並べる
+   * （カタログタブと同じ整理ルール）。
+   */
+  const makerBody = (key, list) => {
+    const seriesGroups = groupDictionaryBySeries(list);
+    if (!shouldGroupBySeries(seriesGroups)) return bodyOf(list);
+    const planned = planSeriesGroups(seriesGroups, {
+      autoOpen: false,
+      open: scopedSet(makerOpenSeries, key),
+      closed: scopedSet(makerClosedSeries, key),
+      page: Number.MAX_SAFE_INTEGER, // 自分の在庫は全件出す（「もっと見る」は使わない）
+    });
+    return planned.map((s) => {
+      const head = `
+        <button type="button" class="sgrouphead" data-maker-sgroup="${esc(key)}" data-sgroup="${esc(s.name)}" aria-expanded="${s.open ? 'true' : 'false'}">
+          <svg class="ic chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+          <span>${esc(s.name || 'その他')}</span><b>${s.total}</b>
+        </button>`;
+      return `<div class="sgroup${s.open ? ' open' : ''}">${head}${s.open ? bodyOf(s.shown) : ''}</div>`;
+    }).join('');
+  };
   $('makerGroups').innerHTML = groups.map((g) => {
     const open = ui.openMakers.has(g.key);
     const sorted = favoritesFirst(sortItems(g.items, state.settings.sort));
-    // メーカーの中は複数のフォルダが混ざるので、同じJANは「計 N点 ＋ /└」にまとめる
-    const body = !open ? '' : (ui.layout === 'list'
-      ? `<div class="mlist">${itemsBodyHtml(sorted, { showFolder: true, forceList: true })}</div>`
-      : itemsBodyHtml(sorted, { showFolder: true }));
+    const body = open ? makerBody(g.key, sorted) : '';
     return `<section class="mg${open ? ' open' : ''}">
       <button type="button" class="mghead" data-maker-group="${esc(g.key)}" aria-expanded="${open ? 'true' : 'false'}">
         <svg class="ic chev" aria-hidden="true"><use href="#i-chevron"/></svg>
@@ -824,14 +856,19 @@ function itemTile(it, opts = {}) {
         ${dot}
         <svg class="inh" aria-hidden="true"><use href="#${icon}"/></svg>
         ${shelfImage(it)}
+        ${otherNote ? `<span class="tother" title="${esc(otherPlaceSummary(state.items, it, state.folders))}">${esc(otherNote)}</span>` : ''}
         ${ui.selectMode ? '<span class="selmark" aria-hidden="true"></span>' : ''}
       </span>
       <span class="tname">${esc(displayName(it))}</span>
-      ${otherNote ? `<span class="tother" title="${esc(otherPlaceSummary(state.items, it, state.folders))}">${esc(otherNote)}</span>` : ''}
     </button>
     ${ui.selectMode ? '' : `<span class="tilefoot">${star}${stepper}</span>`}
     </div>
   </div>`;
+}
+
+/** 行に出す名前。補充タブは「シリーズ ＋ 色名」（無ければ商品名）で揃える */
+function rowName(it, opts = {}) {
+  return opts.seriesLabel ? (catalogItemLabel(it) || displayName(it)) : displayName(it);
 }
 
 /** 1件＝2行の高密度リスト行（ステッパー付き） */
@@ -863,7 +900,7 @@ function itemRow(it, opts = {}) {
     <div class="swipe-inner">
     <span class="thumb"><svg class="ic" aria-hidden="true" style="color:${esc(thumbColor)}"><use href="#${thumbIcon}"/></svg>${shelfImage(it)}${ui.selectMode ? '<span class="selmark" aria-hidden="true"></span>' : ''}</span>
     <div class="it-main" data-edit="${esc(it.id)}">
-      <h3 class="it-name" title="タップで編集">${esc(displayName(it))}</h3>
+      <h3 class="it-name" title="タップで編集">${esc(rowName(it, opts))}</h3>
       <div class="it-sub">
         ${first}
         <span class="badge ${st.tone}" title="${esc(st.label)}">${esc(st.short || st.label)}</span>
@@ -991,8 +1028,10 @@ function renderTilesInto(el, items, opts = {}) {
 }
 
 function renderShopping() {
-  renderTilesInto($('shoppingList'), computeShoppingList(state.items), {
-    group: false, emptyKey: 'shopping', shopChip: true, forceList: true, noJanGroup: true,
+  // 補充タブも「シリーズ ＋ 色名」の五十音順に揃える（シリーズ・色名が無いものは商品名）
+  const list = [...computeShoppingList(state.items)].sort(compareSeriesColor);
+  renderTilesInto($('shoppingList'), list, {
+    group: false, emptyKey: 'shopping', shopChip: true, forceList: true, noJanGroup: true, seriesLabel: true,
   });
 }
 
@@ -1422,8 +1461,15 @@ function setLayout(layout) {
   render();
 }
 
-/** メーカー別タブ: 見出しをタップして開け閉める */
+/** メーカー別タブ: 見出しをタップして開け閉める（中はシリーズ単位でも開け閉めできる） */
 document.addEventListener('click', (e) => {
+  const seriesHead = e.target.closest('[data-maker-sgroup]');
+  if (seriesHead) {
+    const key = groupKey(seriesHead.dataset.makerSgroup || '', seriesHead.dataset.sgroup || '');
+    toggleOpenKey(makerOpenSeries, makerClosedSeries, key, seriesHead.getAttribute('aria-expanded') === 'true');
+    render();
+    return;
+  }
   const head = e.target.closest('[data-maker-group]');
   if (!head) return;
   const key = head.dataset.makerGroup;
@@ -1432,15 +1478,19 @@ document.addEventListener('click', (e) => {
   render();
 });
 
-$('tabbar').addEventListener('click', (e) => {
-  const b = e.target.closest('button[data-tab]');
-  if (!b) return;
-  const tab = b.dataset.tab;
+// 下タブの切り替え（＋の「カタログから選ぶ」からも同じ処理を通す）
+function selectTab(tab) {
   ui.tab = tab;
   if (tab !== 'stock') { exitSelect(); ui.searchOpen = false; ui.query = ''; $('q').value = ''; }
   stopScanner();
   render();
   window.scrollTo({ top: 0 });
+}
+
+$('tabbar').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-tab]');
+  if (!b) return;
+  selectTab(b.dataset.tab);
 });
 
 // 在庫タブの中の「場所ごと ↔ メーカーごと」
@@ -2018,7 +2068,16 @@ async function removeItem(id, { fromSheet = '' } = {}) {
   return true;
 }
 
-$('btnAdd').addEventListener('click', () => openItemSheet(null));
+// 右下の「＋」は、追加のしかたを2つから選ぶメニューを先に出す（直接シートは開かない）
+$('btnAdd').addEventListener('click', () => openSheet('sheetAdd'));
+$('btnAddCatalog').addEventListener('click', () => {
+  closeSheet('sheetAdd');
+  selectTab('catalog');
+});
+$('btnAddManual').addEventListener('click', () => {
+  closeSheet('sheetAdd');
+  openItemSheet(null);
+});
 
 // 空の一覧の「サンプルを入れる」・設定の「サンプルを入れる／消す」（ボタンは描き直されるので文書全体で受ける）
 document.addEventListener('click', (e) => {
@@ -2696,6 +2755,7 @@ function setContinuousScan(on) {
   }
   hideScanStatus();
   renderScanMode();
+  syncNativeContinuous();
 }
 
 function clearScanLog() {
@@ -2732,6 +2792,40 @@ function hideScanStatus() {
   el.hidden = true;
   el.className = 'scan-status';
   el.textContent = '';
+}
+
+/* --- ネイティブ読取からの合図（画面を開いた・連続スキャンの切り替え） --- */
+// 開いた合図を受けたら、起動待ちの時間切れを解除する（読み取るまで待つ）
+let scanOpenGate = null;
+let scanOpenedSubscribed = false;
+
+/**
+ * ネイティブからの合図を受け取れるようにする（一度だけ）。
+ * 古いネイティブが合図を送れないときは購読できないので、時間切れは使わない
+ * （その場合はネイティブ側が「画面を出せない」と自分で返す）。
+ */
+async function subscribeNativeEvents(native) {
+  if (scanOpenedSubscribed || typeof native?.addListener !== 'function') return;
+  try {
+    await native.addListener('scanOpened', () => { scanOpenGate?.confirmOpened(); });
+    await native.addListener('continuousChanged', (data) => {
+      // ネイティブのカメラ画面で切り替えられた連続スキャンを、シート側にも反映する
+      setContinuousScan(Boolean(data?.on));
+    });
+    scanOpenedSubscribed = true;
+  } catch (e) {
+    console.warn('ネイティブの合図を受け取れません', e);
+  }
+}
+
+/** いまの連続スキャンの設定をネイティブのカメラ画面へ渡す */
+function syncNativeContinuous() {
+  const native = nativeScannerPlugin(window);
+  if (!native?.setContinuous) return;
+  try {
+    const sent = native.setContinuous({ on: scanContinuous });
+    if (sent && typeof sent.catch === 'function') sent.catch(() => {});
+  } catch (e) { /* カメラが開いていないときの失敗は無視 */ }
 }
 
 $('btnContinuous').addEventListener('click', () => setContinuousScan(!scanContinuous));
@@ -2782,25 +2876,39 @@ async function startScanner() {
   if (strategy === 'native') {
     // ネイティブのスキャナはカメラ画面を開いたまま、読み取るたびに1本を返す。
     // 連続モードでは同じ画面で待ち受け直すので、読み取るたびに開き直さない（速い）。
+    //
+    // 待ち方：startScan は「利用者が読み取るか閉じるまで」返らないので、全体に上限を掛けない。
+    // ネイティブ側の「画面を出せた」合図（scanOpened）が来るまでは上限を数え、
+    // 合図が来たら解除して、読み取るまでいくら待っても切り替えない（v1.26.0）。
+    await subscribeNativeEvents(native);
+    syncNativeContinuous(); // 連続スキャンの設定をカメラ画面のボタンに合わせる
     const runNative = async () => {
       scannerLive = true;
       while (scannerLive) {
         let value = '';
+        const gate = createOpenGate({ enable: scanOpenedSubscribed });
+        scanOpenGate = gate;
         try {
-          // カメラ画面が開かないまま resolve も reject も返ってこないときに固まらないよう、上限を置く
-          const { barcodes } = await withTimeout(
-            native.startScan(nativeScanOptions(scanFacing)),
-            NATIVE_SCAN_OPEN_TIMEOUT_MS,
-            () => { native.stopScan?.()?.catch?.(() => {}); },
-          );
+          const { barcodes } = await gate.wait(native.startScan(nativeScanOptions(scanFacing)));
           value = barcodes?.[0]?.rawValue || '';
         } catch (e) {
           const cancelled = e?.code === 'cancelled' || e?.code === 'stopped';
+          const timedOut = e?.code === 'open-timeout';
           console.warn('ネイティブスキャナ終了', e);
           scannerLive = false;
           // 自分で閉じるボタンを押した（キャンセル）ときは、エラー扱いにしない
-          if (cancelled) return;
-          // カメラ画面を開けない（タイムアウト・別画面が邪魔など）→ アプリ内カメラ（html5-qrcode）へ切り替える
+          if (cancelled) {
+            if (token === scanStartToken) showScanMsg('読み取りをやめました。下の手入力をどうぞ');
+            return;
+          }
+          // カメラ画面が開いた合図が来ないまま時間切れ → アプリ内カメラ（html5-qrcode）へ
+          if (timedOut) {
+            try { native.stopScan?.()?.catch?.(() => {}); } catch (err) { /* 開いていなければ失敗してよい */ }
+            if (token !== scanStartToken) return;
+            await startInlineScanner(token, 'カメラ画面を開けませんでした。アプリ内カメラで読み取ります');
+            return;
+          }
+          // 画面を出せなかった（別画面が邪魔など）→ アプリ内カメラへ切り替える
           try { native.stopScan?.()?.catch?.(() => {}); } catch (err) { /* 開いていなければ失敗してよい */ }
           if (token !== scanStartToken) return;
           await startInlineScanner(token, 'カメラ画面を開けませんでした。アプリ内カメラで読み取ります');
@@ -2904,6 +3012,9 @@ async function startInlineScanner(token, note = '') {
 /** 同梱スキャナの停止を待つ上限（ミリ秒）。止まらない版でも切り替えを詰まらせない */
 function stopScanner() {
   scannerLive = false;
+  // 起動待ちの関門も閉じる（閉じた後に時間切れで切り替わらないように）
+  scanOpenGate?.cancel();
+  scanOpenGate = null;
   // ネイティブ読取中ならカメラ画面も閉じる（開いていないときは何もしない）
   const nativeNow = nativeScannerPlugin(window);
   if (nativeNow?.stopScan) {
@@ -3230,6 +3341,10 @@ let dictOpenScope = ''; // 手で開け閉めした状態を覚えている検�
 const dictOpenMakers = new Set(); // タップで開いたメーカー
 const dictClosedMakers = new Set(); // タップで閉じたメーカー（自動展開より優先する）
 const dictMoreShown = new Map(); // 「もっと見る」で足した件数（メーカーごと）
+// 開いたメーカーの中の「シリーズ」の開閉（キーは「メーカー\0シリーズ」）
+const dictOpenSeries = new Set();
+const dictClosedSeries = new Set();
+const dictMoreSeries = new Map();
 // 同じ条件の描き直し（見出しの開閉・もっと見る）で数万件を数え直さないよう、直前の集計を使い回す
 let dictGroups = { groups: [], total: 0 };
 let dictGroupsKey = null;
@@ -3239,7 +3354,34 @@ let dictSeriesRows = [];
 let dictSeriesKey = null;
 let dictSeriesDict = null;
 
-/** 検索タブで選べるメーカー（五十音順） */
+/** メーカーごとの開閉キー（「メーカー\0シリーズ」）の前置き */
+const GROUP_KEY_SEP = '\u0000';
+const groupKey = (maker, name) => `${maker}${GROUP_KEY_SEP}${name}`;
+
+/** 全体の集合から、そのメーカーぶんだけを取り出す（シリーズ見出しの開閉計画に渡す） */
+function scopedSet(set, maker) {
+  const prefix = `${maker}${GROUP_KEY_SEP}`;
+  const out = new Set();
+  for (const key of set) if (key.startsWith(prefix)) out.add(key.slice(prefix.length));
+  return out;
+}
+function scopedMap(map, maker) {
+  const prefix = `${maker}${GROUP_KEY_SEP}`;
+  const out = new Map();
+  for (const [key, value] of map) if (key.startsWith(prefix)) out.set(key.slice(prefix.length), value);
+  return out;
+}
+
+/** 見出しの開閉を「手で開いた／手で閉じた」に記録する */
+function toggleOpenKey(openSet, closedSet, key, isOpen) {
+  if (isOpen) {
+    openSet.delete(key);
+    closedSet.add(key);
+  } else {
+    closedSet.delete(key);
+    openSet.add(key);
+  }
+}
 function dictMakerList() {
   const counts = new Map();
   for (const d of mergedDict) {
@@ -3366,6 +3508,9 @@ function renderSearchTab() {
     dictOpenMakers.clear();
     dictClosedMakers.clear();
     dictMoreShown.clear();
+    dictOpenSeries.clear();
+    dictClosedSeries.clear();
+    dictMoreSeries.clear();
   }
 
   // ヒットした全件をメーカー見出しにまとめる（50件で打ち切らないので、全メーカーが見渡せる）
@@ -3389,7 +3534,8 @@ function renderSearchTab() {
   const elsewhere = new Set(state.items.filter((i) => ownedJan(i) && String(i.folderId) !== ownedFolder).map((i) => i.jan));
   // 1件の行は「商品名＋色・容量」だけ。メーカーは見出しに出すので繰り返さず、JANも出さない。
   // シリーズ名があるものは淡く（シリーズ名＋色名＋号数の順に読めるように）し、商品名の残りを濃く出す
-  const nameOf = (d) => displayName({ name: d.name || d.colorName || '', maker: d.maker || '', brand: d.brand || '' });
+  // 行の名前は「シリーズ ＋ 色名」（どちらも無ければ商品名）。号数などは補足の行に回す
+  const nameOf = (d) => catalogItemLabel(d);
   const nameHtml = (d) => {
     const full = nameOf(d);
     const parts = splitSeriesFromName(full, d.series);
@@ -3397,7 +3543,8 @@ function renderSearchTab() {
     return `<span class="dres-series">${esc(parts.head)}</span>${parts.rest ? ` ${esc(parts.rest)}` : ''}`;
   };
   const rowOf = (d) => {
-    const sub = dictionaryRowDetail(d);
+    // 補足は、いま出している名前に含まれないものだけ（色名を2度書かない）
+    const sub = dictionaryRowDetail({ name: nameOf(d), colorName: d.colorName, size: d.size });
     const btn = owned.has(d.jan)
       ? '<span class="dres-have">登録済み</span>'
       : `<button class="dres-add" data-dict-add="${esc(d.jan)}" aria-label="${esc(nameOf(d) || 'この商品')}を在庫に追加${elsewhere.has(d.jan) ? '（ほかのフォルダにあり）' : ''}">追加</button>`;
@@ -3416,15 +3563,45 @@ function renderSearchTab() {
     open: dictOpenMakers, closed: dictClosedMakers, more: dictMoreShown,
     page: DICT_MAKER_PAGE, budget: DICT_AUTO_OPEN_ROWS,
   });
+  const itemsOfMaker = new Map(groups.map((g) => [g.maker, g.items]));
+
+  /**
+   * 開いたメーカーの中身。シリーズが複数あるメーカーは「シリーズ見出し → タップで商品行」、
+   * シリーズ未設定や1シリーズ・極端に少ないメーカーは、これまでどおり商品行をそのまま並べる。
+   */
+  const bodyOf = (g) => {
+    const seriesGroups = groupDictionaryBySeries(itemsOfMaker.get(g.maker) || []);
+    if (shouldGroupBySeries(seriesGroups)) {
+      const planned = planSeriesGroups(seriesGroups, {
+        autoOpen: Boolean(dictTabQuery), // 検索語で絞ったときは当たったシリーズを自動で開く
+        open: scopedSet(dictOpenSeries, g.maker),
+        closed: scopedSet(dictClosedSeries, g.maker),
+        more: scopedMap(dictMoreSeries, g.maker),
+      });
+      return planned.map((s) => {
+        const head = `
+          <button type="button" class="sgrouphead" data-dict-sgroup="${esc(g.maker)}" data-sgroup="${esc(s.name)}" aria-expanded="${s.open ? 'true' : 'false'}">
+            <svg class="ic chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+            <span>${esc(s.name || 'その他')}</span><b>${s.total.toLocaleString('ja-JP')}</b>
+          </button>`;
+        const rowsHtml = s.open ? s.shown.map(rowOf).join('') : '';
+        const moreHtml = s.open && s.rest > 0
+          ? `<button type="button" class="dgroupmore" data-dict-smore="${esc(g.maker)}" data-sgroup="${esc(s.name)}">もっと見る（残り ${s.rest.toLocaleString('ja-JP')}件）</button>`
+          : '';
+        return `<div class="sgroup${s.open ? ' open' : ''}">${head}${rowsHtml}${moreHtml}</div>`;
+      }).join('');
+    }
+    return `${g.shown.map(rowOf).join('')}${g.rest > 0
+      ? `<button type="button" class="dgroupmore" data-dict-more="${esc(g.maker)}">もっと見る（残り ${g.rest.toLocaleString('ja-JP')}件）</button>`
+      : ''}`;
+  };
   const rows = plan.map((g) => `
       <section class="dgroup${g.open ? ' open' : ''}">
         <button type="button" class="dgrouphead" data-dict-group="${esc(g.maker)}" aria-expanded="${g.open ? 'true' : 'false'}">
           <svg class="ic chev" aria-hidden="true"><use href="#i-chevron"/></svg>
           <span>${esc(g.maker)}</span><b>${g.total.toLocaleString('ja-JP')}</b>
         </button>
-        ${g.open ? `${g.shown.map(rowOf).join('')}${g.rest > 0
-          ? `<button type="button" class="dgroupmore" data-dict-more="${esc(g.maker)}">もっと見る（残り ${g.rest.toLocaleString('ja-JP')}件）</button>`
-          : ''}` : ''}
+        ${g.open ? bodyOf(g) : ''}
       </section>`).join('');
   $('dictResults').innerHTML = rows
     ? rows
@@ -3462,6 +3639,22 @@ $('dictSeriesSel').addEventListener('change', (e) => {
   renderSearchTab();
 });
 $('dictResults').addEventListener('click', (e) => {
+  // 開いたメーカーの中のシリーズ見出し → そのシリーズの商品行を開け閉め
+  const sgroup = e.target.closest('[data-dict-sgroup]');
+  if (sgroup) {
+    const key = groupKey(sgroup.dataset.dictSgroup || '', sgroup.dataset.sgroup || '');
+    toggleOpenKey(dictOpenSeries, dictClosedSeries, key, sgroup.getAttribute('aria-expanded') === 'true');
+    renderSearchTab();
+    return;
+  }
+  // シリーズの「もっと見る」 → そのシリーズの続きを DICT_MAKER_PAGE 件ずつ描く
+  const smore = e.target.closest('[data-dict-smore]');
+  if (smore) {
+    const key = groupKey(smore.dataset.dictSmore || '', smore.dataset.sgroup || '');
+    dictMoreSeries.set(key, (dictMoreSeries.get(key) || 0) + DICT_MAKER_PAGE);
+    renderSearchTab();
+    return;
+  }
   // メーカー見出しをタップ → そのメーカーの中身を開け閉め（自動展開より手で閉じたほうを優先）
   const head = e.target.closest('[data-dict-group]');
   if (head) {

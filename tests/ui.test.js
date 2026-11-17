@@ -203,7 +203,7 @@ test('一覧はメーカー別に見て、絞込・並替は右上の⋯にま�
   // 見出しを押すと開け閉めできる
   assert.match(app, /closest\('\[data-maker-group\]'\)[\s\S]{0,200}ui\.openMakers\.(add|delete)/);
   // 開いた中はグリッド／リストの設定に従う（中身は itemsBodyHtml が itemRow / itemTile を選ぶ）
-  assert.match(app, /ui\.layout === 'list'[\s\S]{0,160}itemsBodyHtml\(sorted/);
+  assert.match(app, /ui\.layout === 'list'[\s\S]{0,160}itemsBodyHtml\(list/);
   assert.match(app, /function itemsBodyHtml[\s\S]{0,600}itemRow\(row\.item, opts\) : itemTile\(row\.item, opts\)/);
 
   // 絞込・並替・表示・複数選択・フォルダの並びは右上の⋯に集約
@@ -322,11 +322,17 @@ test('下部はタブバーと広告だけ。操作はヘッダーの検索と�
   const app = read('app.js');
   const css = read('styles.css');
 
-  // ヘッダーは「タイトル・件数・残り枠・虫眼鏡・⋯」の1行＋（開いたときだけ）検索欄
+  // ヘッダーは「タイトル・残り枠・虫眼鏡・⋯」の1行＋（開いたときだけ）検索欄
   const header = html.slice(html.indexOf('<header class="app-header">'), html.indexOf('</header>'));
-  for (const id of ['hdrTotal', 'quotaNote', 'btnSearch', 'btnMore', 'searchRow']) {
+  for (const id of ['quotaNote', 'btnSearch', 'btnMore', 'searchRow']) {
     assert.ok(header.includes(`id="${id}"`), `ヘッダーに#${id}がありません`);
   }
+  // 「アトリコ 全7種」の種数は出さない（右上の「7 / 100点」で足りる）
+  assert.equal(header.includes('hdrTotal'), false, 'ヘッダーに種数（全○種）が残っている');
+  // 虫眼鏡と⋯は「在庫」タブのときだけ出す（別タブでは隠す）
+  assert.match(app, /\$\('btnSearch'\)\.hidden = !stockTab;/);
+  assert.match(app, /\$\('btnMore'\)\.hidden = !stockTab;/);
+  assert.match(css, /\.hbtn\[hidden\]\s*\{[^}]*display:\s*none/);
   assert.equal(header.includes('id="tools"'), false, 'ツールバーが上部に残っている');
   assert.equal(header.includes('id="viewRow"'), false, '3択が上部に残っている');
   // 検索欄は開いたときだけ出す（常時は出さない）

@@ -24,6 +24,7 @@ public class ArtBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "startScan", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "stopScan", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setStatus", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setContinuous", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "isSupported", returnType: CAPPluginReturnPromise)
     ]
 
@@ -31,6 +32,8 @@ public class ArtBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin {
     private var scanner: ArtBarcodeScannerController?
     /// いま待っている1本（読み取ったら resolve、閉じたら reject する）
     private var activeCall: CAPPluginCall?
+    /// 連続スキャンの設定（JSから setContinuous で受け取り、カメラ画面のボタンに反映する）
+    private var continuousOn = false
 
     // MARK: - JS から呼ばれるメソッド
 
@@ -44,6 +47,17 @@ public class ArtBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin {
         let count = call.getInt("count") ?? -1
         DispatchQueue.main.async { [weak self] in
             self?.scanner?.applyStatus(message: message, count: count)
+        }
+        call.resolve()
+    }
+
+    /// 連続スキャンの設定をカメラ画面のボタンへ反映する（まだ開いていなければ覚えておく）
+    @objc func setContinuous(_ call: CAPPluginCall) {
+        let on = call.getBool("on") ?? false
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.continuousOn = on
+            self.scanner?.applyContinuous(on: on)
         }
         call.resolve()
     }
@@ -70,6 +84,9 @@ public class ArtBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin {
             self.activeCall = call
             // すでにカメラ画面が開いている（連続スキャン）→ 開き直さず、そのまま次の1本を待つ
             if let open = self.scanner, open.presentingViewController != nil || open.viewIfLoaded?.window != nil {
+                // 画面はもう出ているので「開いた」合図を返す（JSは時間切れを解除して待てる）
+                open.applyContinuous(on: self.continuousOn)
+                self.notifyListeners("scanOpened", data: ["reused": true])
                 return
             }
             // 閉じ済みの古い画面が残っていたら捨てる
@@ -102,6 +119,16 @@ public class ArtBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin {
             // 自分で閉じるボタンを押したときだけ「キャンセル」にする（JS は静かに閉じる）
             self.rejectActive("読み取りをやめました", code: "cancelled")
         }
+        // カメラ画面が実際に出た合図（JSはこれを受けるまでだけ起動待ちの時間を数える）
+        controller.onOpened = { [weak self] in
+            self?.notifyListeners("scanOpened", data: [:]);
+        }
+        // カメラ画面の「連続スキャン」ボタンが押されたら、JSのシート側にも伝える
+        controller.onContinuous = { [weak self] on in
+            self?.continuousOn = on
+            self?.notifyListeners("continuousChanged", data: ["on": on]);
+        }
+        controller.applyContinuous(on: self.continuousOn)
         self.scanner = controller
         presentController(controller, host: host, attempt: attempt)
     }
@@ -119,10 +146,14 @@ public class ArtBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin {
             self.bridge?.presentVC(controller, animated: false, completion: nil)
         }
         // 出たかどうかを少し待って確かめる（UIKit が黙って断るとそのまま待ち続けてしまうため）
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
             guard let self = self, self.scanner === controller else { return }
             let shown = controller.presentingViewController != nil || controller.viewIfLoaded?.window != nil
-            if shown { return }
+            if shown {
+                // 出ていることが分かった時点でも合図を送る（viewDidAppear が来ない経路の保険）
+                self.notifyListeners("scanOpened", data: [:])
+                return
+            }
             if attempt < 1 {
                 self.presentController(controller, host: host, attempt: attempt + 1)
             } else {
@@ -172,6 +203,11 @@ final class ArtBarcodeScannerController: UIViewController, AVCaptureMetadataOutp
     var cameraPosition: AVCaptureDevice.Position = .back
     var onCode: ((String, String) -> Void)?
     var onClose: (() -> Void)?
+    /// カメラ画面が実際に出たときに一度知らせる（JSは起動待ちの時間切れを解除する）
+    var onOpened: (() -> Void)?
+    /// 画面の「連続スキャン」ボタンが押されたとき（JSのシート側にも伝える）
+    var onContinuous: ((Bool) -> Void)?
+    private var continuousOn = false
 
     private let session = AVCaptureSession()
     private let sessionQueue = DispatchQueue(label: "com.shodai4.artsupplymanager.barcode")
@@ -187,6 +223,7 @@ final class ArtBarcodeScannerController: UIViewController, AVCaptureMetadataOutp
     private let countLabel = UILabel()
     private let closeButton = UIButton(type: .system)
     private let flipButton = UIButton(type: .system)
+    private let continuousButton = UIButton(type: .system)
     private let reticle = UIView()
     private let bottomBar = UIView()
 
@@ -203,6 +240,12 @@ final class ArtBarcodeScannerController: UIViewController, AVCaptureMetadataOutp
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         startSession()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // 画面が出たことを一度だけ知らせる（この合図が来るまで JS 側だけが起動待ちの時間を数える）
+        onOpened?()
     }
 
     override func viewDidDisappear(_ animated: Bool) {
@@ -255,8 +298,11 @@ final class ArtBarcodeScannerController: UIViewController, AVCaptureMetadataOutp
 
         setupButton(closeButton, symbol: "xmark", label: "閉じる", action: #selector(closeTapped))
         setupButton(flipButton, symbol: "arrow.triangle.2.circlepath.camera", label: "カメラを切り替え", action: #selector(flipTapped))
+        setupTitleButton(continuousButton, title: "連続スキャン OFF", action: #selector(continuousTapped))
+        applyContinuous(on: continuousOn)
         view.addSubview(closeButton)
         view.addSubview(flipButton)
+        view.addSubview(continuousButton)
 
         let safe = view.safeAreaLayoutGuide
         NSLayoutConstraint.activate([
@@ -264,6 +310,10 @@ final class ArtBarcodeScannerController: UIViewController, AVCaptureMetadataOutp
             reticle.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: -36),
             reticle.widthAnchor.constraint(equalTo: view.widthAnchor, multiplier: 0.84),
             reticle.heightAnchor.constraint(equalToConstant: 132),
+
+            continuousButton.topAnchor.constraint(equalTo: safe.topAnchor, constant: 10),
+            continuousButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            continuousButton.heightAnchor.constraint(equalToConstant: 44),
 
             closeButton.topAnchor.constraint(equalTo: safe.topAnchor, constant: 10),
             closeButton.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -16),
@@ -297,6 +347,18 @@ final class ArtBarcodeScannerController: UIViewController, AVCaptureMetadataOutp
         button.backgroundColor = UIColor(white: 0, alpha: 0.45)
         button.layer.cornerRadius = 22
         button.accessibilityLabel = label
+        button.addTarget(self, action: action, for: .touchUpInside)
+    }
+
+    /// 文字だけのボタン（連続スキャンの切り替え）
+    private func setupTitleButton(_ button: UIButton, title: String, action: Selector) {
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.setTitle(title, for: .normal)
+        button.setTitleColor(.white, for: .normal)
+        button.titleLabel?.font = .systemFont(ofSize: 13, weight: .semibold)
+        button.backgroundColor = UIColor(white: 0, alpha: 0.45)
+        button.layer.cornerRadius = 22
+        button.contentEdgeInsets = UIEdgeInsets(top: 0, left: 16, bottom: 0, right: 16)
         button.addTarget(self, action: action, for: .touchUpInside)
     }
 
@@ -441,6 +503,18 @@ final class ArtBarcodeScannerController: UIViewController, AVCaptureMetadataOutp
     @objc private func closeTapped() {
         stopSession()
         dismiss(animated: false, completion: nil) // 閉じたことは viewDidDisappear から伝える
+    }
+
+    @objc private func continuousTapped() {
+        continuousOn.toggle()
+        applyContinuous(on: continuousOn)
+        onContinuous?(continuousOn)
+    }
+
+    /// 連続スキャンの表示を合わせる（JS側の設定・ボタンのどちらからでも呼ぶ）
+    func applyContinuous(on: Bool) {
+        continuousOn = on
+        continuousButton.setTitle(on ? "連続スキャン ON" : "連続スキャン OFF", for: .normal)
     }
 
     @objc private func flipTapped() {

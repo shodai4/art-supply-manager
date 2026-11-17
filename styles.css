@@ -126,6 +126,7 @@ button, a, select, label, summary, .hbtn, .vpill, .fab, .tabbar button { touch-a
   display: grid; place-items: center; box-shadow: var(--shadow-2);
 }
 .hbtn .ic { width: 19px; height: 19px; }
+.hbtn[hidden] { display: none; }
 .hbtn:active { background: var(--surface-2); }
 .hbtn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--on-accent-soft); }
 /* 絞込・並びが入っているときの小さな点 */
@@ -152,10 +153,10 @@ button, a, select, label, summary, .hbtn, .vpill, .fab, .tabbar button { touch-a
 .crumb[hidden] { display: none; }
 /* 家アイコンは枠なしの小さなアイコン（テキストの行に馴染ませる） */
 .crumb .cbtn {
-  flex: 0 0 auto; width: 22px; height: 22px; border: none; background: none; padding: 0;
+  flex: 0 0 auto; width: 26px; height: 26px; border: none; background: none; padding: 0;
   display: grid; place-items: center; color: var(--ink-2);
 }
-.crumb .cbtn .ic { width: 15px; height: 15px; }
+.crumb .cbtn .ic { width: 17px; height: 17px; }
 .crumb .cbtn:active { opacity: .6; }
 /* 階層の並び。画面幅に収まらないときは折り返して全階層を見せる（横スクロールで隠さない） */
 .crumb .trail { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; flex: 1 1 140px; min-width: 0; }
@@ -163,13 +164,13 @@ button, a, select, label, summary, .hbtn, .vpill, .fab, .tabbar button { touch-a
 .crumb .step { display: flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
 /* 名前は枠のない文字リンク（押すとその階層へ移動） */
 .crumb .cbtn.name {
-  width: auto; max-width: 100%; flex: 0 1 auto; min-width: 0; padding: 0; display: block; height: auto;
-  font-size: 12.5px; font-weight: 700; color: var(--ink-2); line-height: 1.5;
+  width: auto; max-width: 100%; flex: 0 1 auto; min-width: 0; padding: 2px 0; display: block; height: auto;
+  font-size: 15px; font-weight: 700; color: var(--ink-2); line-height: 1.4;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left;
 }
 /* いまいる階層は文字の濃さだけで表す（押しても何も変わらない） */
 .crumb .cbtn.name.here { color: var(--ink); font-weight: 800; }
-.crumb .sep { flex: 0 0 auto; font-size: 11px; color: var(--ink-3); }
+.crumb .sep { flex: 0 0 auto; font-size: 12px; color: var(--ink-3); }
 
 /* 在庫タブのまとまり（お気に入り・フォルダ・画材）の見出し */
 .fsec { margin: 0; }
@@ -262,7 +263,7 @@ button, a, select, label, summary, .hbtn, .vpill, .fab, .tabbar button { touch-a
 /* カード（画像＋名前のボタン）と、星・−/＋ を同じ枠に並べる。
    左スワイプで「削除」を出すため、中身は .swipe-inner の1枚にまとめる */
 .tilewrap { position: relative; display: block; min-width: 0; border-radius: 13px; overflow: hidden; }
-.tilewrap > .swipe-inner { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.tilewrap > .swipe-inner { display: flex; flex-direction: column; gap: 4px; min-width: 0; height: 100%; }
 .tile { display: flex; flex-direction: column; gap: 5px; border: none; background: none; padding: 0; min-width: 0; text-align: left; }
 .tile .sw {
   position: relative; display: block; width: 100%; aspect-ratio: 1 / 1; border-radius: 13px; overflow: hidden;
@@ -298,12 +299,14 @@ button, a, select, label, summary, .hbtn, .vpill, .fab, .tabbar button { touch-a
 .tile .tname {
   font-size: 10.5px; line-height: 1.25; font-weight: 600; color: var(--tile-ink);
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word;
+  /* 名前が1行でも2行分の高さを取る（隣のカードと星・数量ボタンの行の高さが揃う） */
+  min-height: 2.5em;
 }
 
 /* ---------- カード下のお気に入り（星）と在庫の −/＋ ---------- */
 /* 星とステッパーは画像の下の1行に並べる（画像の上には何も載せない）。
    星を押すとお気に入りの入/切が入れ替わり、「お気に入り」フォルダにも入る */
-.tilefoot { display: flex; align-items: center; gap: 3px; height: 22px; }
+.tilefoot { display: flex; align-items: center; gap: 3px; height: 22px; margin-top: auto; }
 .tilefoot .tstep { flex: 1 1 auto; min-width: 0; }
 .fav {
   flex: 0 0 auto; width: 20px; height: 22px; padding: 0;
@@ -480,7 +483,14 @@ button, a, select, label, summary, .hbtn, .vpill, .fab, .tabbar button { touch-a
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 /* グリッドのタイルは幅が狭いので「他1か所」だけ（読み上げ・長押しの説明は title に入れる） */
-.tile .tother { font-size: 9.5px; line-height: 1.2; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 「他1か所」は名前の行ではなく、写真枠の左下に小さなピルで乗せる（行の高さがズレない） */
+.tile .tother {
+  position: absolute; left: 5px; bottom: 5px; z-index: 2; pointer-events: none;
+  max-width: calc(100% - 10px);
+  background: rgba(16, 24, 36, .62); color: #fff;
+  font-size: 9px; font-weight: 700; line-height: 15px; padding: 0 6px; border-radius: 999px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 
 main { padding: 0; }
 .lede { margin: 12px 12px 0; font-size: 12px; color: var(--ink-2); }
@@ -508,15 +518,34 @@ main { padding: 0; }
 }
 .fab.scan .ic { width: 21px; height: 21px; }
 
+/* ---------- バーコード読取シート ---------- */
+/* カメラ・ログは中でスクロールし、下の「JANを手入力」とボタンは下端に固定する。
+   バナーが出ている間は、指で押すところ（入力欄・ボタン）を広告の上まで持ち上げる。
+   iOS のバナーはセーフエリアの上に乗るので、セーフエリア＋バナーの両方を足す */
+#sheetScan.open { display: flex; flex-direction: column; overflow: hidden; padding: 14px 14px 0; }
+#sheetScan > h2 { flex: 0 0 auto; }
+#sheetScan > .sheet-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.scan-foot {
+  flex: 0 0 auto; margin-top: 2px; padding-top: 10px;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line); background: var(--surface);
+}
+body[data-ad-banner="true"] .scan-foot { padding-bottom: calc(12px + env(safe-area-inset-bottom) + var(--ad-h)); }
+.scan-foot .field { margin-bottom: 8px; }
+.scan-foot .actions { margin: 0; }
+
 .tabbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: var(--surface); border-top: 1px solid var(--line);
   display: flex; align-items: stretch; height: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
   padding-bottom: env(safe-area-inset-bottom);
 }
-/* バナーが出ている間だけ、バナーの高さぶん持ち上げる（下の余白はバナー側が持つので二重に空けない） */
+/* バナーの高さは CSS 変数 --ad-h に入り、タブバー・ドック・FAB・一覧の下端を押し上げる。
+   タブバーは下端を 0 のままにして、中身（タブ）だけをバナー＋セーフエリア分持ち上げる。
+   こうすると、バナーの背後と下のセーフエリアもタブバーの地色で覆われ、
+   後ろのスクロール内容が透けて見えない（2026-11-18の実機報告）。 */
 body[data-ad-banner="true"] .tabbar {
-  bottom: calc(var(--ad-h) + env(safe-area-inset-bottom));
-  height: var(--tabbar-h); padding-bottom: 0;
+  height: calc(var(--tabbar-h) + var(--ad-h) + env(safe-area-inset-bottom));
+  padding-bottom: calc(var(--ad-h) + env(safe-area-inset-bottom));
 }
 .tabbar button {
   flex: 1 1 0; min-width: 0; border: none; background: none; padding: 0 1px;
@@ -701,6 +730,24 @@ body[data-ad-banner="true"] .foot {
   color: var(--ink-2); font-size: 12.5px; font-weight: 700;
 }
 .dgroupmore:active { opacity: .65; }
+
+/* メーカーの中のシリーズ見出し（カタログタブと在庫の「メーカーごと」で共通） */
+.sgroup { border-top: 1px solid var(--line); }
+.sgroup:first-child { border-top: 0; }
+.sgrouphead {
+  display: flex; align-items: center; gap: 6px; width: 100%; min-height: 34px; padding: 6px 12px;
+  font-size: 12px; font-weight: 700; color: var(--ink-2);
+  background: var(--surface); border: 0; text-align: left;
+}
+.sgrouphead .chev { flex: 0 0 auto; width: 12px; height: 12px; color: var(--muted-ink); transition: transform .15s ease; }
+.sgroup.open > .sgrouphead .chev { transform: rotate(90deg); }
+.sgrouphead span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sgrouphead:active { opacity: .65; }
+.sgrouphead b {
+  flex: 0 0 auto;
+  font-size: 10px; font-weight: 700; color: var(--muted-ink);
+  background: var(--surface-3); border-radius: 999px; padding: 0 6px; line-height: 15px;
+}
 .dres-add {
   flex: 0 0 auto; min-height: 30px; padding: 0 10px; border-radius: 8px;
   border: 1px solid var(--accent-line); background: var(--accent-soft); color: var(--on-accent-soft);
