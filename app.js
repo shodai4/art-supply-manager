@@ -90,7 +90,6 @@ let scanner = null; // html5-qrcode instance
 let rafId = 0;
 let adBanner = null; // 最下部のAdMobバナー（起動の最後に作る）
 let proStore = null; // Proの課金（iOSアプリのときだけ中身が入る）
-let proPurchase = purchaseFromSettings(state.settings); // 画面に出す購入状態
 
 /* ---------------- JAN辞書（内蔵＋追加配信） ---------------- */
 let extraEntries = [];          // 配信辞書の項目（キャッシュ由来も含む）
@@ -889,17 +888,19 @@ function renderPlan() {
  * 買い切りを買った人には月額を出さない。Webでは購入できないので案内だけ出す。
  */
 function renderProOffer() {
-  const visible = planVisibility(proPurchase);
+  // 購入状態は保存している設定から毎回読む（バックアップ復元などで設定が変わっても追従する）
+  const purchase = purchaseFromSettings(state.settings);
+  const visible = planVisibility(purchase);
   const cards = PLAN_ORDER.filter((key) => visible[key]).map((key) => {
     const plan = PRO_PLANS[key];
     const disabled = NATIVE_APP ? '' : ' disabled aria-disabled="true"';
     return `<button class="btn planbtn" data-pro-plan="${esc(plan.key)}"${disabled}>`
       + `<b>${esc(plan.title)}</b><span>${esc(planPriceLabel(plan.key))}</span></button>`;
   });
-  const owned = hasProPurchase(proPurchase);
+  const owned = hasProPurchase(purchase);
   const cardsHtml = cards.length
     ? cards.join('')
-    : `<p class="planowned">${esc(purchasedPlanName(proPurchase))}プランが有効です</p>`;
+    : `<p class="planowned">${esc(purchasedPlanName(purchase))}プランが有効です</p>`;
   if ($('proPlans')) $('proPlans').innerHTML = cardsHtml;
   if ($('proSheetPlans')) $('proSheetPlans').innerHTML = cardsHtml;
 
@@ -961,15 +962,13 @@ function setProPreview(on) {
  * 呼び出し元は ProStore（購入・復元・期限切れの検知）。
  */
 function applyPurchaseState(next) {
-  const normalized = { lifetime: Boolean(next?.lifetime), monthly: Boolean(next?.monthly) };
-  const changed = normalized.lifetime !== proPurchase.lifetime || normalized.monthly !== proPurchase.monthly;
-  proPurchase = normalized;
-  const settings = settingsWithPurchase(state.settings, proPurchase);
-  const settingsChanged = settings.pro !== state.settings.pro
+  const purchase = { lifetime: Boolean(next?.lifetime), monthly: Boolean(next?.monthly) };
+  const settings = settingsWithPurchase(state.settings, purchase);
+  const changed = settings.pro !== state.settings.pro
     || settings.proPlan !== state.settings.proPlan
     || settings.proLifetime !== state.settings.proLifetime
     || settings.proPreview !== state.settings.proPreview;
-  if (changed || settingsChanged) {
+  if (changed) {
     state = { ...state, settings };
     save();
   }

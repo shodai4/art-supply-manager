@@ -333,6 +333,14 @@ test('注記と案内の文言（自動更新・復元）', () => {
   }
 });
 
+test('バックアップ復元などで設定が変わっても、プランの表示は設定から決まる', () => {
+  // 画面は固定値を持たず、保存している設定から毎回読む（復元直後でも買い切り→月額非表示になる）
+  const restored = settingsWithPurchase({}, { lifetime: true });
+  assert.deepEqual(planVisibility(purchaseFromSettings(restored)), { lifetime: false, monthly: false });
+  assert.equal(planStatusLabel(restored), 'Pro（買い切り）');
+  assert.match(read('app.js'), /const purchase = purchaseFromSettings\(state\.settings\);/);
+});
+
 /* ---------------- 7) 画面と配布物 ---------------- */
 
 test('プラン画面・設定に購入と復元の導線、規約リンク、自動更新の注記がある', () => {
