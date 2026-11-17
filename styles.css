@@ -184,12 +184,29 @@ button, a, select, label, summary, .hbtn, .vpill, .fab, .tabbar button { touch-a
 .sechead .ic:first-child { flex: 0 0 auto; }
 /* お気に入りは在庫一覧の先頭の固定フォルダになったので、横並びの帯は使わない */
 
+/* 在庫タブの「場所ごと / メーカーごと」切り替え（iOSのセグメント風） */
+.segbar { padding: 10px 12px 2px; }
+.seg {
+  display: flex; gap: 2px; padding: 2px; border-radius: 10px;
+  background: var(--surface-3); border: 1px solid var(--line);
+}
+.seg button {
+  flex: 1 1 0; min-width: 0; border: none; background: none; border-radius: 8px;
+  padding: 7px 4px; font-size: 13px; font-weight: 700; color: var(--ink-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.seg button[aria-selected="true"] {
+  background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(16, 32, 56, .16);
+}
+.seg button:active { opacity: .7; }
+
 /* ---------- フォルダグリッド（保管場所） ---------- */
-.fgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px 8px; padding: 12px 12px 6px; }
+/* お気に入り＋保管場所4つ＋「＋ フォルダ」の5つが1行に並ぶ列数（アイコンの形はそのままで一回りコンパクト） */
+.fgrid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px 6px; padding: 12px 10px 6px; }
 .fgrid[hidden] { display: none; }
-.ftile { display: flex; flex-direction: column; align-items: center; gap: 5px; border: none; background: none; padding: 0; min-width: 0; }
+.ftile { display: flex; flex-direction: column; align-items: center; gap: 4px; border: none; background: none; padding: 0; min-width: 0; }
 .ftile .fico {
-  position: relative; width: 100%; aspect-ratio: 1 / 1; border-radius: 16px;
+  position: relative; width: 100%; aspect-ratio: 1 / 1; border-radius: 14px;
   display: grid; place-items: center; color: var(--c); background: var(--cs);
 }
 .ftile .fico .ic { width: 50%; height: auto; aspect-ratio: 1 / 1; }
@@ -206,7 +223,7 @@ button, a, select, label, summary, .hbtn, .vpill, .fab, .tabbar button { touch-a
   box-shadow: 0 0 0 1px rgba(16, 32, 56, .07);
 }
 .ftile .fname {
-  font-size: 11px; font-weight: 700; color: var(--tile-ink); text-align: center; line-height: 1.2;
+  font-size: 10.5px; font-weight: 700; color: var(--tile-ink); text-align: center; line-height: 1.2;
   max-height: 2.4em; overflow: hidden; word-break: break-word;
 }
 .ftile:active .fico { filter: brightness(.96); }
@@ -587,16 +604,17 @@ body[data-ad-banner="true"] .tabbar {
 }
 /* メーカーを選ぶと出るカテゴリのチップ（カードと同じ左右余白にそろえる） */
 #dictCatChips { padding: 4px 12px 0; }
-.dres { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+/* 商品行（追加ボタンのある行）は、メーカー見出しと同じ細さのリズムで並ぶ（2025-11の要望） */
+.dres { display: flex; align-items: center; gap: 8px; padding: 5px 12px; border-bottom: 1px solid var(--line); }
 .dres-main { flex: 1 1 auto; min-width: 0; text-align: left; background: none; border: none; padding: 0; color: var(--ink); }
-.dres-name { display: block; font-size: 13.5px; font-weight: 700; line-height: 1.35; }
+.dres-name { display: block; font-size: 12.5px; font-weight: 700; line-height: 1.25; }
 .dres-series { font-weight: 500; color: var(--ink-2); }
-.dres-sub { display: block; font-size: 11.5px; color: var(--ink-2); margin-top: 2px; }
+.dres-sub { display: block; font-size: 11px; line-height: 1.15; color: var(--ink-2); margin-top: 1px; }
 /* 検索結果のメーカー見出し（タップで開け閉め。閉じているあいだは中身をDOMに置かない） */
 .dgroup { border-top: 1px solid var(--line); }
 .dgroup:first-child { border-top: 0; }
 .dgrouphead {
-  display: flex; align-items: center; gap: 6px; width: 100%; min-height: 38px; padding: 8px 12px;
+  display: flex; align-items: center; gap: 6px; width: 100%; min-height: 38px; padding: 6px 12px;
   font-size: 11.5px; font-weight: 800; color: var(--soft-ink); letter-spacing: .02em;
   background: var(--surface-2); border: 0; text-align: left;
 }
@@ -614,15 +632,15 @@ body[data-ad-banner="true"] .tabbar {
 }
 /* 開いたメーカーの中で、まだ描いていないぶんを足すボタン */
 .dgroupmore {
-  display: block; width: calc(100% - 24px); margin: 8px 12px 12px; min-height: 40px;
+  display: block; width: calc(100% - 24px); margin: 6px 12px 8px; min-height: 36px;
   border: 1px solid var(--line); border-radius: 10px; background: var(--surface);
   color: var(--ink-2); font-size: 12.5px; font-weight: 700;
 }
 .dgroupmore:active { opacity: .65; }
 .dres-add {
-  flex: 0 0 auto; min-height: 40px; padding: 0 12px; border-radius: 10px;
+  flex: 0 0 auto; min-height: 30px; padding: 0 10px; border-radius: 8px;
   border: 1px solid var(--accent-line); background: var(--accent-soft); color: var(--on-accent-soft);
-  font-size: 12.5px; font-weight: 800;
+  font-size: 12px; font-weight: 800;
 }
 .dres-have { flex: 0 0 auto; font-size: 11px; font-weight: 700; color: var(--ink-3); }
 
@@ -756,12 +774,13 @@ body[data-ad-banner="true"] .tabbar {
 .btn.mini { flex: 0 0 auto; padding: 8px 10px; font-size: 12.5px; border-radius: 10px; white-space: nowrap; }
 .btn.mini.wide { width: 100%; margin-top: 6px; }
 
-/* 広い画面では列を増やす */
+/* 広い画面では列を増やす（フォルダは5列のまま、画材はアイコンが大きくなる分だけ増やす） */
 @media (min-width: 430px) {
-  .fgrid, .tgrid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .tgrid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 }
 @media (min-width: 560px) {
-  .fgrid, .tgrid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .fgrid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .tgrid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 }
 
 /* ---------- 在庫切れ（qty 0 / 残量使い切り）はグレーアウト ---------- */

@@ -75,6 +75,7 @@ const NATIVE_APP = isNativeShell(typeof window !== 'undefined' ? window : {});
 let state = loadState();
 let ui = {
   tab: 'stock',
+  stockMode: 'place',  // 在庫タブの見方（'place' = 場所ごと / 'maker' = メーカーごと）
   folderId: 'all',       // 'all' = トップ（すべて） / それ以外 = 開いているフォルダ
   query: '',
   category: 'all',
@@ -181,7 +182,7 @@ function renderDictionaryState() {
   const state = $('dictSyncState');
   if (state) state.textContent = describeSyncState(dictSync, { cachedCount: extraEntries.length });
   if ($('sheetDict')?.classList.contains('open')) renderDictList($('dictQ').value);
-  if (ui.tab === 'search') renderSearchTab();
+  if (ui.tab === 'catalog') renderSearchTab();
 }
 
 /** jan-extra.json を取りに行って合成する（起動時・「辞書を更新」） */
@@ -528,8 +529,15 @@ function render() {
   document.querySelectorAll('#tabbar button').forEach((b) => {
     b.setAttribute('aria-selected', String(b.dataset.tab === ui.tab));
   });
-  for (const t of ['stock', 'maker', 'shopping', 'search', 'settings']) $(`view-${t}`).hidden = t !== ui.tab;
-  const fabVisible = (ui.tab === 'stock' || ui.tab === 'maker' || ui.tab === 'shopping') && !ui.selectMode;
+  // 在庫タブの中の「場所ごと / メーカーごと」
+  const stockMode = ui.stockMode === 'maker' ? 'maker' : 'place';
+  document.querySelectorAll('#stockSeg button').forEach((b) => {
+    b.setAttribute('aria-selected', String(b.dataset.stockMode === stockMode));
+  });
+  $('stockPlaceView').hidden = ui.tab !== 'stock' || stockMode !== 'place';
+  $('stockMakerView').hidden = ui.tab !== 'stock' || stockMode !== 'maker';
+  for (const t of ['stock', 'shopping', 'catalog', 'settings']) $(`view-${t}`).hidden = t !== ui.tab;
+  const fabVisible = (ui.tab === 'stock' || ui.tab === 'shopping') && !ui.selectMode;
   $('btnAdd').style.visibility = fabVisible ? 'visible' : 'hidden';
   $('btnScan').style.visibility = fabVisible ? 'visible' : 'hidden'; // 右下の＋の上（読取）
   syncBottomMetrics();
@@ -543,7 +551,7 @@ function render() {
 function syncBottomMetrics() {
   document.documentElement.style.setProperty('--dock-h', '0px');
   // FABは「＋」とその上の「読取」の2段分（52 + 8 + 44）＋余白。選択中は隠すので0
-  const fabH = (ui.tab === 'stock' || ui.tab === 'maker' || ui.tab === 'shopping') && !ui.selectMode ? 118 : 0;
+  const fabH = (ui.tab === 'stock' || ui.tab === 'shopping') && !ui.selectMode ? 118 : 0;
   document.documentElement.style.setProperty('--fab-h', `${fabH}px`);
 }
 window.addEventListener('resize', syncBottomMetrics);
@@ -577,7 +585,7 @@ function hasFilters() {
 function renderCrumb() {
   const fav = isFavoriteFolder(ui.folderId);
   const open = ui.folderId !== 'all';
-  $('crumb').hidden = !open || ui.tab !== 'stock';
+  $('crumb').hidden = !open || ui.tab !== 'stock' || ui.stockMode === 'maker';
   // 途中の階層をタップすると、そこへ一気に移動できる（幅が足りないときはCSSで折り返す）
   const chain = open && !fav ? folderChain(state.folders, ui.folderId) : [];
   // 特別フォルダ「お気に入り」は階層を持たないので、現在地だけを出す
@@ -610,7 +618,7 @@ function goUp() {
 function renderFolderGrid() {
   // 特別フォルダ「お気に入り」の中にはフォルダを作らない（子フォルダは持たない）
   const fav = isFavoriteFolder(ui.folderId);
-  const show = ui.tab === 'stock' && !ui.query && !hasFilters() && !fav;
+  const show = ui.tab === 'stock' && ui.stockMode !== 'maker' && !ui.query && !hasFilters() && !fav;
   $('folderSec').hidden = !show;
   if (!show) { $('folderGrid').innerHTML = ''; return; }
   const parentId = ui.folderId === 'all' ? '' : ui.folderId;
@@ -655,6 +663,8 @@ function renderFolderGrid() {
 
 /** 画材一覧（今いる場所のすべて。検索中は全体から探す） */
 function renderItemSection() {
+  // 「メーカーごと」を見ている間は場所の一覧を作らない（隠れているうえ、行数が多いと重い）
+  if (ui.stockMode === 'maker') return;
   const fav = isFavoriteFolder(ui.folderId);
   const list = currentList();
   $('itemSecTitle').textContent = ui.query ? '検索結果' : (fav ? FAVORITE_FOLDER.name : (ui.folderId === 'all' ? 'すべての画材' : folderOf(ui.folderId).name));
@@ -668,7 +678,7 @@ function renderItemSection() {
   });
 }
 
-/** メーカー別タブ: メーカーごとに開いて中を見る（見出しに件数） */
+/** メーカー別: メーカーごとに開いて中を見る（見出しに件数。在庫タブの「メーカーごと」） */
 function renderMakerView() {
   if (!$('makerGroups')) return;
   const items = state.items;
@@ -1314,8 +1324,8 @@ $('crumbTrail').addEventListener('click', (e) => {
 });
 $('btnSearch').addEventListener('click', () => {
   ui.searchOpen = !ui.searchOpen;
-  // 検索は在庫から探す（他のタブで押したら在庫へ）
-  if (ui.searchOpen && ui.tab !== 'stock') ui.tab = 'stock';
+  // 検索は在庫から探す（他のタブ・メーカーごとで押したら、場所ごとの在庫へ戻す）
+  if (ui.searchOpen) { ui.tab = 'stock'; ui.stockMode = 'place'; }
   if (!ui.searchOpen) { ui.query = ''; $('q').value = ''; }
   render();
   if (ui.searchOpen) setTimeout(() => $('q').focus({ preventScroll: true }), 30);
@@ -1390,6 +1400,18 @@ $('tabbar').addEventListener('click', (e) => {
   window.scrollTo({ top: 0 });
 });
 
+// 在庫タブの中の「場所ごと ↔ メーカーごと」
+$('stockSeg').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-stock-mode]');
+  if (!b) return;
+  const mode = b.dataset.stockMode === 'maker' ? 'maker' : 'place';
+  if (ui.stockMode === mode) return;
+  ui.stockMode = mode;
+  exitSelect(); // 複数選択は場所ごとの並びで使う
+  render();
+  window.scrollTo({ top: 0 });
+});
+
 // フォルダをタップして中へ／「＋ フォルダ」で作る
 $('folderGrid').addEventListener('click', (e) => {
   const add = e.target.closest('[data-add-folder]');
@@ -1398,6 +1420,7 @@ $('folderGrid').addEventListener('click', (e) => {
   if (!b) return;
   ui.folderId = b.dataset.folder;
   ui.tab = 'stock';
+  ui.stockMode = 'place'; // フォルダの中は場所ごとの並びで開く
   exitSelect();
   render();
   window.scrollTo({ top: 0 });
@@ -1412,6 +1435,7 @@ function exitSelect() {
 function toggleSelectMode() {
   if (ui.selectMode) { exitSelect(); render(); return; }
   ui.tab = 'stock';
+  ui.stockMode = 'place'; // まとめて選ぶのは場所ごとの並びから
   ui.selectMode = true;
   ui.selected = [];
   render();
@@ -1863,7 +1887,7 @@ $('btnDeleteItem').addEventListener('click', async () => {
 async function removeItem(id, { fromSheet = '' } = {}) {
   const it = state.items.find((i) => i.id === id);
   if (!it) return false;
-  if (!confirm('この画材を削除しますか？（元に戻せません）')) return false;
+  if (!confirm('この画材を削除しますか？\n（元に戻せません）')) return false;
   state = deleteItems(state, [id]);
   save();
   try {
@@ -1976,7 +2000,14 @@ function removeFolder(id) {
   const kids = folderChildren(state.folders, id).length;
   const upName = folderParentId(f) ? folderOf(folderParentId(f)).name : 'トップ';
   const note = kids ? `子フォルダ${kids}つは「${upName}」へ移します。` : '';
-  if (!confirm(`「${f.name}」を削除します。中の画材は「${fallback.name}」へ移動します。${note}よろしいですか？`)) return { ok: false };
+  // 長い確認文は伝えたい単位で改行する（端末の幅で中途半端に折り返されないように）
+  const message = [
+    `「${f.name}」を削除します。`,
+    `中の画材は「${fallback.name}」へ移動します。`,
+    ...(note ? [note] : []),
+    'よろしいですか？',
+  ].join('\n');
+  if (!confirm(message)) return { ok: false };
   const parent = folderParentId(f);
   state = deleteFolder(state, id, fallback.id);
   save();
@@ -2927,7 +2958,7 @@ $('btnRestoreMerge').addEventListener('click', async () => {
 });
 $('btnRestoreReplace').addEventListener('click', async () => {
   if (!pendingRestore) return;
-  if (!confirm('いまのデータを、読み込むファイルの内容で置き換えます。よろしいですか？')) return;
+  if (!confirm('いまのデータを、読み込むファイルの内容で置き換えます。\nよろしいですか？')) return;
   state = pendingRestore;
   pendingRestore = null;
   save();
@@ -2937,8 +2968,8 @@ $('btnRestoreReplace').addEventListener('click', async () => {
   toast(`置き換えました（${state.items.length}件）`);
 });
 $('btnWipe').addEventListener('click', async () => {
-  if (!confirm('この端末の画材データをすべて削除します。元に戻せません。')) return;
-  if (!confirm('本当に削除しますか？（バックアップは書き出し済みですか？）')) return;
+  if (!confirm('この端末の画材データをすべて削除します。\n元に戻せません。')) return;
+  if (!confirm('本当に削除しますか？\n（バックアップは書き出し済みですか？）')) return;
   localStorage.removeItem(STORAGE_KEY);
   state = blankState();
   save();
@@ -3217,9 +3248,9 @@ function addDictToStock(d) {
   toast(`「${item.name}」を在庫に追加しました${others ? '（別のフォルダにもあり）' : ''}`);
 }
 
-/** 検索タブの描画（メーカー・カテゴリで絞り、結果からそのまま在庫へ追加） */
+/** 検索タブ（カタログ）の描画（メーカー・カテゴリで絞り、結果からそのまま在庫へ追加） */
 function renderSearchTab() {
-  if (ui.tab !== 'search') return;
+  if (ui.tab !== 'catalog') return;
   // メーカーの選択肢（辞書が変わったときだけ作り直す）
   const sel = $('dictMakerSel');
   if (dictTabBuiltFor !== mergedDict) {

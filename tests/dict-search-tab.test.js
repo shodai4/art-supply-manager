@@ -1,11 +1,11 @@
 /**
- * 下タブの「検索」（内蔵JAN辞書のカタログ検索）。
+ * 下タブの「カタログ」（内蔵JAN辞書のカタログ検索）。
  *
- *   1) 5タブ（在庫・メーカー・補充・検索・設定）の検索タブにある
+ *   1) 4タブ（在庫・補充・カタログ・設定）のカタログタブにある
  *   2) 商品名・メーカー・JANで絞れ、メーカーとカテゴリでも絞れる
  *   3) 3.7万件でも軽い（デバウンス＋メーカー見出しだけを先に描く＋開いた分だけ描く）
  *   4) 結果からそのまま在庫へ追加でき、登録済みのものは分かる
- *   5) 既存の「メーカー」タブ（自分の在庫をメーカー別に見る）はそのまま
+ *   5) 自分の在庫をメーカー別にまとめる見方は、在庫タブの中の「メーカーごと」にある
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -56,18 +56,18 @@ test('内蔵辞書のカテゴリは画面のカテゴリ名にすべて対応�
   assert.ok(JAN_DICTIONARY.length >= 37000, `内蔵辞書が少ない: ${JAN_DICTIONARY.length}`);
 });
 
-test('画面: 下タブの「検索」に内蔵辞書の検索・メーカー・カテゴリ・結果がある', () => {
+test('画面: 下タブの「カタログ」に内蔵辞書の検索・メーカー・カテゴリ・結果がある', () => {
   const html = read('index.html');
   const app = read('app.js');
   const css = read('styles.css');
 
-  for (const id of ['view-search', 'dictQTab', 'dictQTabClear', 'dictMakerSel', 'dictCatSec', 'dictCatChips', 'dictResults', 'dictResCount', 'dictTabNote']) {
+  for (const id of ['view-catalog', 'dictQTab', 'dictQTabClear', 'dictMakerSel', 'dictCatSec', 'dictCatChips', 'dictResults', 'dictResCount', 'dictTabNote']) {
     assert.ok(html.includes(`id="${id}"`), `#${id} がありません`);
   }
-  // 補充と設定のあいだに「検索」タブ
+  // 補充と設定のあいだに「カタログ」タブ
   const tabs = [...html.matchAll(/data-tab="([a-z]+)"/g)].map((m) => m[1]);
-  assert.deepEqual(tabs, ['stock', 'maker', 'shopping', 'search', 'settings']);
-  assert.match(html, /<button data-tab="search" aria-selected="false">検索<\/button>/);
+  assert.deepEqual(tabs, ['stock', 'shopping', 'catalog', 'settings']);
+  assert.match(html, /<button data-tab="catalog" aria-selected="false">カタログ<\/button>/);
 
   // 軽さ: デバウンス・（50件などで打ち切らずに）メーカー見出しだけを先に並べ、開いた分だけ描く
   assert.match(app, /const DICT_TAB_DEBOUNCE_MS = 180;/);
@@ -80,13 +80,34 @@ test('画面: 下タブの「検索」に内蔵辞書の検索・メーカー・
   assert.match(app, /\$\('dictCatSec'\)\.hidden = !showCats;/);
   assert.match(app, /data-dict-cat/);
 
-  // 既存のメーカータブ（自分の在庫をメーカー別に）はそのまま
-  assert.ok(html.includes('id="view-maker"'), 'メーカータブが消えている');
+  // 自分の在庫をメーカー別に見る見方は、在庫タブの中の「メーカーごと」に移った（独立タブは無い）
+  assert.equal(/data-tab="maker"/.test(html), false, 'メーカータブが残っている');
+  assert.ok(html.includes('id="makerGroups"'), 'メーカーの一覧がありません');
   assert.match(app, /renderMakerView\(\)/);
 
   // 375pxでも崩れない（入力は16pxで自動拡大を防ぐ・結果は折り返さず縦に並ぶ）
   assert.match(css, /\.dict-search input \{[^}]*font-size:\s*16px/);
   assert.match(css, /\.dres-main \{[^}]*min-width:\s*0/);
+});
+
+test('カタログの商品行はメーカー見出しと同じ細さ（追加ボタンも小さめ）', () => {
+  const css = read('styles.css');
+  const head = /\.dgrouphead\s*\{([^}]*)\}/m.exec(css);
+  const row = /^\.dres\s*\{([^}]*)\}/m.exec(css);
+  const add = /\.dres-add\s*\{([^}]*)\}/m.exec(css);
+  assert.ok(head && row && add, '見出し・行・追加ボタンのスタイルがありません');
+
+  // 見出しはほどよい高さのまま（タップしやすい）
+  assert.match(head[1], /min-height:\s*38px/);
+  // 商品行は上下の余白を詰めて、見出しと同じくらいの細さにする
+  assert.match(row[1], /padding:\s*5px 12px/);
+  assert.match(row[1], /align-items:\s*center/);
+  // 追加ボタンも小さめ（行の高さを决めるのはボタンなので、ここも詰める）
+  assert.match(add[1], /min-height:\s*30px/);
+  assert.match(add[1], /font-size:\s*12px/);
+  // 商品名と補足は2行に収まるサイズのまま
+  assert.match(css, /\.dres-name \{[^}]*font-size:\s*12\.5px/);
+  assert.match(css, /\.dres-sub \{[^}]*font-size:\s*11px/);
 });
 
 test('結果からそのまま在庫へ追加でき、追加済みは「登録済み」になる', () => {

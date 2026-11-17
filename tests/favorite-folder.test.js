@@ -109,8 +109,9 @@ test('在庫一覧の先頭に固定フォルダ「お気に入り」が出て�
   assert.match(app, /data-folder="\$\{esc\(FAVORITE_FOLDER_ID\)\}"/);
   assert.match(app, /const favCount = countFavorites\(state\.items\);/);
   assert.match(app, /if \(!parentId\) \{[\s\S]{0,600}FAVORITE_FOLDER\.name/);
-  // 中を開いたときは子フォルダを作らない（フォルダの節を出さない）
-  assert.match(app, /const show = ui\.tab === 'stock' && !ui\.query && !hasFilters\(\) && !fav;/);
+  // 中を開いたときは子フォルダを作らない（フォルダの節を出さない）。
+  // フォルダの並びは在庫タブの「場所ごと」のときだけなので、その条件も入る
+  assert.match(app, /const show = ui\.tab === 'stock' && ui\.stockMode !== 'maker' && !ui\.query && !hasFilters\(\) && !fav;/);
   // 長押しメニュー（編集／移動／削除）は出さない
   assert.match(app, /if \(folderId && isFavoriteFolder\(folderId\)\) return;/);
   // 中身は星の付いた画材を、どのフォルダからでも集めて出す

@@ -208,14 +208,14 @@ test('画面の導線（空の一覧・設定）と配信ファイルへの登�
 
   // キャッシュ・iOSビルド・Service Worker に新しいファイルが入っている
   assert.match(sw, /'\.\/samples\.js'/);
-  assert.match(sw, /art-supply-manager-v42/);
+  assert.match(sw, /art-supply-manager-v43/);
   assert.match(build, /'samples\.js'/);
   // CI（iOSビルド）は app.js / index.html の変更で走る（samples.js は build.mjs 経由で www/ へ入る）
   assert.match(workflow, /- 'app\.js'/);
   assert.match(workflow, /- 'scripts\/\*\*'/);
   // キャッシュバスティングは package.json の版と揃える
   assert.match(html, new RegExp(`app\\.js\\?v=${pkg.version.replace(/\./g, '\\.')}`));
-  assert.equal(pkg.version, '1.22.0');
+  assert.equal(pkg.version, '1.23.0');
 });
 
 /* ---------------- 設定の「サンプルを消す」（入れ直しもできる） ---------------- */

@@ -880,7 +880,7 @@ export const DICT_SYNC_FIELDS = [
 ];
 
 /** 表記の更新の前に出す確認の文言（数量・メモ・フォルダ・写真が残ることを伝える） */
-export const SYNC_ITEMS_CONFIRM_TEXT = 'JANが一致する画材の商品名・メーカー名等を最新の辞書表記に更新します（数量・メモ・フォルダ・写真はそのまま残ります）';
+export const SYNC_ITEMS_CONFIRM_TEXT = 'JANが一致する画材の商品名・メーカー名等を最新の辞書表記に更新します\n（数量・メモ・フォルダ・写真はそのまま残ります）';
 /** 表記を揃えたあとの結果の文言（0件のときは「すべて最新」） */
 export function describeSyncItemsResult(updatedCount) {
   const n = Math.max(0, Math.trunc(Number(updatedCount) || 0));

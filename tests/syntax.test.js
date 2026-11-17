@@ -32,8 +32,8 @@ test('index.html の script は app.js だけ（書き換えで壊れていな�
   const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   const srcs = [...html.matchAll(/<script[^>]*src="([^"]+)"/g)].map((m) => m[1]);
   assert.deepEqual(srcs.map((s) => s.split('?')[0]), ['app.js']);
-  // 画面の骨（在庫・検索・編集シート）が残っている
-  for (const id of ['view-stock', 'view-search', 'folderGrid', 'itemList', 'dictResults', 'fFav']) {
+  // 画面の骨（在庫・カタログ・編集シート）が残っている
+  for (const id of ['view-stock', 'view-catalog', 'folderGrid', 'itemList', 'dictResults', 'fFav']) {
     assert.ok(html.includes(`id="${id}"`), `#${id} がありません`);
   }
 });

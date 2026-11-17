@@ -120,7 +120,7 @@ test('「削除」は確認のうえ、写真も消して一覧を描き直す�
   const app = read('app.js');
   // 共通処理にまとめ、編集シートの削除もメニューの削除も同じ道を通る
   assert.match(app, /async function removeItem\(id, \{ fromSheet = '' \} = \{\}\)/);
-  assert.match(app, /if \(!confirm\('この画材を削除しますか？（元に戻せません）'\)\) return false;/);
+  assert.match(app, /if \(!confirm\('この画材を削除しますか？\\n（元に戻せません）'\)\) return false;/);
   assert.match(app, /state = deleteItems\(state, \[id\]\);/);
   assert.match(app, /await deletePhoto\(id\);\n    dropPhotoUrl\(id\);/);
   assert.match(app, /if \(fromSheet\) closeSheet\(fromSheet\);/);

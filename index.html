@@ -15,7 +15,7 @@ try {
 } catch (e) { /* 保存が読めないときはライト */ }
 </script>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="styles.css?v=1.22.0">
+<link rel="stylesheet" href="styles.css?v=1.23.0">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 </head>
@@ -140,30 +140,40 @@ try {
 </header>
 
 <main>
-  <!-- 在庫（フォルダ → 画材の順に1つの流れで並べる。お気に入りは先頭の固定フォルダ） -->
+  <!-- 在庫（自分の持ち物）。上で「場所ごと / メーカーごと」を切り替える -->
   <section id="view-stock">
-    <div class="fsec" id="folderSec">
-      <div class="sechead">
-        <svg class="ic" aria-hidden="true"><use href="#i-folder"/></svg>
-        <span id="folderSecTitle">フォルダ</span>
+    <div class="segbar">
+      <div class="seg" id="stockSeg" role="tablist" aria-label="在庫の見方">
+        <button type="button" role="tab" data-stock-mode="place" aria-selected="true" aria-controls="stockPlaceView">場所ごと</button>
+        <button type="button" role="tab" data-stock-mode="maker" aria-selected="false" aria-controls="stockMakerView">メーカーごと</button>
       </div>
-      <div class="fgrid" id="folderGrid"></div>
     </div>
 
-    <div class="fsec" id="itemSec">
-      <div class="sechead">
-        <svg class="ic" aria-hidden="true"><use href="#i-grid"/></svg>
-        <span id="itemSecTitle">すべての画材</span>
-        <b id="itemCount">0</b>
+    <!-- 場所ごと（フォルダ → 画材の順に1つの流れで並べる。お気に入りは先頭の固定フォルダ） -->
+    <div id="stockPlaceView">
+      <div class="fsec" id="folderSec">
+        <div class="sechead">
+          <svg class="ic" aria-hidden="true"><use href="#i-folder"/></svg>
+          <span id="folderSecTitle">フォルダ</span>
+        </div>
+        <div class="fgrid" id="folderGrid"></div>
       </div>
-      <div id="itemList"></div>
-    </div>
-  </section>
 
-  <!-- メーカー別（タップで開いて、そのメーカーの画材を見る） -->
-  <section id="view-maker" hidden>
-    <p class="lede">メーカーごとに開いて見られます</p>
-    <div class="makers" id="makerGroups"></div>
+      <div class="fsec" id="itemSec">
+        <div class="sechead">
+          <svg class="ic" aria-hidden="true"><use href="#i-grid"/></svg>
+          <span id="itemSecTitle">すべての画材</span>
+          <b id="itemCount">0</b>
+        </div>
+        <div id="itemList"></div>
+      </div>
+    </div>
+
+    <!-- メーカーごと（タップで開いて、そのメーカーの画材を見る） -->
+    <div id="stockMakerView" hidden>
+      <p class="lede">メーカーごとに開いて見られます</p>
+      <div class="makers" id="makerGroups"></div>
+    </div>
   </section>
 
   <!-- 買い物リスト -->
@@ -172,8 +182,8 @@ try {
     <div id="shoppingList"></div>
   </section>
 
-  <!-- 検索（内蔵JAN辞書から探して、そのまま自分の在庫へ追加） -->
-  <section id="view-search" hidden>
+  <!-- カタログ（まだ持っていない画材を内蔵JAN辞書から探して、そのまま自分の在庫へ追加） -->
+  <section id="view-catalog" hidden>
     <div class="fsec">
       <div class="sechead">
         <svg class="ic" aria-hidden="true"><use href="#i-folder"/></svg>
@@ -312,9 +322,8 @@ try {
 
 <nav class="tabbar" id="tabbar">
   <button data-tab="stock" aria-selected="true">在庫</button>
-  <button data-tab="maker" aria-selected="false">メーカー</button>
   <button data-tab="shopping" aria-selected="false">補充</button>
-  <button data-tab="search" aria-selected="false">検索</button>
+  <button data-tab="catalog" aria-selected="false">カタログ</button>
   <button data-tab="settings" aria-selected="false">設定</button>
 </nav>
 
@@ -561,9 +570,10 @@ try {
     <div class="gstep"><b>フォルダ（保管場所）</b><span>在庫タブのフォルダをタップして中へ。フォルダを長押しすると、編集・移動・削除ができます。フォルダの中では上の家アイコンで戻れます。フォルダの中に子フォルダも作れます。</span></div>
     <div class="gstep"><b>同じ画材を別の場所にも</b><span>家とアトリエのように同じ画材を分けて持ちたいときは、編集シートかカードの「＋ 別の場所」から別のフォルダにも1点置けます（数量は場所ごとに数えます）。2か所以上にある画材は、一覧で「計 4点」の1枚にまとまり、フォルダごとの行からそのまま増減できます。</span></div>
     <div class="gstep"><b>まとめて移動する</b><span>右上の⋯から「複数選択」を選び、画材を選んで「移動」を押すと、別のフォルダへまとめて移せます。</span></div>
-    <div class="gstep"><b>メーカー別に見る</b><span>下の「メーカー」タブで、メーカーごとのまとまりを開いて見られます。</span></div>
+    <div class="gstep"><b>メーカー別に見る</b><span>在庫タブの上の「メーカーごと」に切り替えると、持っている画材をメーカーごとのまとまりで開いて見られます（「場所ごと」でフォルダの並びに戻ります）。</span></div>
     <div class="gstep"><b>絞込・並替・表示</b><span>右上の「⋯」にまとめています。絞込・並替・グリッド/リスト・複数選択・フォルダの並びがここから使えます。</span></div>
     <div class="gstep"><b>買うものリスト</b><span>補充タブに、残りわずか・使い切った画材が自動で集まります。通販ボタンからそのまま探せます。</span></div>
+    <div class="gstep"><b>持っていない画材を探す</b><span>カタログタブで、内蔵のJAN辞書（37,822件）から商品名・メーカー・JANで探して、そのまま在庫に追加できます。</span></div>
     <div class="gstep"><b>バックアップ</b><span>設定の「バックアップ保存」でJSONを書き出せます。機種変更の前に保存しておくと安心です（手元写真は端末内に残ります）。</span></div>
     <div class="gstep"><b>表示（ナイトモード）</b><span>設定の「表示」で自動・ライト・ダーク（ナイトモード）を選べます。画面の拡大はダブルタップやピンチでは起きません。文字を大きくしたいときは端末の設定から変えてください。</span></div>
   </div>
@@ -621,6 +631,6 @@ try {
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<script type="module" src="app.js?v=1.22.0"></script>
+<script type="module" src="app.js?v=1.23.0"></script>
 </body>
 </html>

@@ -179,7 +179,7 @@ test('Yahoo!のAPIを使うため、規定のHTMLでクレジットを最下部�
   assert.ok(snippetAt > html.indexOf('foot-note'), 'クレジットは注記より下（アプリの下部）に置く');
 });
 
-test('一覧はメーカー別タブで見て、絞込・並替は右上の⋯にまとめる', () => {
+test('一覧はメーカー別に見て、絞込・並替は右上の⋯にまとめる', () => {
   const html = read('index.html');
   const app = read('app.js');
   const css = read('styles.css');
@@ -189,10 +189,12 @@ test('一覧はメーカー別タブで見て、絞込・並替は右上の⋯�
   assert.equal(html.includes('id="viewRow"'), false, '3択（viewRow）が残っている');
   assert.equal(/withViewGroup|viewGroupOf|VIEW_GROUPS/.test(app), false, '3択の処理が残っている');
 
-  // メーカー別は独立したタブで、見出しをタップして開く（件数つき）
-  assert.match(html, /<button data-tab="maker" aria-selected="false">メーカー<\/button>/);
-  const view = html.slice(html.indexOf('id="view-maker"'), html.indexOf('id="view-shopping"'));
-  assert.ok(view.includes('id="makerGroups"'), 'メーカーの一覧がありません');
+  // メーカー別の独立タブは無くなり、在庫タブの中の「メーカーごと」に移った
+  assert.equal(/data-tab="maker"/.test(html), false, 'メーカータブが残っている');
+  assert.equal(html.includes('id="view-maker"'), false, 'メーカーの画面（view-maker）が残っている');
+  const stock = html.slice(html.indexOf('id="view-stock"'), html.indexOf('id="view-shopping"'));
+  assert.ok(stock.includes('id="makerGroups"'), '在庫タブの中にメーカーの一覧がありません');
+  // 見出しをタップして開く（件数つき）
   assert.match(app, /function renderMakerView\(\)/);
   assert.match(app, /listMakers\(items\)/);
   assert.match(app, /data-maker-group=/);
@@ -345,15 +347,20 @@ test('下部はタブバーと広告だけ。操作はヘッダーの検索と�
   assert.equal(/\.dock\s*\{/.test(css), false, 'ドックのスタイルが残っている');
 });
 
-test('タブバーは5つ（在庫・メーカー・補充・検索・設定）で均等に並ぶ', () => {
+test('タブバーは4つ（在庫・補充・カタログ・設定）で均等に並ぶ', () => {
   const html = read('index.html');
   const css = read('styles.css');
   const bar = html.slice(html.indexOf('<nav class="tabbar"'), html.indexOf('</nav>', html.indexOf('<nav class="tabbar"')));
   const tabs = [...bar.matchAll(/data-tab="([a-z]+)"/g)].map((m) => m[1]);
-  assert.deepEqual(tabs, ['stock', 'maker', 'shopping', 'search', 'settings']);
+  assert.deepEqual(tabs, ['stock', 'shopping', 'catalog', 'settings']);
+  // 役割が一目で分かるラベル（自分の持ち物＝在庫 / 持っていない画材探し＝カタログ）
+  assert.match(bar, /<button data-tab="stock" aria-selected="true">在庫<\/button>/);
+  assert.match(bar, /<button data-tab="shopping" aria-selected="false">補充<\/button>/);
+  assert.match(bar, /<button data-tab="catalog" aria-selected="false">カタログ<\/button>/);
+  assert.match(bar, /<button data-tab="settings" aria-selected="false">設定<\/button>/);
   assert.equal(bar.includes('色見本'), false, '色見本タブが残っている');
   assert.equal(/data-tab="folders"/.test(bar), false, '「場所」タブが残っている');
-  // 375pxで5等分（flex: 1 1 0 + min-width: 0 + 折り返さない）
+  // 375pxで4等分（flex: 1 1 0 + min-width: 0 + 折り返さない）
   const btn = /^\.tabbar button\s*\{([^}]*)\}/m.exec(css);
   assert.ok(btn, '.tabbar button のスタイルがありません');
   assert.match(btn[1], /flex:\s*1 1 0/);
@@ -394,9 +401,9 @@ test('フォルダは長押しで「編集 / 移動 / 削除」のメニュー�
   assert.match(css, /user-select:\s*none/);
 });
 
-test('検索タブは「メーカー」→（カテゴリ）→検索バー→検索結果の順に並ぶ', () => {
+test('カタログタブは「メーカー」→（カテゴリ）→検索バー→検索結果の順に並ぶ', () => {
   const html = read('index.html');
-  const search = html.slice(html.indexOf('id="view-search"'), html.indexOf('id="view-settings"'));
+  const search = html.slice(html.indexOf('id="view-catalog"'), html.indexOf('id="view-settings"'));
 
   const maker = search.indexOf('id="dictMakerSel"');
   const cat = search.indexOf('id="dictCatSec"');

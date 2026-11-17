@@ -100,7 +100,7 @@ test('赤い「削除」は、編集シート・長押しメニューと同じ r
   assert.match(app, /const del = e\.target\.closest\('\[data-swipe-del\]'\);\n  if \(del\) \{\n    e\.preventDefault\(\);\n    const id = del\.dataset\.swipeDel \|\| '';\n    swipeCloseAll\(\);\n    if \(id\) removeItem\(id\);/);
   // removeItem は確認・写真の削除・再描画（既存の共通処理）
   assert.match(app, /async function removeItem\(id, \{ fromSheet = '' \} = \{\}\) \{/);
-  assert.match(app, /if \(!confirm\('この画材を削除しますか？（元に戻せません）'\)\) return false;/);
+  assert.match(app, /if \(!confirm\('この画材を削除しますか？\\n（元に戻せません）'\)\) return false;/);
 });
 
 test('まとめカードの場所行を削除すると、その場所の1点だけが消えて他のフォルダは残る', () => {
