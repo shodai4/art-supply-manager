@@ -204,7 +204,7 @@ test('画面: 設定にテーマ切替、描画前のテーマ適用、theme-col
 test('theme.js は配信・iOSビルド・Service Worker に入っている', async () => {
   const sw = read('sw.js');
   assert.match(sw, /'\.\/theme\.js'/);
-  assert.match(sw, /art-supply-manager-v38/);
+  assert.match(sw, /art-supply-manager-v39/);
   const { WEB_ASSETS } = await import('../scripts/build.mjs');
   assert.ok(WEB_ASSETS.includes('theme.js'), 'theme.js が WEB_ASSETS にありません');
   // iOSビルドの起動条件は app.js / index.html / styles.css の変更で走る（theme.js は build.mjs 経由で www/ へ入る）

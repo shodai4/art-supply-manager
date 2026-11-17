@@ -49,7 +49,7 @@ import {
   createScanSession, resetScanSession, checkCooldown, markScanned, applyScan, scanFolderId,
   scanLogCount, describeScanLog,
 } from './scan-flow.js';
-import { shouldOpenExternally, openInExternalBrowser } from './links.js';
+import { shouldOpenExternally, openInExternalBrowser, legalDocKey, LEGAL_DOCS } from './links.js';
 import {
   compressImageFile, listPhotos, putPhoto, deletePhoto, clearPhotos, fetchProductImageInfo,
   resolveImageProxyUrl, normalizeProxyUrl, canUseImageProxy, sourceLabel,
@@ -176,7 +176,7 @@ function applyDictionarySync(result) {
 function renderDictionaryState() {
   const merged = mergeDictionaries(JAN_DICTIONARY, extraEntries);
   const info = $('dictInfo');
-  if (info) info.textContent = `JAN辞書：${merged.items.length.toLocaleString('ja-JP')}件${dictSyncing ? '（更新中）' : ''}`;
+  if (info) info.textContent = `対応画材数：${merged.items.length.toLocaleString('ja-JP')}件${dictSyncing ? '（更新中）' : ''}`;
   const state = $('dictSyncState');
   if (state) state.textContent = describeSyncState(dictSync, { cachedCount: extraEntries.length });
   if ($('sheetDict')?.classList.contains('open')) renderDictList($('dictQ').value);
@@ -1810,18 +1810,30 @@ $('itemForm').addEventListener('submit', async (e) => {
 
 $('btnDeleteItem').addEventListener('click', async () => {
   if (!ui.editingId) return;
-  if (!confirm('この画材を削除しますか？（元に戻せません）')) return;
   const id = ui.editingId;
+  await removeItem(id, { fromSheet: 'sheetItem' });
+});
+
+/**
+ * 確認のうえ画材を1件削除する（編集シートと長押しメニューの共通処理）。
+ * 写真も一緒に消し、削除したらシートを閉じて一覧を描き直す。
+ * @returns {Promise<boolean>} 消したら true（確認でキャンセルしたら false）
+ */
+async function removeItem(id, { fromSheet = '' } = {}) {
+  const it = state.items.find((i) => i.id === id);
+  if (!it) return false;
+  if (!confirm('この画材を削除しますか？（元に戻せません）')) return false;
   state = deleteItems(state, [id]);
   save();
   try {
     await deletePhoto(id);
     dropPhotoUrl(id);
   } catch (err) { console.warn('写真の削除に失敗', err); }
-  closeSheet('sheetItem');
+  if (fromSheet) closeSheet(fromSheet);
   render();
   toast('削除しました');
-});
+  return true;
+}
 
 $('btnAdd').addEventListener('click', () => openItemSheet(null));
 
@@ -1941,10 +1953,11 @@ $('btnDeleteFolder').addEventListener('click', () => {
   toast(`「${res.movedTo}」へ中身を移動しました`);
 });
 
-/* ---------------- フォルダの長押しメニュー（編集 / 移動 / 削除） ---------------- */
+/* ---------------- 長押しメニュー（フォルダ・画材とも同じ 480ms） ---------------- */
 const LONG_PRESS_MS = 480;       // 長押しとみなす時間
 const LONG_PRESS_MOVE_PX = 10;   // これ以上動いたらスクロール扱い（メニューは出さない）
 let folderMenuId = '';           // 長押しで選んだフォルダ
+let itemMenuId = '';             // 長押しで選んだ画材
 let pressTimer = 0;
 let pressStart = null;
 let pressEl = null;
@@ -1965,6 +1978,27 @@ function folderIdFromPress(el) {
   return '';
 }
 
+/**
+ * 長押し対象の要素から画材IDを読む（グリッドのタイル・リストの行・まとめカードの各場所行）。
+ * カードの中の操作ボタン（−/＋・星・フォルダチップ・鉛筆・別の場所に追加）と、
+ * 選択モードのカードは普通のタップに任せて、メニューを出さない。
+ */
+function itemIdFromPress(el) {
+  if (!el || !el.closest) return '';
+  if (el.closest('[data-step], [data-fav], [data-fav-group], [data-move], [data-addplace], [data-shop-for], [data-select], .jg-pen, .jg-add')) return '';
+  // まとめカードの各場所行（行のどこを押しても、その場所の画材を選ぶ）
+  const row = el.closest('.jg-row');
+  if (row) {
+    const btn = row.querySelector('[data-edit], [data-move], [data-step]');
+    return btn ? (btn.dataset.edit || btn.dataset.move || btn.dataset.id || '') : '';
+  }
+  // グリッドのタイル・リストの行
+  const card = el.closest('.tilewrap, .item');
+  if (!card) return '';
+  const btn = card.querySelector('[data-edit]');
+  return btn ? (btn.dataset.edit || '') : '';
+}
+
 function endPress() {
   if (pressTimer) { clearTimeout(pressTimer); pressTimer = 0; }
   pressEl?.classList?.remove('pressing');
@@ -1976,12 +2010,17 @@ function startPress(e) {
   if (e.pointerType === 'mouse' && e.button !== 0) return;
   // 行の中の小さなボタン（並べ替え・編集）は普通のタップに任せる
   if (e.target.closest('[data-up], [data-down], [data-fedit]')) return;
-  const id = folderIdFromPress(e.target);
+  const folderId = folderIdFromPress(e.target);
   // 特別フォルダ「お気に入り」は削除・移動・改名できないので、長押しメニューは出さない
-  if (!id || isFavoriteFolder(id)) return;
+  if (folderId && isFavoriteFolder(folderId)) return;
+  // フォルダの上でなければ、画材カードかどうかを見る（フォルダの長押しを優先）
+  const itemId = folderId ? '' : itemIdFromPress(e.target);
+  if (!folderId && !itemId) return;
   endPress();
   pressStart = { x: e.clientX, y: e.clientY };
-  pressEl = e.target.closest('[data-folder], [data-goto-folder], [data-fid], [data-folder-head]');
+  pressEl = folderId
+    ? e.target.closest('[data-folder], [data-goto-folder], [data-fid], [data-folder-head]')
+    : e.target.closest('.tilewrap, .jg-row, .item');
   pressEl?.classList?.add('pressing');
   pressTimer = setTimeout(() => {
     pressTimer = 0;
@@ -1989,10 +2028,11 @@ function startPress(e) {
     pressedEl?.classList?.remove('pressing');
     pressEl = null;
     pressStart = null;
-    // 指を離したあとに続く「タップ」でフォルダを開かないよう、同じ要素の1回だけ打ち消す
+    // 指を離したあとに続く「タップ」でフォルダを開いたり編集シートを開いたりしないよう、同じ要素の1回だけ打ち消す
     suppressClickUntil = Date.now() + 600;
     suppressClickEl = pressedEl;
-    openFolderMenu(id);
+    if (folderId) openFolderMenu(folderId);
+    else openItemMenu(itemId);
   }, LONG_PRESS_MS);
 }
 
@@ -2009,7 +2049,7 @@ document.addEventListener('pointerup', endPress, { passive: true });
 document.addEventListener('pointercancel', endPress, { passive: true });
 // iOS の長押しメニュー・文字選択は出さない（CSSの touch-callout と両方で抑える）
 document.addEventListener('contextmenu', (e) => {
-  if (folderIdFromPress(e.target)) e.preventDefault();
+  if (folderIdFromPress(e.target) || itemIdFromPress(e.target)) e.preventDefault();
 });
 
 // 長押しで開いた直後のタップでフォルダを開いたり編集シートを出したりしない
@@ -2056,6 +2096,63 @@ $('btnFolderRemove').addEventListener('click', () => {
   if (!res.ok) return;
   render();
   toast(`「${res.movedTo}」へ中身を移動しました`);
+});
+
+/* ---------------- 画材の長押しメニュー（移動 / 別の場所 / 編集 / 星 / 削除） ---------------- */
+/** 画材の長押しメニューを開く */
+function openItemMenu(id) {
+  const it = state.items.find((i) => i.id === id);
+  if (!it) return;
+  itemMenuId = id;
+  $('itemMenuTitle').firstChild.textContent = displayName(it);
+  $('itemMenuSub').textContent = `${folderOf(it.folderId).name} ・ ${Number(it.qty) || 0}点`;
+  setItemMenuFav(it.favorite === true);
+  openSheet('sheetItemMenu');
+}
+
+/** メニューの星を、その画材のいまの状態に合わせる（入/切・文字・アイコン） */
+function setItemMenuFav(on) {
+  const b = $('btnItemFav');
+  if (!b) return;
+  b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  b.innerHTML = `<svg class="ic" aria-hidden="true"><use href="#${on ? 'i-star-solid' : 'i-star'}"/></svg>${on ? 'お気に入りを解除' : 'お気に入り'}`;
+}
+
+$('btnItemMove').addEventListener('click', () => {
+  if (!itemMenuId) return;
+  const id = itemMenuId;
+  closeSheet('sheetItemMenu');
+  openMoveSheet([id]);
+});
+
+$('btnItemAddPlace').addEventListener('click', () => {
+  if (!itemMenuId) return;
+  const id = itemMenuId;
+  closeSheet('sheetItemMenu');
+  openAddPlaceSheet(id);
+});
+
+$('btnItemEdit').addEventListener('click', () => {
+  if (!itemMenuId) return;
+  const id = itemMenuId;
+  closeSheet('sheetItemMenu');
+  openItemSheet(id);
+});
+
+$('btnItemFav').addEventListener('click', () => {
+  const it = state.items.find((i) => i.id === itemMenuId);
+  if (!it) return;
+  const next = toggleFavorite(it);
+  state = upsertItem(state, next);
+  save();
+  render();
+  setItemMenuFav(next.favorite === true);
+  toast(next.favorite ? 'お気に入りにしました（お気に入りフォルダに入ります）' : 'お気に入りをはずしました');
+});
+
+$('btnItemRemove').addEventListener('click', () => {
+  if (!itemMenuId) return;
+  removeItem(itemMenuId, { fromSheet: 'sheetItemMenu' });
 });
 
 /**
@@ -2687,12 +2784,62 @@ $('btnProposeCopy').addEventListener('click', async () => {
   toast(ok ? '文面をコピーしました' : 'コピーできませんでした');
 });
 
+/* ---------------- 法務・サポート（同梱ページをアプリ内で読む） ---------------- */
+/** 公開している同じページ（同梱ページを読めなかったときの逃げ道） */
+const LEGAL_DOC_HOST = 'https://shodai4.com/art-supply-manager/';
+let legalDocOpen = '';   // いま開いているページ（読み込み中に別のページを選んだら古い結果を捨てる）
+
+/**
+ * 法務・サポートのページを、アプリを離れずに読めるシートで開く。
+ * 同梱の HTML をそのまま読み、本文（main）だけをシートへ入れる（アプリ内なので通信が無くても読める）。
+ * 読めなかったときは、公開している同じページを Safari（SFSafariViewController）で開く。
+ */
+async function openLegalDoc(key) {
+  const doc = LEGAL_DOCS.find((d) => d.key === key);
+  if (!doc) return false;
+  legalDocOpen = key;
+  $('legalTitle').firstChild.textContent = doc.title;
+  $('legalBody').innerHTML = '<p class="hint legal-loading">読み込み中…</p>';
+  openSheet('sheetLegal');
+  try {
+    const res = await fetch(new URL(doc.file, location.href).href, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const parsed = new DOMParser().parseFromString(await res.text(), 'text/html');
+    const main = parsed.querySelector('main') || parsed.body;
+    // ページ内の「アプリに戻る」は、シートを閉じれば済むので出さない
+    main.querySelectorAll('a.back').forEach((a) => a.remove());
+    // 中のリンクは、このシートの中で開き直す（別タブは開けないため target を外す）
+    main.querySelectorAll('a[href]').forEach((a) => {
+      a.removeAttribute('target');
+      a.setAttribute('rel', 'noopener noreferrer');
+    });
+    if (legalDocOpen !== key) return true; // 読み込み中に別のページが選ばれた
+    $('legalBody').innerHTML = main.innerHTML;
+    $('legalBody').scrollTop = 0;
+    return true;
+  } catch (err) {
+    console.warn('法務ページを読めませんでした', err);
+    legalDocOpen = '';
+    closeSheet('sheetLegal');
+    // 最後の手段は外部ブラウザ（Safari）。それもだめならURLをコピーする
+    return openExternal(`${LEGAL_DOC_HOST}${doc.file}`);
+  }
+}
+
 /* アプリ内（iOS）では外部リンクをSafariで開く（WebViewに閉じ込めない） */
 document.addEventListener('click', (e) => {
   if (!isNativeShell(window)) return;
   const a = e.target?.closest?.('a[href]');
   if (!a) return;
   const href = a.getAttribute('href') || a.href || '';
+  // 同梱の法務・サポートページは、WKWebViewでは target="_blank" で開けないためアプリ内のシートで読む
+  const legal = legalDocKey(href, location.href);
+  if (legal) {
+    e.preventDefault();
+    e.stopPropagation();
+    openLegalDoc(legal);
+    return;
+  }
   if (!shouldOpenExternally(href, { native: true, base: location.href })) return;
   e.preventDefault();
   openExternal(a.href || href);

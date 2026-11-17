@@ -15,7 +15,7 @@ try {
 } catch (e) { /* 保存が読めないときはライト */ }
 </script>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="styles.css?v=1.18.0">
+<link rel="stylesheet" href="styles.css?v=1.19.0">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 </head>
@@ -220,7 +220,7 @@ try {
       </div>
     </div>
     <div class="card" id="dictCard">
-      <p class="dict-one" id="dictInfo">JAN辞書：—</p>
+      <p class="dict-one" id="dictInfo">対応画材数：—</p>
       <div class="actions">
         <button class="btn" id="btnSyncItems">画材名を最新にする</button>
       </div>
@@ -281,7 +281,7 @@ try {
     <div class="card">
       <button class="btn danger" id="btnWipe" style="width:100%">全データを削除</button>
     </div>
-    <p class="micro foot-note">Amazonのアソシエイトとして、適格販売により収入を得ています。</p>
+    <p class="micro foot-note">Amazonのアソシエイトとして、適格販売により収入を得ています。また、本アプリの一部リンクには楽天・Yahoo!ショッピング等のアフィリエイトリンク（PR）を含みます。</p>
     <p class="micro foot-links"><a href="privacy.html" target="_blank" rel="noopener noreferrer">プライバシー</a> ・ <a href="terms.html" target="_blank" rel="noopener noreferrer">利用規約</a> ・ <a href="support.html" target="_blank" rel="noopener noreferrer">サポート</a></p>
     <p class="hint" style="text-align:center;margin:10px 0 0">お絵描き楽しも委員会（しょうだい）</p>
     <!-- Begin Yahoo! JAPAN Web Services Attribution Snippet -->
@@ -510,6 +510,19 @@ try {
   <div class="ftree" id="addPlaceOptions"></div>
 </div>
 
+<!-- 画材の長押しメニュー（保管場所の移動 / 別の場所に追加 / 編集 / お気に入り / 削除） -->
+<div class="sheet" id="sheetItemMenu" role="dialog" aria-modal="true" aria-labelledby="itemMenuTitle">
+  <h2 id="itemMenuTitle">画材<button class="close" data-close="sheetItemMenu" aria-label="閉じる"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></h2>
+  <p class="hint" id="itemMenuSub" style="margin:0 0 10px"></p>
+  <div class="menulist">
+    <button class="menubtn" id="btnItemMove"><svg class="ic" aria-hidden="true"><use href="#i-folder"/></svg>保管場所を移動<small>フォルダを選ぶ</small></button>
+    <button class="menubtn" id="btnItemAddPlace"><svg class="ic" aria-hidden="true"><use href="#i-grid"/></svg>別の場所にも追加<small>1点増える</small></button>
+    <button class="menubtn" id="btnItemEdit"><svg class="ic" aria-hidden="true"><use href="#i-pen"/></svg>編集</button>
+    <button class="menubtn" id="btnItemFav" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-star"/></svg>お気に入り</button>
+    <button class="menubtn danger" id="btnItemRemove"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg>削除</button>
+  </div>
+</div>
+
 <!-- 辞書一覧シート -->
 <div class="sheet" id="sheetDict" role="dialog" aria-modal="true" aria-labelledby="dictTitle">
   <h2 id="dictTitle">JAN辞書<button class="close" data-close="sheetDict" aria-label="閉じる"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></h2>
@@ -590,7 +603,14 @@ try {
   <p class="micro" style="margin:10px 0 0">メールはコピーを貼り付けて送信</p>
 </div>
 
+<!-- 法務・サポート（同梱ページをアプリ内で読む。見出しと閉じるは固定、本文だけスクロール） -->
+<div class="sheet legal" id="sheetLegal" role="dialog" aria-modal="true" aria-labelledby="legalTitle">
+  <h2 id="legalTitle">利用規約<button class="close" data-close="sheetLegal" aria-label="閉じる"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></h2>
+  <div class="legal-doc" id="legalBody"></div>
+  <div class="actions"><button class="btn" data-close="sheetLegal">閉じる</button></div>
+</div>
+
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<script type="module" src="app.js?v=1.18.0"></script>
+<script type="module" src="app.js?v=1.19.0"></script>
 </body>
 </html>

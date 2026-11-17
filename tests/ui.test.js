@@ -47,9 +47,11 @@ test('通販・辞書の導線がHTMLにある（短いラベル）', () => {
     assert.ok(read('shops.js').includes(label.replace(/[><]/g, '')), `${label} が shops.js にありません`);
   }
   // 法務・規約の注記は最下部の極小1行に逃がす（Amazonアソシエイトの表示義務を含む）
-  assert.match(html, /foot-note">Amazonのアソシエイトとして、適格販売により収入を得ています。</);
-  // 補足の文言は増やさない（必須の1文だけ）
-  assert.equal(/ほかの通販リンクも/.test(html), false, '補足のアフィリエイト文言が残っている');
+  assert.match(html, /foot-note">Amazonのアソシエイトとして、適格販売により収入を得ています。/);
+  // 楽天・Yahoo!などのアフィリエイトリンク（PR）も、同じ1行の後ろに続けて書く
+  assert.match(html, /適格販売により収入を得ています。また、本アプリの一部リンクには楽天・Yahoo!ショッピング等のアフィリエイトリンク（PR）を含みます。<\/p>/);
+  // 古い言い回し（別の補足文）は残さない
+  assert.equal(/ほかの通販リンクも/.test(html), false, '古いアフィリエイトの文言が残っている');
 });
 
 test('配信ファイル jan-extra.json がルートにある（初期構造）', () => {
@@ -376,7 +378,7 @@ test('フォルダは長押しで「編集 / 移動 / 削除」のメニュー�
   assert.match(app, /const LONG_PRESS_MS = 480;/);
   assert.match(app, /const LONG_PRESS_MOVE_PX = 10;/);
   assert.match(app, /addEventListener\('pointerdown', startPress/);
-  assert.match(app, /pressTimer = setTimeout\(\(\) => \{[\s\S]{0,400}openFolderMenu\(id\)/);
+  assert.match(app, /pressTimer = setTimeout\(\(\) => \{[\s\S]{0,400}if \(folderId\) openFolderMenu\(folderId\)/);
   assert.match(app, /if \(dx > LONG_PRESS_MOVE_PX \|\| dy > LONG_PRESS_MOVE_PX\) endPress\(\)/);
   assert.match(app, /suppressClickUntil/);
   // グリッド・子フォルダ・場所の一覧・フォルダ別見出しのどれでも開ける

@@ -18,15 +18,19 @@ export const BASE_FOLDER_IDS = ['home', 'atelier', 'carry', 'stock'];
 /** Pro は上限なし */
 export const UNLIMITED = Number.POSITIVE_INFINITY;
 
-/** Pro で開放する特典（画面に出す短い名前だけ） */
+/**
+ * Pro で開放する特典（画面に出す短い名前だけ）。
+ * 「広告なし」は実装済み（Proの間は AdMob のバナーを出さない＝`admob.js` の adFree）。
+ * 出していない機能を並べると審査で指摘されるため、実際に効いているものだけを書く。
+ */
 export const PRO_BENEFITS = [
   { id: 'limit', label: '上限なし' },
   { id: 'cost', label: '画材費とCSV' },
-  { id: 'icloud', label: 'iCloudバックアップ' },
+  { id: 'noads', label: '広告なし' },
 ];
 
 /** Pro で開放する機能ID（上限以外） */
-export const PRO_FEATURES = ['cost', 'icloud'];
+export const PRO_FEATURES = ['cost', 'noads'];
 
 /** Pro の状態か（プレビュー中も Pro と同じ扱い） */
 export function isPro(settings = {}) {

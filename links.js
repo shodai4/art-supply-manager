@@ -45,6 +45,36 @@ export function shouldOpenExternally(href, { native = false, base } = {}) {
   return url.origin !== own.origin;
 }
 
+/** アプリに同梱している法務・サポートのページ（アプリ内で読む） */
+export const LEGAL_DOCS = [
+  { key: 'terms', file: 'terms.html', title: '利用規約' },
+  { key: 'privacy', file: 'privacy.html', title: 'プライバシーポリシー' },
+  { key: 'support', file: 'support.html', title: 'サポート' },
+];
+
+/**
+ * 法務・サポートのページを指すリンクか。当たれば 'terms' / 'privacy' / 'support'。
+ *
+ * iOS の WKWebView は `target="_blank"` を開けないので、同梱ページへの相対リンクは
+ * アプリ内では押しても無反応になる（capacitor:// なので外部ブラウザ行きにもならない）。
+ * 呼び出し側はこの結果でリンクを横取りし、アプリ内の読み物シートに切り替える。
+ * 対象は「同梱の3ページ」と「同じサイトにある同じ3ページ」だけ（別サイトの同名ページは拾わない）。
+ * @returns {string} 'terms' | 'privacy' | 'support' | ''
+ */
+export function legalDocKey(href, base) {
+  const url = parseHref(href, base);
+  if (!url) return '';
+  if (!['capacitor:', 'file:', 'about:', 'http:', 'https:'].includes(url.protocol)) return '';
+  // 同じサイトのページだけ（Web版の別サイト・別オリジンは通常のリンクのまま）
+  if (url.protocol === 'http:' || url.protocol === 'https:') {
+    const own = parseHref(base);
+    if (!own || url.origin !== own.origin) return '';
+  }
+  const name = String(url.pathname || '').split('/').pop().toLowerCase();
+  const doc = LEGAL_DOCS.find((d) => d.file === name || `${d.key}.html` === name);
+  return doc ? doc.key : '';
+}
+
 /**
  * Capacitor の Browser プラグインを取り出す。
  * ネイティブのブリッジが立てた `Capacitor.Plugins.Browser` を優先し、

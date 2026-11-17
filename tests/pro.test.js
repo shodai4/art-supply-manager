@@ -101,15 +101,15 @@ test('既定の4フォルダは無料枠に数えず、あとから3つまで作
   assert.equal(folderQuota({ folders: DEFAULT_FOLDERS.slice(0, 2) }, {}).used, 0);
 });
 
-test('Pro機能（画材費・iCloud）はProだけ。上限以外は常に使える', () => {
+test('Pro機能（画材費・広告なし）はProだけ。上限以外は常に使える', () => {
   for (const feature of PRO_FEATURES) {
     assert.equal(canUseFeature({}, feature), false, feature);
     assert.equal(canUseFeature({ pro: true }, feature), true, feature);
   }
   assert.equal(canUseFeature({}, 'unknown'), true);
   assert.equal(canUseFeature({}, ''), true);
-  assert.deepEqual(PRO_FEATURES, ['cost', 'icloud']);
-  assert.deepEqual(PRO_BENEFITS.map((b) => b.id), ['limit', 'cost', 'icloud']);
+  assert.deepEqual(PRO_FEATURES, ['cost', 'noads']);
+  assert.deepEqual(PRO_BENEFITS.map((b) => b.id), ['limit', 'cost', 'noads']);
   assert.ok(PRO_BENEFITS.every((b) => b.label && b.label.length <= 12));
 });
 

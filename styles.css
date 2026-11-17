@@ -856,3 +856,30 @@ details.advanced > .hint:first-of-type { margin-top: 0; }
 :root[data-theme="dark"] .btn.primary { color: #0d1116; }
 :root[data-theme="dark"] .fab { color: #0d1116; }
 :root[data-theme="dark"] .selmark::after { border-color: #0d1116; }
+
+/* ---------- 画材カードの長押し（フォルダと同じ480ms） ---------- */
+/* スクロールはそのまま効くが、文字選択・画像の長押しメニューは出さない */
+.tilewrap, .item, .jg-row {
+  -webkit-touch-callout: none; -webkit-user-select: none; user-select: none;
+}
+.tilewrap.pressing .tile, .item.pressing, .jg-row.pressing { filter: brightness(.96); }
+
+/* ---------- 法務・サポート（同梱ページをアプリ内で読む） ---------- */
+/* 見出しと閉じるは固定し、本文だけをスクロールさせる（長い規約でも閉じられる） */
+.sheet.legal.open { display: flex; flex-direction: column; overflow: hidden; }
+.sheet.legal h2, .sheet.legal .actions { flex: 0 0 auto; }
+.sheet.legal .actions { margin-top: 10px; }
+.legal-doc { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 2px 2px 4px; }
+.legal-doc h1 { font-size: 17px; margin: 2px 0 4px; font-weight: 800; color: var(--ink); }
+.legal-doc h2 { font-size: 14px; margin: 18px 0 6px; padding-top: 10px; border-top: 1px solid var(--line); font-weight: 800; color: var(--ink); }
+.legal-doc p, .legal-doc li { font-size: 13px; line-height: 1.7; color: var(--soft-ink); margin: 6px 0; }
+.legal-doc .lead { font-size: 12px; color: var(--ink-2); }
+.legal-doc ul { padding-left: 18px; margin: 6px 0; }
+.legal-doc a { color: var(--accent); text-decoration: underline; }
+.legal-doc strong, .legal-doc b { color: var(--ink); }
+.legal-doc .box { background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin: 10px 0; }
+.legal-doc .box p { margin: 0; }
+.legal-doc table { width: 100%; border-collapse: collapse; margin: 8px 0; }
+.legal-doc th, .legal-doc td { border: 1px solid var(--line); padding: 7px 8px; font-size: 12.5px; text-align: left; vertical-align: top; }
+.legal-doc th { background: var(--surface-3); font-weight: 700; }
+.legal-doc .legal-loading { margin: 10px 0; }

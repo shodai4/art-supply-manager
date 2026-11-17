@@ -1,13 +1,18 @@
 // アトリコ AdMob バナー（iOSアプリのネイティブ起動時だけ、画面の最下部に出す）
 //
-// 【本番IDで配信中（2026-11-17に切替）】
-//   本番のアプリID・バナー広告ユニット（アトリコ_バナー）を発行して、テスト広告から切り替えました。
-//     アプリID : ca-app-pub-5739782559889389~2686704558（Info.plist の GADApplicationIdentifier）
-//     バナー   : ca-app-pub-5739782559889389/1132135646（アトリコ_バナー）
-//   scripts/configure-ios.mjs の ADMOB_APP_ID も同じアプリIDにしてあります（tests/admob.test.js が一致を検査）。
-//   App Store 公開までは AdMob 側が「要審査」のことがあり、その間は広告が出ないだけでアプリの動作は変わりません。
-//   公開前に実機で自分の広告を押すと「無効トラフィック」になるので、動作確認するときは下の
-//   USE_TEST_ADS を true に戻してください（Google 公式のテストIDに切り替わります）。
+// 【いまはテスト広告（2026-11-17・TestFlight確認用）】
+//   TestFlight でバナーの位置（タブバー・FAB・一覧の下端が隠れないこと）と、
+//   Pro にしたときに広告が消えて余白も詰まることを確かめるため、Google 公式のテスト広告を出します。
+//     アプリID : ca-app-pub-3940256099942544~1458002511（Google公式のテスト用）
+//     バナー   : ca-app-pub-3940256099942544/2934735716（Google公式のテスト用）
+//   テスト広告は自分の広告ではないので、押しても「無効トラフィック」になりません。
+//
+// 【App Store 審査提出の直前に本番へ戻す】
+//   下の USE_TEST_ADS を false にすると、本番のアプリID・バナー広告ユニットへ切り替わります。
+//     アプリID（本番）: ca-app-pub-5739782559889389~2686704558（Info.plist の GADApplicationIdentifier）
+//     バナー（本番）  : ca-app-pub-5739782559889389/1132135646（アトリコ_バナー）
+//   Info.plist の GADApplicationIdentifier は本番のアプリIDのまま（テスト広告ユニットは
+//   自分のアプリIDでもテスト広告を返すので、切り替えるのは USE_TEST_ADS だけでよい）。
 //
 // 【広告枠の場所】
 //   画面の最下部（タブバーのさらに下・セーフエリアの上）。ネイティブのバナーは Web の上に
@@ -17,8 +22,8 @@
 //   Webブラウザ／GitHub Pages では何もしない（広告枠も余白も出さない）。
 import { isNativeShell } from './scanner.js';
 
-/** 広告枠のスイッチ（実機で動作確認するときだけ true に戻す） */
-export const USE_TEST_ADS = false;
+/** 広告枠のスイッチ（true = Google公式のテスト広告。TestFlight 確認のためいまは true） */
+export const USE_TEST_ADS = true;
 
 /** Google の公式テスト用ID（テスト広告以外では使わない） */
 export const ADMOB_TEST_APP_ID = 'ca-app-pub-3940256099942544~1458002511';
@@ -28,7 +33,7 @@ export const ADMOB_TEST_BANNER_ID = 'ca-app-pub-3940256099942544/2934735716';
 export const ADMOB_PROD_APP_ID = 'ca-app-pub-5739782559889389~2686704558';
 export const ADMOB_PROD_BANNER_ID = 'ca-app-pub-5739782559889389/1132135646';
 
-/** いま使うID（テストに戻すときは USE_TEST_ADS を true にするだけ） */
+/** いま使うID（本番へ戻すときは USE_TEST_ADS を false にするだけ） */
 export const ADMOB_APP_ID = USE_TEST_ADS ? ADMOB_TEST_APP_ID : ADMOB_PROD_APP_ID;
 export const ADMOB_BANNER_ID = USE_TEST_ADS ? ADMOB_TEST_BANNER_ID : ADMOB_PROD_BANNER_ID;
 

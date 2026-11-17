@@ -172,7 +172,7 @@ test('購入が確認できたら上限解除・画材費・広告非表示が�
   assert.equal(itemLimit(settings), UNLIMITED);
   assert.equal(folderLimit(settings), UNLIMITED);
   assert.equal(canUseFeature(settings, 'cost'), true);
-  assert.equal(canUseFeature(settings, 'icloud'), true);
+  assert.equal(canUseFeature(settings, 'noads'), true);
 
   // 広告は出さず、下の余白も残さない
   const style = new Map();
