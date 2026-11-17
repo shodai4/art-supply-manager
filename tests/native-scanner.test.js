@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import {
   NATIVE_SCAN_FORMATS, nativeScanOptions, vendorScannerOptions, vendorStartConfig,
   vendorSupportedFormats, WEB_SCAN_FPS, chooseScanStrategy,
+  withTimeout, NATIVE_SCAN_OPEN_TIMEOUT_MS,
 } from '../scanner.js';
 import {
   SCANNER_POD, SCANNER_PLUGIN_CLASS, addScannerPod, verifyPodfileContent, configurePodfileContent,
@@ -58,15 +59,18 @@ test('同梱スキャナは EAN/UPC/CODE128 だけを読み、fps を上げる',
 
 /* ---------------- 画面（app.js）との繋ぎ ---------------- */
 
-test('iOS ではネイティブ読取を開き、閉じたときはカメラも閉じる', () => {
+test('iOS ではネイティブ読取を開き、開けないときはアプリ内カメラへ倒す', () => {
   const app = read('app.js');
-  // ネイティブに形式と向きを渡す
-  assert.match(app, /await native\.startScan\(nativeScanOptions\(scanFacing\)\)/);
+  // ネイティブに形式と向きを渡す（カメラ画面が開かないまま固まらないよう上限つきで待つ）
+  assert.match(app, /withTimeout\(\s*native\.startScan\(nativeScanOptions\(scanFacing\)\),\s*NATIVE_SCAN_OPEN_TIMEOUT_MS,/);
   // 読んだあと、受け付けなかったときは開いたまま待ち受け直す（開き直さない）
   assert.match(app, /if \(scanContinuous\) continue;[\s\S]{0,120}if \(scannerLive\) continue;/);
   // 閉じるボタンで閉じた（キャンセル）ときはエラー表示にしない
   assert.match(app, /const cancelled = e\?\.code === 'cancelled' \|\| e\?\.code === 'stopped';/);
-  assert.match(app, /if \(!cancelled && \(!scanContinuous \|\| scanLogCount\(scanLog\) === 0\)\)/);
+  assert.match(app, /if \(cancelled\) return;/);
+  // カメラ画面を開けないときは、黙って固まらずにアプリ内カメラ（html5-qrcode）へ切り替える
+  assert.match(app, /await startInlineScanner\(token, 'カメラ画面を開けませんでした。アプリ内カメラで読み取ります'\);/);
+  assert.match(app, /async function startInlineScanner\(token, note = ''\)/);
   // 止めるときはネイティブのカメラ画面も閉じる
   assert.match(app, /function stopScanner\(\) \{[\s\S]{0,300}nativeNow\?\.stopScan/);
   // 読み取り中の案内は、カメラ画面側にも渡す
@@ -75,6 +79,21 @@ test('iOS ではネイティブ読取を開き、閉じたときはカメラも�
   assert.match(app, /new Html5Qrcode\('qrReader', vendorScannerOptions\(window\)\)/);
   assert.match(app, /await inst\.start\(scannerFacingConfig\(scanFacing\), vendorStartConfig\(\),/);
   assert.equal(/fps: 10/.test(app), false, '古い fps: 10 が残っている');
+});
+
+test('ネイティブの起動待ちは上限で切れ、タイムアウトは code=timeout で返る', async () => {
+  assert.equal(NATIVE_SCAN_OPEN_TIMEOUT_MS, 5000);
+  // すぐ決まるものはそのまま通る
+  assert.equal(await withTimeout(Promise.resolve('ok'), 50), 'ok');
+  // 断られたものはそのまま伝わる（キャンセルは従来どおり静かに閉じる）
+  await assert.rejects(withTimeout(Promise.reject(Object.assign(new Error('ng'), { code: 'cancelled' })), 50), /ng/);
+  // 決まらないものは待つのをやめ、後片付けを呼んでから code=timeout で返る
+  let cleaned = 0;
+  await assert.rejects(withTimeout(new Promise(() => {}), 20, () => { cleaned += 1; }), (e) => e.code === 'timeout');
+  assert.equal(cleaned, 1);
+  // 遅れて成功しても二重には決まらない（タイムアウトが先に返る）
+  const late = new Promise((resolve) => setTimeout(() => resolve('late'), 30));
+  await assert.rejects(withTimeout(late, 10), (e) => e.code === 'timeout');
 });
 
 /* ---------------- ネイティブプラグイン本体 ---------------- */
@@ -100,6 +119,24 @@ test('AVFoundation のハードウェア検出で読む軽量プラグインが�
   assert.match(swift, /@objc private func closeTapped\(\)/);
   assert.match(swift, /@objc private func flipTapped\(\)/);
   assert.equal(EMOJI.test(swift), false, 'Swift に絵文字がある');
+});
+
+test('カメラ画面は WebView の画面から直接出し、出なければ別ウインドウ・最後は明示的に失敗する', () => {
+  const swift = read('plugins/art-barcode-scanner/ios/Sources/ArtBarcodeScannerPlugin.swift');
+  // 1回目は bridge の画面（何か出ていればその一番上）から present する（別ウインドウ頼みにしない）
+  assert.match(swift, /topMost\(from: host\)\.present\(controller, animated: true, completion: nil\)/);
+  assert.match(swift, /private func topMost\(from base: UIViewController\) -> UIViewController/);
+  // 出たかを確かめ、出ていなければ Capacitor の presentVC も試す
+  assert.match(swift, /let shown = controller\.presentingViewController != nil \|\| controller\.viewIfLoaded\?\.window != nil/);
+  assert.match(swift, /self\.presentController\(controller, host: host, attempt: attempt \+ 1\)/);
+  assert.match(swift, /self\.bridge\?\.presentVC\(controller, animated: false, completion: nil\)/);
+  // どちらも出ないときは「unavailable」で返し、JS が固まらずアプリ内カメラに倒せるようにする
+  assert.match(swift, /self\.rejectActive\("カメラ画面を開けませんでした", code: "unavailable"\)/);
+  assert.match(swift, /private func rejectActive\(_ message: String, code: String = "cancelled"\)/);
+  // 閉じるボタン（利用者のキャンセル）だけは静かに閉じる
+  assert.match(swift, /self\.rejectActive\("読み取りをやめました", code: "cancelled"\)/);
+  // 閉じるときはカメラ画面そのものを閉じる
+  assert.match(swift, /vc\.dismiss\(animated: false, completion: nil\)/);
 });
 
 test('プラグインはリポジトリ内のローカル Pod（外部の CocoaPods 依存なし）', () => {

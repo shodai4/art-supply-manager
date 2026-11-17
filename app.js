@@ -45,6 +45,7 @@ import {
   chooseScanStrategy, isNativeShell, nativeScannerPlugin, loadVendorScanner, VENDOR_SCANNER_PATH,
   DEFAULT_FACING, toggleFacing, facingLabel, facingConstraints, scannerFacingConfig, canChooseFacing,
   nativeScanOptions, vendorScannerOptions, vendorStartConfig,
+  withTimeout, NATIVE_SCAN_OPEN_TIMEOUT_MS,
 } from './scanner.js';
 import {
   createScanSession, resetScanSession, checkCooldown, markScanned, applyScan, scanFolderId,
@@ -2667,14 +2668,23 @@ async function startScanner() {
       while (scannerLive) {
         let value = '';
         try {
-          const { barcodes } = await native.startScan(nativeScanOptions(scanFacing));
+          // カメラ画面が開かないまま resolve も reject も返ってこないときに固まらないよう、上限を置く
+          const { barcodes } = await withTimeout(
+            native.startScan(nativeScanOptions(scanFacing)),
+            NATIVE_SCAN_OPEN_TIMEOUT_MS,
+            () => { native.stopScan?.()?.catch?.(() => {}); },
+          );
           value = barcodes?.[0]?.rawValue || '';
         } catch (e) {
           const cancelled = e?.code === 'cancelled' || e?.code === 'stopped';
           console.warn('ネイティブスキャナ終了', e);
           scannerLive = false;
           // 自分で閉じるボタンを押した（キャンセル）ときは、エラー扱いにしない
-          if (!cancelled && (!scanContinuous || scanLogCount(scanLog) === 0)) showScanMsg('カメラを起動できません。手入力をどうぞ');
+          if (cancelled) return;
+          // カメラ画面を開けない（タイムアウト・別画面が邪魔など）→ アプリ内カメラ（html5-qrcode）へ切り替える
+          try { native.stopScan?.()?.catch?.(() => {}); } catch (err) { /* 開いていなければ失敗してよい */ }
+          if (token !== scanStartToken) return;
+          await startInlineScanner(token, 'カメラ画面を開けませんでした。アプリ内カメラで読み取ります');
           return;
         }
         if (!value) { scannerLive = false; showScanMsg('読み取れませんでした'); return; }
@@ -2722,7 +2732,17 @@ async function startScanner() {
     }
   }
 
-  // 3) 同梱の html5-qrcode（iOS WKWebView を含む。CDNは使わない）
+  await startInlineScanner(token);
+}
+
+/**
+ * 3) 同梱の html5-qrcode（iOS WKWebView を含む。CDNは使わない）を、いまのシートの中で開く。
+ * ネイティブのカメラ画面が開かなかったときの受け皿も兼ねる。
+ * @param {number} token 起動の通し番号（古い起動の続きは何もしない）
+ * @param {string} [note] 切り替えた理由を画面の上に添える文
+ */
+async function startInlineScanner(token, note = '') {
+  if (token !== scanStartToken) return;
   showScanMsg('スキャナ準備中');
   try {
     const Html5Qrcode = await loadVendorScanner(document, VENDOR_SCANNER_PATH);
@@ -2741,7 +2761,7 @@ async function startScanner() {
     if (token !== scanStartToken) return;
     scannerLive = true;
     $('scanReticle').hidden = false;
-    hideScanStatus();
+    if (note) showScanStatus(note, 'warn'); else hideScanStatus();
   } catch (e) {
     console.warn('html5-qrcode失敗', e);
     document.getElementById('qrReader')?.remove();
@@ -2753,7 +2773,7 @@ async function startScanner() {
       showScanStatus('内カメラを開けませんでした（外カメラに戻しました）', 'warn');
       return startScanner();
     }
-    showScanMsg('カメラを起動できません。手入力をどうぞ');
+    showScanMsg(note ? `${note}\nカメラも開けません。下の手入力をどうぞ` : 'カメラを起動できません。手入力をどうぞ');
   }
 }
 
@@ -2902,21 +2922,6 @@ function applyJAN(jan) {
     openItemSheet(null, { jan, maker: maker?.maker || '', qty: 1, folderId: targetFolder });
   }
 }
-
-// テスト用ボタンは、馴染みのあるメーカーの色名付き品を1社1件ずつ出す（読取→自動入力の確認用）
-const SAMPLE_MAKERS = ['ホルベイン', 'クサカベ', 'コピック', 'ターナー', 'サクラクレパス', 'リキテックス'];
-const TEST_SAMPLES = SAMPLE_MAKERS.map((m) =>
-  JAN_DICTIONARY.find((d) => d.maker === m && d.category === 'oil' && d.colorName)
-  || JAN_DICTIONARY.find((d) => d.maker === m && d.colorName)).filter(Boolean);
-$('testPills').innerHTML = TEST_SAMPLES.map((d) =>
-  `<button class="pill" data-testjan="${esc(d.jan)}">${esc(d.colorName || d.name)}<br><span style="font-size:10px;color:#5b6b7c">${esc(d.jan)}</span></button>`).join('');
-$('testPills').addEventListener('click', (e) => {
-  const b = e.target.closest('[data-testjan]');
-  if (!b) return;
-  if (scanContinuous) { onScan(b.dataset.testjan); return; } // 連続モードは閉じずに数える
-  stopScanner(); closeSheet('sheetScan');
-  applyJAN(b.dataset.testjan);
-});
 
 /* ---------------- 設定: 入出力 ---------------- */
 $('btnExport').addEventListener('click', async () => {

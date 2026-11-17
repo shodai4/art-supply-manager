@@ -63,12 +63,18 @@ public class ArtBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin {
         let formats = call.getArray("formats", String.self) ?? []
         let camera = call.getString("camera") ?? "environment"
         DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            self.activeCall = call
-            // すでにカメラ画面が開いている（連続スキャン）→ 開き直さず、そのまま次の1本を待つ
-            if let open = self.scanner, open.presentingViewController != nil {
+            guard let self = self else {
+                call.reject("カメラを開けません", "unavailable")
                 return
             }
+            self.activeCall = call
+            // すでにカメラ画面が開いている（連続スキャン）→ 開き直さず、そのまま次の1本を待つ
+            if let open = self.scanner, open.presentingViewController != nil || open.viewIfLoaded?.window != nil {
+                return
+            }
+            // 閉じ済みの古い画面が残っていたら捨てる
+            self.scanner?.stopSession()
+            self.scanner = nil
             self.presentScanner(formats: formats, camera: camera, attempt: 0)
         }
     }
@@ -77,14 +83,7 @@ public class ArtBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin {
 
     private func presentScanner(formats: [String], camera: String, attempt: Int) {
         guard let host = self.bridge?.viewController else {
-            rejectActive("カメラを開けません")
-            return
-        }
-        // 前の画面が閉じている途中なら、少し待ってから開く（重なって開けない）
-        if host.presentedViewController != nil && attempt < 4 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
-                self?.presentScanner(formats: formats, camera: camera, attempt: attempt + 1)
-            }
+            rejectActive("カメラ画面を開けません", code: "unavailable")
             return
         }
         let controller = ArtBarcodeScannerController()
@@ -98,10 +97,46 @@ public class ArtBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin {
         controller.onClose = { [weak self] in
             guard let self = self else { return }
             self.scanner = nil
-            self.rejectActive("読み取りをやめました")
+            // 自分で閉じるボタンを押したときだけ「キャンセル」にする（JS は静かに閉じる）
+            self.rejectActive("読み取りをやめました", code: "cancelled")
         }
         self.scanner = controller
-        self.bridge?.presentVC(controller, animated: false, completion: nil)
+        presentController(controller, host: host, attempt: attempt)
+    }
+
+    /**
+     * カメラ画面を出す。
+     * 1回目は WebView を載せている画面（何かが出ていればその一番上）から普通に present する。
+     * それでも出ないときは Capacitor の presentVC（別ウインドウ）も試し、
+     * どちらも出なければ JS に「開けない」と返して固まらせない（アプリ内カメラへ切り替わる）。
+     */
+    private func presentController(_ controller: ArtBarcodeScannerController, host: UIViewController, attempt: Int) {
+        if attempt == 0 {
+            topMost(from: host).present(controller, animated: true, completion: nil)
+        } else {
+            self.bridge?.presentVC(controller, animated: false, completion: nil)
+        }
+        // 出たかどうかを少し待って確かめる（UIKit が黙って断るとそのまま待ち続けてしまうため）
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+            guard let self = self, self.scanner === controller else { return }
+            let shown = controller.presentingViewController != nil || controller.viewIfLoaded?.window != nil
+            if shown { return }
+            if attempt < 1 {
+                self.presentController(controller, host: host, attempt: attempt + 1)
+            } else {
+                self.scanner = nil
+                self.rejectActive("カメラ画面を開けませんでした", code: "unavailable")
+            }
+        }
+    }
+
+    /** いま一番上に出ている画面（何か提示されているならその上に出す） */
+    private func topMost(from base: UIViewController) -> UIViewController {
+        var top = base
+        while let next = top.presentedViewController, !next.isBeingDismissed {
+            top = next
+        }
+        return top
     }
 
     private func dismissScanner(rejectPending: String, message: String) {
@@ -111,14 +146,20 @@ public class ArtBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         let closing = self.scanner
         self.scanner = nil
-        closing?.stopSession()
-        self.bridge?.dismissVC(animated: false, completion: nil)
+        guard let vc = closing else { return }
+        vc.stopSession()
+        if vc.presentingViewController != nil {
+            vc.dismiss(animated: false, completion: nil)
+        } else {
+            // 開いている途中だった（present の戻りがまだの）ときも、残った画面を閉じる
+            self.bridge?.dismissVC(animated: false, completion: nil)
+        }
     }
 
-    private func rejectActive(_ message: String) {
+    private func rejectActive(_ message: String, code: String = "cancelled") {
         guard let pending = self.activeCall else { return }
         self.activeCall = nil
-        pending.reject(message, "cancelled")
+        pending.reject(message, code)
     }
 }
 
