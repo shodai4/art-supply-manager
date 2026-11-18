@@ -4,8 +4,12 @@
 
 /* ---------------- 手元写真：圧縮と保存 ---------------- */
 export const IMAGE_DB_NAME = 'art-supply-images';
-export const IMAGE_DB_VERSION = 1;
+export const IMAGE_DB_VERSION = 2; // 2: 色見本・参考写真（samples）を足した
 export const IMAGE_STORE = 'photos';
+/** 色見本・チューブ残量などの参考写真（1つの画材に複数） */
+export const SAMPLE_STORE = 'samples';
+/** 1つの画材に付けられる参考写真の上限（端末の容量を圧迫しない範囲） */
+export const MAX_SAMPLES = 6;
 export const MAX_EDGE = 480;      // 長辺の上限(px)。色名や色番号が判別できる大きさ
 export const JPEG_QUALITY = 0.75; // 1枚 30〜60KB 前後になる設定（IndexedDBなのでlocalStorageは圧迫しない）
 
@@ -30,6 +34,10 @@ function openImageDb() {
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(IMAGE_STORE)) db.createObjectStore(IMAGE_STORE, { keyPath: 'id' });
+      if (!db.objectStoreNames.contains(SAMPLE_STORE)) {
+        const store = db.createObjectStore(SAMPLE_STORE, { keyPath: 'id' });
+        store.createIndex('itemId', 'itemId', { unique: false });
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => { dbPromise = null; reject(req.error || new Error('写真の保存領域を開けませんでした')); };
@@ -38,10 +46,10 @@ function openImageDb() {
   return dbPromise;
 }
 
-function tx(mode, work) {
+function tx(mode, work, storeName = IMAGE_STORE) {
   return openImageDb().then((db) => new Promise((resolve, reject) => {
-    const t = db.transaction(IMAGE_STORE, mode);
-    const store = t.objectStore(IMAGE_STORE);
+    const t = db.transaction(storeName, mode);
+    const store = t.objectStore(storeName);
     let out = null;
     try {
       out = work(store);
@@ -99,6 +107,75 @@ export function countPhotos() {
 /** 全写真を削除（全データ削除用） */
 export function clearPhotos() {
   return tx('readwrite', (store) => store.clear()).then(() => true);
+}
+
+/* ---------------- 色見本・参考写真（1つの画材に複数・Pro） ---------------- */
+
+/** 参考写真のID（同じミリ秒に続けて撮っても重ならない） */
+export function sampleId(now = Date.now()) {
+  return `p${Number(now).toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** 1つの画材に付けられる残り枚数 */
+export function sampleRoom(count = 0, max = MAX_SAMPLES) {
+  return Math.max(0, Math.max(1, Math.trunc(Number(max) || MAX_SAMPLES)) - Math.max(0, Math.trunc(Number(count) || 0)));
+}
+
+/** 参考写真を保存（圧縮済みのBlob）。保存した1件を返す */
+export async function putSample(itemId, blob, meta = {}, now = Date.now()) {
+  const owner = String(itemId || '');
+  if (!owner) throw new Error('画材を保存してから写真を付けられます');
+  if (!blob) throw new Error('写真データがありません');
+  const row = {
+    id: sampleId(now),
+    itemId: owner,
+    blob,
+    width: Number(meta.width) || null,
+    height: Number(meta.height) || null,
+    bytes: Number(blob.size) || 0,
+    createdAt: new Date(now).toISOString(),
+  };
+  await tx('readwrite', (store) => store.put(row), SAMPLE_STORE);
+  return row;
+}
+
+/** 1つの画材の参考写真（新しい順） */
+export function listSamples(itemId) {
+  const owner = String(itemId || '');
+  if (!owner) return Promise.resolve([]);
+  return tx('readonly', (store) => store.getAll(), SAMPLE_STORE)
+    .then((rows) => (Array.isArray(rows) ? rows : []).filter((r) => r.itemId === owner))
+    .then((rows) => rows.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)));
+}
+
+/** 参考写真の枚数（画材ごと。itemId を渡さなければ全体） */
+export function countSamples(itemId = '') {
+  const owner = String(itemId || '');
+  return tx('readonly', (store) => store.getAll(), SAMPLE_STORE)
+    .then((rows) => (Array.isArray(rows) ? rows : []).filter((r) => !owner || r.itemId === owner).length);
+}
+
+/** 参考写真を1枚削除 */
+export function deleteSample(id) {
+  const key = String(id || '');
+  if (!key) return Promise.resolve(false);
+  return tx('readwrite', (store) => store.delete(key), SAMPLE_STORE).then(() => true);
+}
+
+/** 画材を削除したときに、その画材の参考写真もまとめて削除 */
+export function deleteSamplesOf(itemId) {
+  const owner = String(itemId || '');
+  if (!owner) return Promise.resolve(0);
+  return tx('readonly', (store) => store.getAll(), SAMPLE_STORE).then(async (rows) => {
+    const mine = (Array.isArray(rows) ? rows : []).filter((r) => r.itemId === owner);
+    for (const row of mine) await tx('readwrite', (store) => store.delete(row.id), SAMPLE_STORE);
+    return mine.length;
+  });
+}
+
+/** 全参考写真を削除（全データ削除用） */
+export function clearSamples() {
+  return tx('readwrite', (store) => store.clear(), SAMPLE_STORE).then(() => true);
 }
 
 async function loadBitmap(file) {

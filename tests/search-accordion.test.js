@@ -163,7 +163,7 @@ test('画面: 見出しをタップで開け閉めし、条件が変わったら
   assert.match(app, /const isSeries = head\.hasAttribute\('data-g-series'\);/);
   // 開け閉めは全画面共通の1つの仕組み（カタログも同じ。面ごとに状態を覚える）
   assert.match(app, /toggleGroupOpen\(surface, isSeries \? 'series' : 'maker', maker, name\);/);
-  assert.match(app, /if \(surface === 'catalog'\) \{ renderSearchTab\(\); return; \}/);
+  assert.match(app, /if \(surface === 'catalog'\) \{ catalogToggleInPlace\(head, isSeries, open\); return; \}/);
   // シリーズの「もっと見る」で50件ずつ足す
   assert.match(app, /const smore = e\.target\.closest\('\[data-dict-smore\]'\);/);
   assert.match(app, /dictMoreSeries\.set\(key, \(dictMoreSeries\.get\(key\) \|\| 0\) \+ DICT_MAKER_PAGE\);/);
@@ -171,7 +171,7 @@ test('画面: 見出しをタップで開け閉めし、条件が変わったら
   assert.match(app, /const scope = `\$\{dictTabQuery\}\\u0000\$\{dictTabMaker\}\\u0000\$\{dictTabCategory\}\\u0000\$\{dictTabSeries\}`;/);
   assert.match(app, /if \(scope !== dictOpenScope\) \{\s*dictOpenScope = scope;\s*dictGroupState\.reset\(\);/);
   // メーカーのプルダウンも五十音順
-  assert.match(app, /\.sort\(\(a, b\) => compareMakerName\(a\[0\], b\[0\]\)\)/);
+  assert.match(app, /\.sort\(\(a, b\) => compareMakerName\(a\.name, b\.name\)\)/);
   // 中身を描くのは開いているメーカーだけ（閉じている見出しは DOM に行を置かない）
   assert.equal(/groupDictionaryByMaker\(hit\)/.test(app), false, '古い描き方が残っている');
 });

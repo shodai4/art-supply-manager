@@ -8,7 +8,9 @@ import {
   groupDictionarySearch, planDictGroups, compareMakerName, DICT_MAKER_PAGE,
   planSeriesGroups, catalogItemLabel, seriesItemLabel, groupItemsByMakerSeries,
   createGroupOpenState, GROUP_KEY_SEP, groupToggleSummary,
-  dictionaryRowDetail, dictionarySeriesList,
+  dictionaryRowDetail, dictionarySeriesList, dictionaryIndex, dictionaryMakerCounts,
+  dictionaryCategoryCounts, favoriteMakers, isMakerFavorite, toggleMakerFavorite,
+  buildShoppingListText, costReport, buildCostReportCsv,
   normalizeImageUrl, recordPurchase, costSummary, costRows, buildItemsCsvText, mergeStates,
   folderParentId, folderChildren, folderChain, folderDepth, folderPathLabel, folderSubtreeIds,
   folderTree, folderOptions, countByFolderDeep,
@@ -42,6 +44,7 @@ import {
 } from './jan-extra.js';
 import {
   SHOP_AFFILIATE_CONFIG, AFFILIATE_NOTE, shopSearchLinks, buildSearchQuery, describeSearchQuery,
+  stockApiUrl, parseStockPayload, stockLabel, STOCK_NOTE, priceLabel,
 } from './shops.js';
 import {
   chooseScanStrategy, isNativeShell, nativeScannerPlugin, loadVendorScanner, VENDOR_SCANNER_PATH,
@@ -57,6 +60,7 @@ import { shouldOpenExternally, openInExternalBrowser, legalDocKey, LEGAL_DOCS } 
 import {
   compressImageFile, listPhotos, putPhoto, deletePhoto, clearPhotos, fetchProductImageInfo,
   resolveImageProxyUrl, normalizeProxyUrl, canUseImageProxy, sourceLabel,
+  listSamples, putSample, deleteSample, deleteSamplesOf, clearSamples, countSamples, sampleRoom, MAX_SAMPLES,
 } from './images.js';
 import {
   autoImageJan, needsAutoImage, applyFetchedImage, shouldApplyFormImage, fetchAutoImage,
@@ -64,7 +68,7 @@ import {
   AUTO_IMAGE_FILL_GAP_MS, AUTO_IMAGE_FILL_ROUNDS,
 } from './auto-image.js';
 import { setupAdBanner } from './admob.js';
-import { exportFile, exportFailureMessage } from './export-file.js';
+import { exportFile, exportFailureMessage, sharePlainText } from './export-file.js';
 import {
   THEME_MODES, normalizeTheme, resolveTheme, themeColor, themeLabel, readStoredTheme,
   writeStoredTheme, prefersDark,
@@ -72,6 +76,10 @@ import {
 import {
   TUTORIAL_LEAD, tutorialHtml, slideIndexAt, readGuideSeen, writeGuideSeen,
 } from './tutorial.js';
+import {
+  ICLOUD_KEY, SYNC_DEBOUNCE_MS, cloudBackupText, parseCloudBackup, decideStartup,
+  cloudStatusText, icloudPlugin, cloudStatus, readCloud, writeCloud,
+} from './icloud.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -407,14 +415,135 @@ function loadState() {
     return blankState();
   }
 }
-function save() {
+function save({ cloud = true } = {}) {
   state.updatedAt = new Date().toISOString();
   try {
     localStorage.setItem(STORAGE_KEY, exportState(state));
   } catch (e) {
     toast('保存できませんでした（容量不足？）');
   }
+  // 端末に保存できたら、少し待ってiCloudへも送る（連続操作は1回にまとめる）
+  if (cloud) scheduleCloudPush();
 }
+
+/* ---------------- iCloud自動バックアップ（iOSアプリ） ---------------- */
+// 起動時にiCloudのバックアップを読み、初回起動（この端末にデータが無い）なら戻す。
+// 手元にデータがあるときは勝手に置き換えず、設定の「iCloudから復元」で選んでもらう。
+const FRESH_INSTALL = (() => {
+  try { return !localStorage.getItem(STORAGE_KEY); } catch { return false; }
+})();
+let icloud = { plugin: null, available: false, reason: '', savedAt: '', pending: null, restored: false };
+let cloudPushTimer = 0;
+let cloudWriting = false;
+
+/** 設定の「iCloudバックアップ」の1行を、いまの状態に合わせる */
+function renderICloudState() {
+  const el = $('icloudState');
+  if (!el) return;
+  el.textContent = cloudStatusText({
+    native: NATIVE_APP,
+    available: icloud.available,
+    reason: icloud.reason,
+    savedAt: icloud.savedAt,
+    pending: Boolean(icloud.pending),
+  });
+  const btn = $('btnIcloudRestore');
+  if (btn) btn.hidden = !icloud.pending;
+}
+
+/** 端末の保存が変わったら、少し待ってからiCloudへ送る（連続操作をまとめる） */
+function scheduleCloudPush(delay = SYNC_DEBOUNCE_MS) {
+  if (!icloud.available) return;
+  clearTimeout(cloudPushTimer);
+  cloudPushTimer = setTimeout(() => { pushCloud(); }, Math.max(300, Number(delay) || SYNC_DEBOUNCE_MS));
+}
+
+/** いまの状態をiCloudへ送る */
+async function pushCloud() {
+  if (!icloud.available || cloudWriting) return false;
+  clearTimeout(cloudPushTimer);
+  cloudWriting = true;
+  try {
+    const text = cloudBackupText(state);
+    const result = await writeCloud(icloud.plugin, text);
+    if (result.ok) {
+      icloud.savedAt = new Date().toISOString();
+      icloud.pending = null;
+      renderICloudState();
+      return true;
+    }
+    // 大きすぎる（写真の多い端末）・書けない等は、設定の1行に出すだけにする
+    if (result.reason === 'too-large') {
+      $('icloudState').textContent = 'iCloudには大きすぎるため保存できません（JSON書き出しをお使いください）';
+    }
+    return false;
+  } finally {
+    cloudWriting = false;
+  }
+}
+
+/** iCloudのバックアップを手元へ反映する（写真は端末内のまま） */
+async function applyCloudBackup(cloud, { announce = true } = {}) {
+  if (!cloud) return false;
+  state = cloud.state;
+  save({ cloud: false });
+  icloud.pending = null;
+  icloud.savedAt = cloud.savedAt || new Date().toISOString();
+  render();
+  renderICloudState();
+  if (announce) toast(`iCloudから復元しました（${state.items.length}件）`);
+  return true;
+}
+
+/** 起動時のiCloud読み込み。失敗してもアプリは普通に起動する */
+async function initICloud() {
+  if (!NATIVE_APP) { renderICloudState(); return; }
+  const plugin = icloudPlugin(window);
+  icloud.plugin = plugin;
+  if (!plugin) { renderICloudState(); return; }
+  const status = await cloudStatus(plugin);
+  icloud.available = status.available;
+  icloud.reason = status.reason;
+  if (icloud.available) {
+    const text = await readCloud(plugin);
+    const cloud = parseCloudBackup(text);
+    if (cloud) icloud.savedAt = cloud.savedAt;
+    const decision = decideStartup({ fresh: FRESH_INSTALL, cloud, local: state });
+    if (decision.action === 'restore') {
+      await applyCloudBackup(cloud, { announce: false });
+      icloud.restored = true;
+      toast(`iCloudから復元しました（${state.items.length}件）`);
+    } else if (decision.action === 'pull') {
+      icloud.pending = cloud;
+    } else if (decision.action === 'push') {
+      await pushCloud();
+    }
+    // 別の端末で保存されたときは、黙って上書きせず「復元できます」と知らせる
+    try {
+      plugin.addListener?.('remoteChange', async () => {
+        const fresh = parseCloudBackup(await readCloud(plugin));
+        if (!fresh) return;
+        icloud.savedAt = fresh.savedAt;
+        if (String(fresh.savedAt || '') > String(state.updatedAt || '')) icloud.pending = fresh;
+        renderICloudState();
+      });
+    } catch { /* 古いプラグインでも動く */ }
+  }
+  renderICloudState();
+}
+
+$('btnIcloudRestore').addEventListener('click', async () => {
+  const cloud = icloud.pending;
+  if (!cloud) return;
+  const at = cloud.savedAt ? `（${cloud.savedAt.slice(0, 10)}）` : '';
+  if (!confirm(`iCloudのバックアップ${at}で、いまのデータを置き換えます。\nよろしいですか？`)) return;
+  await applyCloudBackup(cloud);
+});
+
+// アプリが裏に回るときは、待たずに送っておく
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && icloud.available) pushCloud();
+});
 
 /* ---------------- utils ---------------- */
 let toastTimer = 0;
@@ -550,6 +679,8 @@ function render({ keepCatalogList = false } = {}) {
   $('stockMakerView').hidden = ui.tab !== 'stock' || stockMode !== 'maker';
   placeStockSeg();
   for (const t of ['stock', 'shopping', 'catalog', 'settings']) $(`view-${t}`).hidden = t !== ui.tab;
+  // カタログは一覧を内側でスクロールするので、ページ自体は動かさない
+  document.body.classList.toggle('catalog-mode', ui.tab === 'catalog');
   // 右上の虫眼鏡と⋯は「在庫」タブのときだけ出す（他のタブはヘッダーをスッキリさせる）
   const stockTab = ui.tab === 'stock';
   $('btnSearch').hidden = !stockTab;
@@ -558,6 +689,8 @@ function render({ keepCatalogList = false } = {}) {
   $('btnAdd').style.visibility = fabVisible ? 'visible' : 'hidden';
   $('btnScan').style.visibility = fabVisible ? 'visible' : 'hidden'; // 右下の＋の上（読取）
   syncBottomMetrics();
+  // 編集シートを開いたままProの状態が変わったとき（購入・復元）に、写真の欄も合わせる
+  if ($('sheetItem')?.classList.contains('open')) renderFormSamples();
   renderSkipCatalog = false;
 }
 
@@ -568,6 +701,11 @@ function render({ keepCatalogList = false } = {}) {
  */
 function syncBottomMetrics() {
   document.documentElement.style.setProperty('--dock-h', '0px');
+  // カタログの固定ヘッダーを、いまの上部バーの高さの下に貼り付ける
+  const header = document.querySelector('.app-header');
+  if (header) {
+    document.documentElement.style.setProperty('--app-header-h', `${Math.ceil(header.getBoundingClientRect().height)}px`);
+  }
   // FABは「＋」とその上の「読取」の2段分（52 + 8 + 44）＋余白。選択中は隠すので0
   const fabH = (ui.tab === 'stock' || ui.tab === 'shopping') && !ui.selectMode ? 118 : 0;
   document.documentElement.style.setProperty('--fab-h', `${fabH}px`);
@@ -744,10 +882,14 @@ const countBadge = (n) => Number(n || 0).toLocaleString('ja-JP');
  * data-g-surface / data-g-maker は、タップしたときにどの面のどの見出しかを伝える。
  */
 function makerHeadHtml({ surface, maker, label, total, open }) {
-  return `<button type="button" class="mghead" data-g-surface="${esc(surface)}" data-g-maker="${esc(maker)}" aria-expanded="${open ? 'true' : 'false'}">
+  const head = `<button type="button" class="mghead" data-g-surface="${esc(surface)}" data-g-maker="${esc(maker)}" aria-expanded="${open ? 'true' : 'false'}">
         <svg class="ic chev" aria-hidden="true"><use href="#i-chevron"/></svg>
         <span class="mgname">${esc(label)}</span><b>${countBadge(total)}</b>
       </button>`;
+  // カタログのメーカー見出しだけ、右端にお気に入りの星を付ける（在庫・補充の一覧は今までどおり）
+  if (surface !== 'catalog') return head;
+  const fav = isMakerFavorite(state.settings, maker);
+  return `<div class="mgrow">${head}<button type="button" class="mgstar${fav ? ' on' : ''}" data-fav-maker="${esc(maker)}" aria-pressed="${fav ? 'true' : 'false'}" aria-label="${esc(label || maker)}をお気に入りメーカーに${fav ? '登録しない' : '登録'}"><svg class="ic" aria-hidden="true"><use href="#${fav ? 'i-star-solid' : 'i-star'}"/></svg></button></div>`;
 }
 
 /** 2段目の「シリーズ」見出し（メーカーの見出しより一段軽い、同じ形） */
@@ -1195,6 +1337,36 @@ function renderShopping() {
   if (count) count.textContent = String(list.length);
 }
 
+/* ---------------- 補充リストのコピー・共有（Pro） ---------------- */
+/** いまの「要補充」を、そのまま貼れる買い物リスト文面にする */
+function shoppingListText() {
+  return buildShoppingListText(computeShoppingList(state.items));
+}
+
+async function copyShoppingList() {
+  if (!requirePro('shopping')) return;
+  const list = computeShoppingList(state.items);
+  if (!list.length) { toast('補充が必要な画材はありません'); return; }
+  const ok = await copyText(shoppingListText());
+  toast(ok ? `買い物リストをコピーしました（${list.length}件）` : 'コピーできませんでした');
+}
+
+async function shareShoppingList() {
+  if (!requirePro('shopping')) return;
+  const list = computeShoppingList(state.items);
+  if (!list.length) { toast('補充が必要な画材はありません'); return; }
+  const text = shoppingListText();
+  const result = await sharePlainText({ text, title: '買い物リスト' });
+  if (result.ok) return;
+  if (result.canceled) return;
+  // 共有シートが使えない環境では、コピーに切り替える（何もしないで終わらせない）
+  const ok = await copyText(text);
+  toast(ok ? '共有できないためコピーしました' : '共有できませんでした');
+}
+
+$('btnShopCopy').addEventListener('click', copyShoppingList);
+$('btnShopShare').addEventListener('click', shareShoppingList);
+
 function currentList() {
   // 親フォルダを開くと、配下のフォルダの画材もまとめて見る（直感的な挙動）
   // 検索のときは場所をまたいで全体から探す
@@ -1256,6 +1428,7 @@ function renderSettings() {
   renderPlan();
   renderCost();
   renderSampleCard();
+  renderICloudState();
   renderDictionaryState();
 }
 
@@ -1320,6 +1493,9 @@ function openProSheet(what = 'item') {
     item: `無料は${FREE_ITEM_LIMIT}点まで`,
     folder: `無料で追加できるフォルダは${FREE_FOLDER_LIMIT}つまで`,
     cost: '画材費とCSVはPro',
+    samples: '色見本・参考写真はPro',
+    shopping: '買い物リストのコピー・共有はPro',
+    taxreport: '確定申告向けの画材費レポートはPro',
   }[what] || 'Proで全部使えます';
   $('proLead').textContent = lead;
   $('proQuota').textContent = what === 'folder'
@@ -1398,22 +1574,32 @@ function renderCost() {
   $('costStock').textContent = yen(cost.stockValue);
   $('costRecorded').textContent = yen(cost.recordedTotal);
   $('costNote').textContent = `単価入力 ${cost.pricedCount} / ${cost.kinds}点 ・ 未入力 ${cost.unpricedCount}点`;
-  renderCostBars(cost);
+  // 今年の購入額（確定申告の目安）。月別の内訳は下の「月別」で見る
+  const report = costReport(state.items, { year: new Date().getFullYear() });
+  if ($('costYear')) {
+    $('costYear').textContent = `${report.year}年の購入 ${yen(report.total)}円・${report.count}件`
+      + (report.unpriced ? ` ・ 単価未入力 ${report.unpriced}点は含みません` : '');
+  }
+  renderCostBars(cost, report);
 }
 
-function renderCostBars(cost) {
-  const key = ui.costKey === 'maker' ? 'maker' : 'category';
+function renderCostBars(cost, report = null) {
+  // 月別は今年の購入ログから（記録済みの合計とは別の切り口）
+  const key = ui.costKey === 'maker' ? 'maker' : ui.costKey === 'month' ? 'month' : 'category';
   $('costTabs').querySelectorAll('[data-costkey]').forEach((b) => {
     b.setAttribute('aria-pressed', String(b.dataset.costkey === key));
   });
-  const list = key === 'maker' ? cost.byMaker : cost.byCategory;
-  const { rows, rest } = costRows(list, 6);
-  if (!rows.length) {
-    $('costBars').innerHTML = '<p class="micro" style="margin-top:8px">単価を入れると内訳が出ます</p>';
+  const months = (report || costReport(state.items, { year: new Date().getFullYear() })).months
+    .map((m) => ({ key: String(m.month), label: `${m.month}月`, value: m.value, count: m.count }));
+  const list = key === 'maker' ? cost.byMaker : key === 'month' ? months : cost.byCategory;
+  const { rows, rest } = costRows(list, key === 'month' ? 12 : 6);
+  const visible = key === 'month' ? rows.filter((r) => Number(r.value) > 0) : rows;
+  if (!visible.length) {
+    $('costBars').innerHTML = `<p class="micro" style="margin-top:8px">${key === 'month' ? '今年の購入はまだありません' : '単価を入れると内訳が出ます'}</p>`;
     return;
   }
-  const max = Math.max(1, ...rows.map((r) => Number(r.value) || 0));
-  const bars = rows.map((r) => `
+  const max = Math.max(1, ...visible.map((r) => Number(r.value) || 0));
+  const bars = visible.map((r) => `
     <div class="bar">
       <span class="bl">${esc(r.label)}</span>
       <span class="bt"><span class="bf" style="width:${Math.max(2, Math.round(((Number(r.value) || 0) / max) * 100))}%"></span></span>
@@ -1428,7 +1614,8 @@ function renderCostBars(cost) {
 $('costTabs').addEventListener('click', (e) => {
   const b = e.target.closest('[data-costkey]');
   if (!b) return;
-  ui.costKey = b.dataset.costkey === 'maker' ? 'maker' : 'category';
+  const key = b.dataset.costkey;
+  ui.costKey = key === 'maker' ? 'maker' : key === 'month' ? 'month' : 'category';
   renderCost();
 });
 
@@ -1450,6 +1637,21 @@ async function downloadCsv() {
 }
 
 $('btnCsv').addEventListener('click', downloadCsv);
+
+/** 確定申告向けの画材費レポートCSV（年間サマリ・月別・メーカー別・購入明細） */
+async function downloadTaxCsv() {
+  if (!requirePro('taxreport')) return;
+  const year = new Date().getFullYear();
+  const text = buildCostReportCsv(state.items, { year });
+  const result = await exportFile({ kind: 'csv', fileName: `art-supply-tax-${year}.csv`, content: text });
+  if (result.ok) {
+    toast(result.method === 'share' ? `${year}年の画材費レポートを書き出しました` : `${year}年の画材費レポートを保存しました`);
+    return;
+  }
+  const message = exportFailureMessage(result);
+  if (message) toast(message);
+}
+$('btnTaxCsv').addEventListener('click', downloadTaxCsv);
 
 // 設定の「画材名を最新にする」（JAN辞書カード）
 $('btnSyncItems').addEventListener('click', syncItemNamesWithDictionary);
@@ -1893,6 +2095,7 @@ function openItemSheet(id, preset = {}) {
   pendingPhoto = null;
   $('photoHint').textContent = '端末内に保存（外部送信なし）';
   renderPhotoPreview();
+  loadFormSamples(it ? it.id : '');
   $('makerList').innerHTML = [...new Set([...mergedDict.map((d) => d.maker), 'ターナー', 'リキテックス', 'ウィンザー＆ニュートン', 'マツダ', '名村大成堂', 'クサカベ', 'ホルベイン'])].map((m) => `<option value="${esc(m)}">`).join('');
   $('btnDeleteItem').hidden = !it;
   $('btnSaveItem').textContent = it ? '保存' : '追加する';
@@ -1999,6 +2202,96 @@ $('btnPhotoClear').addEventListener('click', () => {
   renderPhotoPreview();
 });
 $('fImageUrl').addEventListener('input', renderPhotoPreview);
+
+/* ---------------- 色見本・参考写真（Pro・端末内に複数） ---------------- */
+// 1つの画材に、チューブの残量・塗った色・ラベルなどを複数枚残せる。
+// 保存先はIndexedDB（Blob）で、iCloudやJSONには載せない（容量が大きいため）。
+// 画面を開くたびに読み直し、追加・削除のたびにプレビューを作り直す。
+let formSamples = []; // [{ id, url }]
+let sampleBusy = false;
+
+function resetFormSamples() {
+  for (const row of formSamples) {
+    if (row.url) URL.revokeObjectURL(row.url);
+  }
+  formSamples = [];
+  renderFormSamples();
+}
+
+async function loadFormSamples(itemId) {
+  resetFormSamples();
+  if (!itemId) return;
+  try {
+    const rows = await listSamples(itemId);
+    if (ui.editingId !== itemId) return; // 別の画材を開き直していたら捨てる
+    formSamples = rows.map((r) => ({ id: r.id, url: r.blob ? URL.createObjectURL(r.blob) : '' }));
+    renderFormSamples();
+  } catch (err) {
+    console.warn('参考写真を読めませんでした', err);
+  }
+}
+
+function renderFormSamples() {
+  const grid = $('sampleGrid');
+  if (!grid) return;
+  const pro = isPro(state.settings);
+  $('sampleProTag').hidden = pro;
+  $('btnSamplePick').hidden = !pro || !ui.editingId;
+  $('btnSamplePro').hidden = pro;
+  $('sampleHint').textContent = !pro
+    ? '色見本・参考写真はProで使えます'
+    : !ui.editingId
+      ? '保存すると、この画材に写真を付けられます'
+      : `枚数 ${formSamples.length} / ${MAX_SAMPLES}（端末内に保存）`;
+  if (!formSamples.length) {
+    grid.innerHTML = '';
+    return;
+  }
+  grid.innerHTML = formSamples.map((row) => `
+    <div class="sample-thumb">
+      <img src="${esc(row.url)}" alt="参考写真" decoding="async">
+      <button type="button" class="sample-del" data-sample-del="${esc(row.id)}" aria-label="この写真を削除"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button>
+    </div>`).join('');
+}
+
+$('btnSamplePick').addEventListener('click', () => {
+  if (!isPro(state.settings)) { openProSheet('samples'); return; }
+  if (!ui.editingId) { toast('画材を保存してから写真を付けられます'); return; }
+  if (formSamples.length >= MAX_SAMPLES) { toast(`写真は${MAX_SAMPLES}枚までです`); return; }
+  $('fSample').click();
+});
+$('btnSamplePro').addEventListener('click', () => openProSheet('samples'));
+$('fSample').addEventListener('change', async (e) => {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (!file || !ui.editingId || sampleBusy) return;
+  sampleBusy = true;
+  $('sampleHint').textContent = '写真を圧縮しています…';
+  try {
+    const out = await compressImageFile(file, { maxEdge: 480, quality: 0.75 });
+    await putSample(ui.editingId, out.blob, { width: out.width, height: out.height });
+    await loadFormSamples(ui.editingId);
+    toast('写真を追加しました');
+  } catch (err) {
+    toast(err.message || '写真を追加できませんでした');
+    renderFormSamples();
+  } finally {
+    sampleBusy = false;
+  }
+});
+$('sampleGrid').addEventListener('click', async (e) => {
+  const del = e.target.closest('[data-sample-del]');
+  if (!del) return;
+  e.preventDefault();
+  if (!confirm('この写真を削除しますか？')) return;
+  try {
+    await deleteSample(del.dataset.sampleDel);
+    await loadFormSamples(ui.editingId);
+    toast('写真を削除しました');
+  } catch (err) {
+    toast(err.message || '写真を削除できませんでした');
+  }
+});
 
 /* ---------------- 商品画像の自動取得（読取・カタログ・保存のあと） ---------------- */
 // 「画像を取得」ボタンを押さなくても、JANが入った時点で静かに画像を取りに行く。
@@ -2277,6 +2570,8 @@ async function removeItem(id, { fromSheet = '' } = {}) {
   try {
     await deletePhoto(id);
     dropPhotoUrl(id);
+    // 色見本・参考写真も、画材と一緒に消す（残すと見えない写真が端末に溜まる）
+    await deleteSamplesOf(id);
   } catch (err) { console.warn('写真の削除に失敗', err); }
   if (fromSheet) closeSheet(fromSheet);
   render();
@@ -3426,7 +3721,7 @@ $('btnWipe').addEventListener('click', async () => {
   localStorage.removeItem(STORAGE_KEY);
   state = blankState();
   save();
-  try { await clearPhotos(); } catch (e) { console.warn('写真の削除に失敗', e); }
+  try { await clearPhotos(); await clearSamples(); } catch (e) { console.warn('写真の削除に失敗', e); }
   [...photoUrls.keys()].forEach(dropPhotoUrl);
   photoCount = 0;
   render();
@@ -3436,13 +3731,54 @@ $('btnWipe').addEventListener('click', async () => {
 // 画材を辞書で探すのはカタログタブ（とバーコード読取）にまとめた。
 
 /* ---------------- 通販で探す（アフィリエイト土台） ---------------- */
+let stockToken = 0; // 続けて別の画材を開いたとき、前の問い合わせ結果を出さない
+
 function openShopSheet(item) {
   selectedShopItem = item || null;
   $('shopItemName').textContent = item ? displayName(item) : '通販';
   const links = renderShopLinks($('shopSheetLinks'), item || {});
   $('shopNote').textContent = links.length ? '' : 'JANか商品名を入れると検索できます';
+  const stock = $('shopStock');
+  if (stock) { stock.hidden = true; stock.className = 'shop-stock'; stock.textContent = ''; }
   openSheet('sheetShop');
+  // ページを開く前に、JAN付きならYahoo!の在庫・参考価格を裏で調べる
+  loadShopStock(item);
 }
+
+/** 通販シートのYahoo!欄に「在庫あり（¥◯◯〜）／在庫なし」を出す（失敗してもリンクは使える） */
+async function loadShopStock(item) {
+  const token = ++stockToken;
+  const jan = normalizeJAN(item?.jan || '');
+  const el = $('shopStock');
+  if (!el || !/^\d{13}$/.test(jan)) return;
+  if (!isOnline()) return;
+  const url = stockApiUrl(resolveImageProxyUrl(state.settings), jan);
+  if (!url) return;
+  el.hidden = false;
+  el.className = 'shop-stock';
+  el.textContent = 'Yahoo!の在庫を確認しています…';
+  const controller = typeof AbortController === 'function' ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), 8000) : 0;
+  try {
+    const res = await fetch(url, { headers: { Accept: 'application/json' }, signal: controller?.signal });
+    if (token !== stockToken) return;
+    if (!res.ok) throw new Error(`http-${res.status}`);
+    const info = parseStockPayload(await res.json(), jan);
+    if (token !== stockToken) return;
+    if (!info) throw new Error('bad-payload');
+    const label = stockLabel(info);
+    const state = !info.offers ? 'unknown' : info.available ? 'ok' : 'none';
+    el.className = `shop-stock ${state}`;
+    el.innerHTML = `Yahoo!：${esc(label)}<span class="shop-stock-note">${esc(STOCK_NOTE)}</span>`;
+  } catch {
+    if (token !== stockToken) return;
+    el.className = 'shop-stock unknown';
+    el.textContent = 'Yahoo!の在庫を確認できませんでした（リンクはそのまま使えます）';
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 /* ---------------- 辞書に提案 ---------------- */
 function openProposeSheet(item) {
   proposeItem = item || null;
@@ -3591,7 +3927,7 @@ const catalogLazyObserver = typeof IntersectionObserver === 'function'
       }
       queueCatalogLazy(el);
     }
-  }, { rootMargin: DICT_LAZY_MARGIN })
+  }, { root: typeof document !== 'undefined' ? $('dictResults') : null, rootMargin: DICT_LAZY_MARGIN })
   : null;
 
 /** 描く入れ物を列に積む（同じものを二重に積まない） */
@@ -3674,9 +4010,11 @@ function fillCatalogMakerBody(el) {
  * （描き直すと遅延描画で高さが変わるので、同じ見出しまで戻してスクロールを飛ばさない）。
  */
 function catalogScrollAnchor() {
-  if (ui.tab !== 'catalog' || window.scrollY <= 0) return null;
-  const heads = [...document.querySelectorAll('#dictResults [data-g-maker]')];
-  const top = heads.find((h) => h.getBoundingClientRect().bottom > 96);
+  const root = $('dictResults');
+  if (ui.tab !== 'catalog' || !root || root.scrollTop <= 0) return null;
+  const base = root.getBoundingClientRect().top + 4;
+  const heads = [...root.querySelectorAll('[data-g-maker]')];
+  const top = heads.find((h) => h.getBoundingClientRect().bottom > base);
   if (!top) return null;
   return {
     maker: top.dataset.gMaker || '',
@@ -3751,7 +4089,8 @@ function catalogToggleInPlace(head, isSeries, open) {
   const maker = head?.dataset.gMaker || '';
   const name = isSeries ? (head.dataset.gSeries || '') : '';
   head.setAttribute('aria-expanded', open ? 'true' : 'false');
-  const block = head.parentElement;
+  // メーカー見出しはお気に入りの星と同じ行（.mgrow）に入っているので、まとまり（.mg）まで戻す
+  const block = head.closest('.mg') || head.parentElement;
   if (!block || !dictLazyRender) { renderSearchTab(); return; }
   block.classList.toggle('open', open);
   const body = [...block.children].find((el) => el.classList?.contains('lazybody'));
@@ -3809,24 +4148,14 @@ function scopedMap(map, maker) {
 }
 
 function dictMakerList() {
-  const counts = new Map();
-  for (const d of mergedDict) {
-    const name = String(d.maker || 'メーカー不明');
-    counts.set(name, (counts.get(name) || 0) + 1);
-  }
-  return [...counts.entries()]
-    .sort((a, b) => compareMakerName(a[0], b[0]))
-    .map(([name, count]) => ({ name, count }));
+  // 起動後に1回作った索引から数える（メーカーの選択肢を出すたびに3.7万件を数えない）
+  return dictionaryMakerCounts(mergedDict)
+    .sort((a, b) => compareMakerName(a.name, b.name));
 }
 
 /** いま選んでいるメーカーにあるカテゴリと件数（全体を見るときは出さない） */
 function dictCategoryList() {
-  const counts = new Map();
-  for (const d of mergedDict) {
-    if (String(d.maker || 'メーカー不明') !== dictTabMaker) continue;
-    const id = String(d.category || 'other');
-    counts.set(id, (counts.get(id) || 0) + 1);
-  }
+  const counts = dictionaryCategoryCounts(mergedDict, dictTabMaker);
   return CATEGORIES.filter((c) => counts.get(c.id)).map((c) => ({ id: c.id, label: c.label, count: counts.get(c.id) }));
 }
 
@@ -3845,6 +4174,77 @@ function dictSeriesList() {
   }
   return dictSeriesRows;
 }
+
+/* ---------------- お気に入りメーカー（カタログ上部の1行タブ） ---------------- */
+// メーカー見出しの星で登録／解除し、上部の折りたたみに折り返しで並べる。
+// メーカーの一覧・プルダウンは今までどおり全部残す（消さない）。
+let favMakersOpen = false; // 折りたたみを開いているか（画面を離れても覚えておく）
+
+function renderFavMakers() {
+  const box = $('favMakers');
+  const body = $('favMakersBody');
+  const toggle = $('favMakersToggle');
+  if (!box || !body || !toggle) return;
+  const list = favoriteMakers(state.settings);
+  // 0件のときは行ごと出さない（縦幅を取らず、星を押せば登録できることはメーカー行で分かる）
+  box.hidden = list.length === 0;
+  if (!list.length) return;
+  $('favMakersLabel').textContent = `お気に入りメーカー（${list.length}件）`;
+  box.dataset.open = String(favMakersOpen);
+  toggle.setAttribute('aria-expanded', favMakersOpen ? 'true' : 'false');
+  body.hidden = !favMakersOpen;
+  body.innerHTML = list.map((name) => `<button type="button" class="favmake-chip" data-favmaker-pick="${esc(name)}" aria-pressed="${dictTabMaker === name}">${esc(name)}</button>`).join('');
+}
+
+function setFavMakersOpen(on) {
+  favMakersOpen = Boolean(on);
+  renderFavMakers();
+}
+
+/** 星を押したときの登録／解除（一覧は描き直さず、押した星と上部のタブだけを合わせる） */
+function toggleFavoriteMaker(maker, star) {
+  const name = String(maker || '').trim();
+  if (!name) return;
+  state = { ...state, settings: toggleMakerFavorite(state.settings, name) };
+  save();
+  const after = isMakerFavorite(state.settings, name);
+  if (star) {
+    star.classList.toggle('on', after);
+    star.setAttribute('aria-pressed', String(after));
+    star.setAttribute('aria-label', `${name}をお気に入りメーカーに${after ? '登録しない' : '登録'}`);
+    const use = star.querySelector('use');
+    if (use) use.setAttribute('href', after ? '#i-star-solid' : '#i-star');
+  }
+  renderFavMakers();
+  const count = favoriteMakers(state.settings).length;
+  toast(after ? `お気に入りメーカーに登録しました（${count}件）` : 'お気に入りメーカーから外しました');
+}
+
+document.addEventListener('click', (e) => {
+  const star = e.target.closest('[data-fav-maker]');
+  if (star) {
+    e.preventDefault();
+    e.stopPropagation();
+    toggleFavoriteMaker(star.dataset.favMaker, star);
+    return;
+  }
+  const pick = e.target.closest('[data-favmaker-pick]');
+  if (pick) {
+    e.preventDefault();
+    dictTabMaker = pick.dataset.favmakerPick || '';
+    dictTabCategory = '';
+    dictTabSeries = '';
+    render();
+    const list = $('dictResults');
+    if (list) list.scrollTop = 0;
+    return;
+  }
+  const head = e.target.closest('#favMakersToggle');
+  if (head) {
+    e.preventDefault();
+    setFavMakersOpen(!favMakersOpen);
+  }
+});
 
 /** 辞書の1件を、画材の登録フォーム／在庫に使う形へ */
 function dictPreset(d) {
@@ -3962,6 +4362,7 @@ function renderSearchTab() {
   // （「（マツダ）」を足していたころは、375px幅で折り返して「ダ）」が孤立していた）
   $('dictTabNote').textContent = `内蔵辞書 ${mergedDict.length.toLocaleString('ja-JP')}件から、そのまま在庫に追加できます`;
   $('dictResCount').textContent = `${total.toLocaleString('ja-JP')}件`;
+  renderFavMakers();
 
   const ownedFolder = scanFolderId(state, ui.folderId);
   const ownedJan = (it) => Boolean(it.jan);
@@ -4079,7 +4480,8 @@ $('dictMakerSel').addEventListener('change', (e) => {
   dictTabCategory = '';
   dictTabSeries = '';
   render(); // カテゴリ・シリーズ欄の出し分けも含めて描き直す
-  window.scrollTo({ top: 0 });
+  const list = $('dictResults');
+  if (list) list.scrollTop = 0;
 });
 $('dictCatChips').addEventListener('click', (e) => {
   const b = e.target.closest('[data-dict-cat]');
@@ -4255,16 +4657,36 @@ if (NATIVE_APP && state.settings.proPreview) {
 
 renderGuide();
 renderGuideIntro();
-seedSamplesOnFirstRun();
-render();
-preloadPhotos().then((ok) => {
-  if (!ok) return;
-  backfillSampleImagesInState();
-  // オフラインで登録して画像が入っていない画材を、起動時に裏で静かに補う
-  fillMissingImages();
-});
-renderDictionaryState();
-syncDictionary();
+
+// 起動: 先にiCloudのバックアップを確かめる（初回起動で戻すときに、サンプルを足してしまわないように）。
+// iCloudが使えない・失敗しても、そのまま端末のデータで起動する。
+(async function boot() {
+  try {
+    await initICloud();
+  } catch (err) {
+    console.warn('iCloudの読み込みに失敗', err);
+  }
+  if (!icloud.restored) seedSamplesOnFirstRun();
+  render();
+  preloadPhotos().then((ok) => {
+    if (!ok) return;
+    backfillSampleImagesInState();
+    // オフラインで登録して画像が入っていない画材を、起動時に裏で静かに補う
+    fillMissingImages();
+  });
+  renderDictionaryState();
+  syncDictionary();
+  // カタログを開く前に、メーカー別の索引を空き時間で1回だけ作っておく（切り替えを待たせない）
+  const warmIndex = () => { try { dictionaryIndex(mergedDict); } catch { /* 索引が作れなくても検索は動く */ } };
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(warmIndex, { timeout: 3000 });
+  else setTimeout(warmIndex, 1200);
+})();
+
+// 上部バーの高さが変わったら（検索行の開閉など）、カタログの固定位置も合わせ直す
+if (typeof ResizeObserver === 'function') {
+  const header = document.querySelector('.app-header');
+  if (header) new ResizeObserver(() => syncBottomMetrics()).observe(header);
+}
 
 // オンラインへ戻ったら（オフライン登録の画材の画像を、束にならないよう少しずつ補う）
 if (typeof window !== 'undefined') {

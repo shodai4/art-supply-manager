@@ -101,16 +101,18 @@ test('既定の4フォルダは無料枠に数えず、あとから3つまで作
   assert.equal(folderQuota({ folders: DEFAULT_FOLDERS.slice(0, 2) }, {}).used, 0);
 });
 
-test('Pro機能（画材費・広告なし）はProだけ。上限以外は常に使える', () => {
+test('Pro機能（画材費・写真・買い物リスト・確定申告・広告なし）はProだけ。上限以外は常に使える', () => {
   for (const feature of PRO_FEATURES) {
     assert.equal(canUseFeature({}, feature), false, feature);
     assert.equal(canUseFeature({ pro: true }, feature), true, feature);
   }
   assert.equal(canUseFeature({}, 'unknown'), true);
   assert.equal(canUseFeature({}, ''), true);
-  assert.deepEqual(PRO_FEATURES, ['cost', 'noads']);
-  assert.deepEqual(PRO_BENEFITS.map((b) => b.id), ['limit', 'cost', 'noads']);
+  assert.deepEqual(PRO_FEATURES, ['cost', 'samples', 'shopping', 'taxreport', 'noads']);
+  assert.deepEqual(PRO_BENEFITS.map((b) => b.id), ['limit', 'cost', 'samples', 'shopping', 'taxreport', 'noads']);
   assert.ok(PRO_BENEFITS.every((b) => b.label && b.label.length <= 12));
+  // プレビュー中も購入後と同じ特典が使える
+  assert.equal(canUseFeature({ proPreview: true }, 'samples'), true);
 });
 
 test('残りが少ないときだけ目印を出す（90%以上）', () => {

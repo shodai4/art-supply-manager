@@ -233,6 +233,20 @@ export const SCANNER_POD = "pod 'ArtBarcodeScanner', :path => '../../plugins/art
 /** Pod に入っている Swift クラス名（capacitor.config.json の packageClassList に書く） */
 export const SCANNER_PLUGIN_CLASS = 'ArtBarcodeScannerPlugin';
 
+// iCloud自動バックアップ（NSUbiquitousKeyValueStore）。バーコード読取と同じく
+// リポジトリ内のローカル Pod として読む（外部の依存は増やさない）。
+export const ICLOUD_POD = "pod 'ArtICloudSync', :path => '../../plugins/art-icloud-sync'";
+export const ICLOUD_PLUGIN_CLASS = 'ArtICloudSyncPlugin';
+/** iCloudのキー・バリュー保存の権利（entitlements に書くキー） */
+export const ICLOUD_ENTITLEMENT_KEY = 'com.apple.developer.ubiquity-kvstore-identifier';
+/** 値はチームIDの前置き＋バンドルID（Xcode が自動署名で App ID に権利を足す） */
+export const ICLOUD_ENTITLEMENT_VALUE = '$(TeamIdentifierPrefix)com.shodai4.artsupplymanager';
+/** Xcode から見た entitlements の場所（ios/App からの相対） */
+export const ENTITLEMENTS_REL_PATH = 'App/App.entitlements';
+export const ENTITLEMENTS_PATH = process.env.IOS_ENTITLEMENTS_PATH
+  ? path.resolve(process.env.IOS_ENTITLEMENTS_PATH)
+  : path.join(ROOT, 'ios', 'App', 'App', 'App.entitlements');
+
 /** Podfile の platform :ios を最低バージョンに揃え、AdMob の UMP を 2.x に固定する */
 export function configurePodfileContent(input, minimum = MINIMUM_IOS_VERSION) {
   const source = String(input == null ? '' : input);
@@ -243,11 +257,11 @@ export function configurePodfileContent(input, minimum = MINIMUM_IOS_VERSION) {
     const content = anchor.test(source)
       ? source.replace(anchor, (_m, keep) => `${line}\n${keep}`)
       : `${line}\n${source}`;
-    const withPin = addScannerPod(addUmpPin(content));
+    const withPin = addICloudPod(addScannerPod(addUmpPin(content)));
     return { content: withPin, modified: withPin !== source, added: true };
   }
   const upgraded = source.replace(pattern, (_m, head, tail) => `${head}${minimum}${tail}`);
-  const content = addScannerPod(addUmpPin(upgraded));
+  const content = addICloudPod(addScannerPod(addUmpPin(upgraded)));
   return { content, modified: content !== source, added: false };
 }
 
@@ -280,6 +294,8 @@ export function verifyPodfileContent(content, minimum = MINIMUM_IOS_VERSION) {
   if (pins !== 1) return [`GoogleUserMessagingPlatform の指定が ${pins} 件あります（1件であるべき）`];
   const scanners = (source.match(/pod 'ArtBarcodeScanner'/g) || []).length;
   if (scanners !== 1) return [`ArtBarcodeScanner（バーコード読取）の指定が ${scanners} 件あります（1件であるべき）`];
+  const clouds = (source.match(/pod 'ArtICloudSync'/g) || []).length;
+  if (clouds !== 1) return [`ArtICloudSync（iCloudバックアップ）の指定が ${clouds} 件あります（1件であるべき）`];
   return [];
 }
 
@@ -297,6 +313,66 @@ export function addScannerPod(content) {
   }
   // target がまだ無い（素の Podfile）ときは、末尾に置いておく
   return `${source.replace(/\s*$/, '')}\n${SCANNER_POD}\n`;
+}
+
+/**
+ * iCloud自動バックアップのローカル Pod を、target ブロックの中に1行だけ入れる。
+ * バーコード読取と同じく、外部の pod を取ってこない。
+ */
+export function addICloudPod(content) {
+  const source = String(content == null ? '' : content);
+  if (source.includes("pod 'ArtICloudSync'")) return source;
+  const target = /^([ \t]*)target[ \t]+['\"]App['\"][ \t]+do[ \t]*$/m.exec(source);
+  if (target) {
+    const at = target.index + target[0].length;
+    return `${source.slice(0, at)}\n${target[1]}  ${ICLOUD_POD}${source.slice(at)}`;
+  }
+  return `${source.replace(/\s*$/, '')}\n${ICLOUD_POD}\n`;
+}
+
+/**
+ * iCloud のキー・バリュー保存の entitlements の中身。
+ * 値の $(TeamIdentifierPrefix) は Xcode が署名時にチームIDへ置き換える。
+ */
+export function entitlementsContent(key = ICLOUD_ENTITLEMENT_KEY, value = ICLOUD_ENTITLEMENT_VALUE) {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+\t<key>${key}</key>
+\t<string>${value}</string>
+</dict>
+</plist>
+`;
+}
+
+/** entitlements が想定どおりか（空なら合格） */
+export function verifyEntitlementsContent(content) {
+  const text = String(content == null ? '' : content);
+  const problems = [];
+  if (!text.includes(`<key>${ICLOUD_ENTITLEMENT_KEY}</key>`)) {
+    problems.push(`entitlements に ${ICLOUD_ENTITLEMENT_KEY} がありません`);
+  }
+  if (!text.includes(`<string>${ICLOUD_ENTITLEMENT_VALUE}</string>`)) {
+    problems.push('iCloud のキー・バリュー保存の値が想定と違います');
+  }
+  if ((text.match(/<dict>/g) || []).length !== (text.match(/<\/dict>/g) || []).length) {
+    problems.push('entitlements の <dict> が閉じていません');
+  }
+  return problems;
+}
+
+/**
+ * Xcode プロジェクトに CODE_SIGN_ENTITLEMENTS を入れる（App ターゲットの Debug/Release）。
+ * PRODUCT_BUNDLE_IDENTIFIER の行の直後に置くので、Capacitor が作り直した pbxproj にも効く。
+ */
+export function addEntitlementSetting(content, relPath = ENTITLEMENTS_REL_PATH) {
+  const source = String(content == null ? '' : content);
+  const line = `CODE_SIGN_ENTITLEMENTS = ${relPath};`;
+  if (source.includes(line)) return source;
+  const pattern = /^([ \t]*)PRODUCT_BUNDLE_IDENTIFIER[ \t]*=[ \t]*com\.shodai4\.artsupplymanager[ \t]*;[ \t]*$/gm;
+  if (!pattern.test(source)) return source;
+  return source.replace(pattern, (match, indent) => `${match}\n${indent}${line}`);
 }
 
 /**
@@ -347,7 +423,7 @@ export function configureProjectContent(input, minimum = MINIMUM_IOS_VERSION) {
   const source = String(input == null ? '' : input);
   let occurrences = 0;
   let raised = 0;
-  const content = source.replace(/(IPHONEOS_DEPLOYMENT_TARGET[ \t]*=[ \t]*)([0-9.]+)([ \t]*;)/g, (match, head, version, tail) => {
+  const upgraded = source.replace(/(IPHONEOS_DEPLOYMENT_TARGET[ \t]*=[ \t]*)([0-9.]+)([ \t]*;)/g, (match, head, version, tail) => {
     occurrences += 1;
     if (compareVersions(version, minimum) < 0) {
       raised += 1;
@@ -355,21 +431,29 @@ export function configureProjectContent(input, minimum = MINIMUM_IOS_VERSION) {
     }
     return match;
   });
+  const content = addEntitlementSetting(upgraded);
   return { content, modified: content !== source, occurrences, raised };
 }
 
 export function verifyProjectContent(content, minimum = MINIMUM_IOS_VERSION) {
-  const found = [...String(content == null ? '' : content).matchAll(/IPHONEOS_DEPLOYMENT_TARGET[ \t]*=[ \t]*([0-9.]+)[ \t]*;/g)].map((m) => m[1]);
+  const text = String(content == null ? '' : content);
+  const found = [...text.matchAll(/IPHONEOS_DEPLOYMENT_TARGET[ \t]*=[ \t]*([0-9.]+)[ \t]*;/g)].map((m) => m[1]);
   if (found.length === 0) return ['project.pbxproj に IPHONEOS_DEPLOYMENT_TARGET がありません'];
-  return found
+  const problems = found
     .filter((v) => compareVersions(v, minimum) < 0)
     .map((v) => `IPHONEOS_DEPLOYMENT_TARGET が ${v} です（iOS ${minimum} 以上にしてください）`);
+  const bundles = (text.match(/PRODUCT_BUNDLE_IDENTIFIER[ \t]*=[ \t]*com\.shodai4\.artsupplymanager[ \t]*;/g) || []).length;
+  const entitlements = (text.match(/CODE_SIGN_ENTITLEMENTS[ \t]*=[ \t]*App\/App\.entitlements[ \t]*;/g) || []).length;
+  if (bundles > 0 && entitlements !== bundles) {
+    problems.push(`CODE_SIGN_ENTITLEMENTS が ${entitlements} 件です（${bundles} 件の構成すべてに入れてください）`);
+  }
+  return problems;
 }
 
 /** 実ファイルに適用（存在しないファイルは黙って飛ばす） */
 export function applyAll({
   plistPath = PLIST_PATH, podfilePath = PODFILE_PATH, projectPath = PROJECT_PATH, lockPath = PODFILE_LOCK_PATH,
-  capConfigPath = CAP_CONFIG_PATH,
+  capConfigPath = CAP_CONFIG_PATH, entitlementsPath = ENTITLEMENTS_PATH,
 } = {}) {
   const results = [];
   if (fs.existsSync(plistPath)) {
@@ -400,11 +484,39 @@ export function applyAll({
   }
   if (fs.existsSync(capConfigPath)) {
     const before = fs.readFileSync(capConfigPath, 'utf8');
-    const { content, modified, error } = configureCapConfigContent(before);
+    let content = before;
+    let modified = false;
+    let error = '';
+    for (const className of [SCANNER_PLUGIN_CLASS, ICLOUD_PLUGIN_CLASS]) {
+      const out = configureCapConfigContent(content, className);
+      if (out.error) { error = out.error; break; }
+      if (out.modified) { content = out.content; modified = true; }
+    }
     if (modified) fs.writeFileSync(capConfigPath, content, 'utf8');
-    const problems = error ? [error] : verifyCapConfigContent(content);
+    const problems = error
+      ? [error]
+      : [SCANNER_PLUGIN_CLASS, ICLOUD_PLUGIN_CLASS].flatMap((c) => verifyCapConfigContent(content, c));
     results.push({ file: 'capacitor.config.json', action: modified ? 'updated' : 'verified', problems });
   }
+  // iCloud のキー・バリュー保存の entitlements（無ければ作り、違えば直す）
+  const wanted = entitlementsContent();
+  let entitlementsAction = 'verified';
+  if (!fs.existsSync(entitlementsPath)) {
+    fs.mkdirSync(path.dirname(entitlementsPath), { recursive: true });
+    fs.writeFileSync(entitlementsPath, wanted, 'utf8');
+    entitlementsAction = 'created';
+  } else {
+    const before = fs.readFileSync(entitlementsPath, 'utf8');
+    if (before !== wanted) {
+      fs.writeFileSync(entitlementsPath, wanted, 'utf8');
+      entitlementsAction = 'updated';
+    }
+  }
+  results.push({
+    file: 'App.entitlements',
+    action: entitlementsAction,
+    problems: verifyEntitlementsContent(fs.readFileSync(entitlementsPath, 'utf8')),
+  });
   if (fs.existsSync(projectPath)) {
     const before = fs.readFileSync(projectPath, 'utf8');
     const { content, modified } = configureProjectContent(before);

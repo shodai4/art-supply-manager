@@ -145,3 +145,37 @@ export function exportFailureMessage(result) {
   if (result.stage === 'download') return `書き出しに失敗しました${detail}`;
   return `共有シートを開けませんでした${detail}`;
 }
+
+/**
+ * 文面だけを共有シートで送る（買い物リスト）。
+ * iOSアプリでは @capacitor/share、Webでは navigator.share を使う。
+ * どちらも使えないときは { ok:false, reason:'no-share' } を返し、呼び側がコピーへ切り替える。
+ */
+export async function sharePlainText({ text, title = '買い物リスト', win } = {}) {
+  const view = win ?? (typeof window !== 'undefined' ? window : undefined);
+  const body = String(text || '');
+  if (!body) return { ok: false, reason: 'empty' };
+  if (isNativeShell(view)) {
+    const { share } = exportPlugins(view);
+    if (share?.share) {
+      try {
+        await share.share({ title, text: body, dialogTitle: title });
+        return { ok: true, method: 'share' };
+      } catch (error) {
+        if (isShareCanceled(error)) return { ok: false, canceled: true };
+        return { ok: false, error };
+      }
+    }
+  }
+  const nav = view?.navigator;
+  if (nav && typeof nav.share === 'function') {
+    try {
+      await nav.share({ title, text: body });
+      return { ok: true, method: 'navigator' };
+    } catch (error) {
+      if (/abort/i.test(String(error?.name || ''))) return { ok: false, canceled: true };
+      return { ok: false, error };
+    }
+  }
+  return { ok: false, reason: 'no-share' };
+}

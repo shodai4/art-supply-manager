@@ -149,7 +149,8 @@ test('メーカー・シリーズの見出しは、4画面で同じ関数から�
   assert.match(app, /function itemTreeBlockHtml\(groups, opts = \{\}\) \{/);
   // 見出しはどれも「data-g-surface で面を持つ button」
   const heads = app.slice(app.indexOf('function makerHeadHtml'), app.indexOf('function itemTreeHtml'));
-  assert.equal((heads.match(/<button type="button"/g) || []).length, 2, '見出しは2つ（メーカー・シリーズ）だけ');
+  // メーカー見出し・（カタログだけの）お気に入りの星・シリーズ見出し
+  assert.equal((heads.match(/<button type="button"/g) || []).length, 3, '見出し2つ＋星1つ');
   assert.equal((heads.match(/data-g-surface="/g) || []).length, 2);
   assert.equal((heads.match(/aria-expanded="/g) || []).length, 2);
   assert.equal((heads.match(/<b>\$\{countBadge\(total\)\}<\/b>/g) || []).length, 2, '件数は右端の丸いバッジ');

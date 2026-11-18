@@ -300,3 +300,15 @@ cd workers/rakuten-image-proxy && npm test        # 中継サーバーのフォ�
   楽天APIを直接叩くと、ダミーの認証情報では `403 Invalid Access Key` が返りました。つまりパラメータの形式と
   Referer の付け方は受け付けられており、弾かれたのはキーの値だけです（2026年11月15日に確認）。
   本物のアプリID・アクセスキーでの成功はまだ見ていません
+
+
+## /stock（通販シートの在庫・参考価格）
+
+同じ Worker の `GET /stock?jan=4900669001911` で、Yahoo!ショッピングの検索結果から
+**在庫あり件数と最安の参考価格**を返す（アプリの「通販」シートが開いたときに呼ぶ）。
+
+- 応答: `{ jan, offers, inStockOffers, lowestPrice, available, source, fetchedAt }`
+- 商品が無い（`offers: 0`）のはエラーではなく 200（画面は「在庫なし」）
+- 別JANの商品は数えない（`jan_code` で絞ったうえで、返ってきた `janCode` が一致するものだけ）
+- キャッシュは30分（画像の7日とは別キー）。`YAHOO_CLIENT_ID` が未設定なら 500 `not_configured`
+- 楽天の検索APIには在庫の項目が無いので、楽天で出すときは `stockSources()` に取得先を足す

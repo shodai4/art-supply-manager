@@ -762,18 +762,126 @@ const DICT_HAY_CACHE = new WeakMap();
 
 /**
  * 検索用の文字列（商品名・色名・メーカー・ブランド・サイズ・品番・JAN）。
- * 辞書の配列が変わったときだけ作り直す（毎打鍵で数万件を連結・正規化しない）。
- * 正規化（ひらがな・カタカナ等の統一）もこの1回だけ。
+ * 辞書の配列が変わったときだけ入れ物を作り直す（毎打鍵で数万件を連結・正規化しない）。
+ *
+ * 3.7万件ぶんを起動時にまとめて正規化すると、初回の検索やタブ切り替えで引っかかる
+ * （文字列が数MBになり、メモリも食う）。ここでは「入れた場所だけ」を埋める疎な配列を返し、
+ * 実際の正規化は dictionaryHayAt がその1件を初めて見るときに行う。
+ * 何も打たずにメーカーを切り替えるだけなら1件も作らない。
  */
 export function dictionaryHaystack(dict = []) {
   if (!Array.isArray(dict)) return [];
   const cached = DICT_HAY_CACHE.get(dict);
   if (cached && cached.length === dict.length) return cached;
-  // 語の区切り（空白）は詰めて1本の文字列にする。日本語は空白を入れずに打つので、
-  // 「NEWトーナルカラー68色」のような詰めた語でもヒットさせる（スペース有りでも従来どおりヒットする）。
-  const hay = dict.map((d) => normalizeSearchText(`${d.name || ''} ${d.series || ''} ${d.colorName || ''} ${d.maker || ''} ${d.brand || ''} ${d.size || ''} ${d.code || ''} ${d.colorCode || ''} ${d.keywords || ''} ${d.jan || ''}`).replace(/\s+/g, ''));
+  const store = new Array(dict.length);
+  // 読んだ場所だけを埋める（配列として同じ形で扱えるよう、読み出しのときに作る）
+  const hay = typeof Proxy === 'function' ? new Proxy(store, {
+    get(target, prop, receiver) {
+      if (typeof prop === 'string') {
+        const i = Number(prop);
+        if (Number.isInteger(i) && i >= 0 && i < dict.length && typeof target[i] !== 'string') {
+          target[i] = dictionaryHayValue(dict[i]);
+          return target[i];
+        }
+      }
+      return Reflect.get(target, prop, receiver);
+    },
+  }) : store;
   DICT_HAY_CACHE.set(dict, hay);
   return hay;
+}
+
+/** 辞書1件の検索用文字列（正規化済み・空白なし） */
+function dictionaryHayValue(d = {}) {
+  return normalizeSearchText([
+    d.name, d.series, d.colorName, d.maker, d.brand, d.size, d.code, d.colorCode, d.keywords, d.jan,
+  ].filter((v) => v !== null && v !== undefined && String(v) !== '').join(' ')).replace(/\s+/g, '');
+}
+
+/**
+ * 辞書1件の検索用文字列（初めて見るときだけ作って、入れた配列に控える）。
+ * 語の区切り（空白）は詰めて1本の文字列にする。日本語は空白を入れずに打つので、
+ * 「NEWトーナルカラー68色」のような詰めた語でもヒットさせる（スペース有りでも従来どおりヒットする）。
+ */
+export function dictionaryHayAt(dict = [], index = 0, hay = null) {
+  const i = Number(index) || 0;
+  if (hay) {
+    const cached = hay[i];
+    if (typeof cached === 'string') return cached;
+  }
+  const value = dictionaryHayValue(dict[i] || {});
+  if (hay && Array.isArray(hay)) hay[i] = value;
+  return value;
+}
+
+/* ---------------- メーカー別の事前インデックス ---------------- */
+
+const DICT_INDEX_CACHE = new WeakMap();
+const IDX_SEP = '\u0000';
+
+/**
+ * 辞書を「メーカー」「メーカー＋カテゴリ」「メーカー＋シリーズ」「カテゴリ」で引ける索引。
+ * 起動後に1回だけ作り（呼んだときにまとめて1回）、メーカー・カテゴリ・シリーズを
+ * 切り替えるたびに3.7万件を走査するのをやめる。
+ *
+ * @returns {{makers:Map<string,number[]>, makerCategory:Map<string,number[]>, makerSeries:Map<string,number[]>, categories:Map<string,number[]>}}
+ */
+export function dictionaryIndex(dict = []) {
+  if (!Array.isArray(dict)) {
+    return { makers: new Map(), makerCategory: new Map(), makerSeries: new Map(), categories: new Map() };
+  }
+  const cached = DICT_INDEX_CACHE.get(dict);
+  if (cached && cached.size === dict.length) return cached;
+  const makers = new Map();
+  const makerCategory = new Map();
+  const makerSeries = new Map();
+  const categories = new Map();
+  const series = new Map();
+  const push = (map, key, i) => {
+    const list = map.get(key);
+    if (list) list.push(i);
+    else map.set(key, [i]);
+  };
+  for (let i = 0; i < dict.length; i += 1) {
+    const d = dict[i];
+    if (!d) continue;
+    const maker = String(d.maker || 'メーカー不明');
+    const category = String(d.category || 'other');
+    const name = String(d.series || '').trim();
+    push(makers, maker, i);
+    push(makerCategory, `${maker}${IDX_SEP}${category}`, i);
+    push(categories, category, i);
+    if (name) {
+      push(makerSeries, `${maker}${IDX_SEP}${name}`, i);
+      push(series, name, i);
+    }
+  }
+  const index = { makers, makerCategory, makerSeries, categories, series };
+  Object.defineProperty(index, 'size', { value: dict.length, enumerable: false });
+  DICT_INDEX_CACHE.set(dict, index);
+  return index;
+}
+
+/**
+ * 絞り込みに合う辞書の位置（索引から取り出す）。
+ * どれも指定が無いときは null（＝全件を順に見る）。
+ * メーカーだけ・カテゴリだけの切り替えが、辞書全体の走査にならない。
+ */
+export function dictionaryCandidates(dict = [], { maker = '', category = '', series = '' } = {}) {
+  const wantMaker = String(maker ?? '').trim();
+  const wantCategory = String(category ?? '').trim();
+  const wantSeries = String(series ?? '').trim();
+  if (!wantMaker && !wantCategory && !wantSeries) return null;
+  const index = dictionaryIndex(dict);
+  if (wantSeries) {
+    const key = `${wantMaker || 'メーカー不明'}${IDX_SEP}${wantSeries}`;
+    return wantMaker ? (index.makerSeries.get(key) || []) : (index.series.get(wantSeries) || []);
+  }
+  if (wantMaker && wantCategory) {
+    return index.makerCategory.get(`${wantMaker}${IDX_SEP}${wantCategory}`) || [];
+  }
+  if (wantMaker) return index.makers.get(wantMaker) || [];
+  return index.categories.get(wantCategory) || [];
 }
 
 /**
@@ -786,7 +894,7 @@ export function dictionaryHaystack(dict = []) {
  * 検索語と絞り込みから「この1件はヒットするか」を返す判定器。
  * 検索（上位だけ描く）とメーカー別の集計（全件を数える）で同じ条件を使うため、ここにまとめる。
  */
-function dictionaryHitTester(dict = [], query = '', { hay, maker = '', category = '', series = '' } = {}) {
+function dictionaryHitTester(dict = [], query = '', { hay, maker = '', category = '', series = '', indices = null } = {}) {
   const tokens = searchTokens(query);
   const qJan = normalizeJAN(query ?? '');
   const janQuery = tokens.length === 1 && /^\d{4,13}$/.test(qJan) ? qJan : '';
@@ -795,15 +903,26 @@ function dictionaryHitTester(dict = [], query = '', { hay, maker = '', category 
   const wantSeries = String(series ?? '').trim();
   const stack = Array.isArray(hay) && hay.length === dict.length ? hay : dictionaryHaystack(dict);
   const onlyOne = tokens.length === 1 ? tokens[0] : '';
-  return (d, i) => {
+  // 索引から絞れているときは、その位置だけを見る（dictionaryCandidates）
+  const list = Array.isArray(indices) ? indices : null;
+  return (i) => {
+    const d = dict[i];
     if (!d) return false;
-    if (wantMaker && String(d.maker || '') !== wantMaker) return false;
+    const dMaker = String(d.maker || 'メーカー不明');
+    if (wantMaker && dMaker !== wantMaker) return false;
     if (wantCategory && String(d.category || 'other') !== wantCategory) return false;
     if (wantSeries && String(d.series || '').trim() !== wantSeries) return false;
     if (!tokens.length) return true;
-    if (onlyOne) return stack[i].includes(onlyOne) || (janQuery !== '' && String(d.jan || '').includes(janQuery));
-    return matchesAllTokens(tokens, stack[i], normalizeJAN(d.jan || ''));
+    const text = dictionaryHayAt(dict, i, stack);
+    if (onlyOne) return text.includes(onlyOne) || (janQuery !== '' && String(d.jan || '').includes(janQuery));
+    return matchesAllTokens(tokens, text, normalizeJAN(d.jan || ''));
   };
+}
+
+/** 絞り込みの位置（索引が使えないときは全件の番号を順に返す） */
+function candidateIndices(dict, opts) {
+  const indices = dictionaryCandidates(dict, opts);
+  return indices || null;
 }
 
 /**
@@ -813,15 +932,20 @@ function dictionaryHitTester(dict = [], query = '', { hay, maker = '', category 
  * 数字だけの入力はJANの部分一致としても探す（4桁以上）。
  */
 export function searchDictionary(dict = [], query = '', { limit = 40, hay, maker = '', category = '', series = '' } = {}) {
-  const hit = dictionaryHitTester(dict, query, { hay, maker, category, series });
+  const indices = candidateIndices(dict, { maker, category, series });
+  const hit = dictionaryHitTester(dict, query, { hay, maker, category, series, indices });
   const max = Math.max(0, Math.trunc(Number(limit) || 0));
   const items = [];
   let total = 0;
-  for (let i = 0; i < dict.length; i += 1) {
-    const d = dict[i];
-    if (!hit(d, i)) continue;
+  const scan = (i) => {
+    if (!hit(i)) return;
     total += 1;
-    if (items.length < max) items.push(d);
+    if (items.length < max) items.push(dict[i]);
+  };
+  if (indices) {
+    for (let k = 0; k < indices.length; k += 1) scan(indices[k]);
+  } else {
+    for (let i = 0; i < dict.length; i += 1) scan(i);
   }
   return { items, total, limit: max };
 }
@@ -829,16 +953,18 @@ export function searchDictionary(dict = [], query = '', { limit = 40, hay, maker
 /**
  * 検索にヒットした全件を、メーカー見出しごとにまとめる（検索タブ用）。
  * 見出しは五十音順・件数は全件（50件などで打ち切らない）。
- * 中身（items）はメーカーごとに持たせ、画面は開いたメーカーの分だけ描く。
+ * 中身（items）はメーカーごとに持たせ、画面は開いたメーカーの分だけ揃う。
+ * メーカー・カテゴリ・シリーズを絞っているときは、索引でその範囲だけを走査する。
  */
 export function groupDictionarySearch(dict = [], query = '', opts = {}) {
-  const hit = dictionaryHitTester(dict, query, opts);
+  const indices = candidateIndices(dict, opts);
+  const hit = dictionaryHitTester(dict, query, { ...opts, indices });
   const at = new Map();
   const groups = [];
   let total = 0;
-  for (let i = 0; i < dict.length; i += 1) {
+  const scan = (i) => {
+    if (!hit(i)) return;
     const d = dict[i];
-    if (!hit(d, i)) continue;
     total += 1;
     const maker = String(d.maker || 'メーカー不明');
     let g = at.get(maker);
@@ -848,8 +974,14 @@ export function groupDictionarySearch(dict = [], query = '', opts = {}) {
       groups.push(g);
     }
     g.items.push(d);
+  };
+  if (indices) {
+    for (let k = 0; k < indices.length; k += 1) scan(indices[k]);
+  } else {
+    for (let i = 0; i < dict.length; i += 1) scan(i);
   }
-  groups.sort((a, b) => compareMakerName(a.maker, b.maker));
+  // 1メーカーに絞っているときは並べ替えの必要が無い（五十音順は並びのまま）
+  if (groups.length > 1) groups.sort((a, b) => compareMakerName(a.maker, b.maker));
   return { groups, total };
 }
 
@@ -863,18 +995,45 @@ export function groupDictionarySearch(dict = [], query = '', opts = {}) {
  */
 export function dictionarySeriesList(dict = [], query = '', { hay, maker = '', category = '' } = {}) {
   if (!Array.isArray(dict)) return [];
-  const hit = dictionaryHitTester(dict, query, { hay, maker, category });
+  const indices = candidateIndices(dict, { maker, category });
+  const hit = dictionaryHitTester(dict, query, { hay, maker, category, indices });
   const counts = new Map();
-  for (let i = 0; i < dict.length; i += 1) {
-    const d = dict[i];
-    if (!hit(d, i)) continue;
-    const name = String(d.series || '').trim();
-    if (!name) continue;
+  const scan = (i) => {
+    if (!hit(i)) return;
+    const name = String(dict[i].series || '').trim();
+    if (!name) return;
     counts.set(name, (counts.get(name) || 0) + 1);
+  };
+  if (indices) {
+    for (let k = 0; k < indices.length; k += 1) scan(indices[k]);
+  } else {
+    for (let i = 0; i < dict.length; i += 1) scan(i);
   }
   return [...counts.entries()]
     .sort((a, b) => compareMakerName(a[0], b[0]))
     .map(([name, count]) => ({ name, count }));
+}
+
+/**
+ * メーカーごとの件数（索引から数える。3.7万件を毎回数え直さない）。
+ * @returns {Array<{name:string,count:number}>}
+ */
+export function dictionaryMakerCounts(dict = []) {
+  const index = dictionaryIndex(dict);
+  return [...index.makers.entries()].map(([name, list]) => ({ name, count: list.length }));
+}
+
+/** いまのメーカーにあるカテゴリと件数（索引から） */
+export function dictionaryCategoryCounts(dict = [], maker = '') {
+  const index = dictionaryIndex(dict);
+  const want = String(maker ?? '').trim();
+  const out = new Map();
+  for (const [key, list] of index.makerCategory) {
+    const at = key.indexOf(IDX_SEP);
+    if (key.slice(0, at) !== want) continue;
+    out.set(key.slice(at + 1), list.length);
+  }
+  return out;
 }
 
 /**
@@ -1951,4 +2110,155 @@ export function mergeStates(current, incoming) {
     }
   }
   return { ...current, folders, items, mergeStats: { added, updated, foldersAdded } };
+}
+
+/* ---------------- お気に入りメーカー（カタログ上部のショートカット） ---------------- */
+
+/**
+ * お気に入りメーカーの一覧（設定に保存した順・重複なし）。
+ * カタログのメーカー見出しの星ボタンで登録／解除し、上部の折りたたみからワンタップで切り替える。
+ */
+export function favoriteMakers(settings = {}) {
+  const list = Array.isArray(settings?.favMakers) ? settings.favMakers : [];
+  const out = [];
+  const seen = new Set();
+  for (const raw of list) {
+    const name = String(raw ?? '').trim();
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    out.push(name);
+  }
+  return out;
+}
+
+export function isMakerFavorite(settings = {}, maker = '') {
+  const name = String(maker ?? '').trim();
+  if (!name) return false;
+  return favoriteMakers(settings).includes(name);
+}
+
+/**
+ * お気に入りメーカーを入／切する（新しい設定を返す・元の設定は変えない）。
+ * 解除したメーカーは一覧から抜け、登録した順に後ろへ並ぶ。
+ */
+export function toggleMakerFavorite(settings = {}, maker = '') {
+  const name = String(maker ?? '').trim();
+  const list = favoriteMakers(settings);
+  if (!name) return { ...settings, favMakers: list };
+  const next = list.includes(name) ? list.filter((m) => m !== name) : [...list, name];
+  return { ...settings, favMakers: next };
+}
+
+/* ---------------- 買い物リストの文面（補充タブのコピー・共有） ---------------- */
+
+/**
+ * 「要補充」の画材を、そのままメモ帳やメッセージに貼れる買い物リスト文面にする。
+ * JAN・フォルダは載せず、買い物中に読む「名前・色/容量・必要数」だけにする。
+ */
+export function buildShoppingListText(items = [], { now = new Date(), title = '買い物リスト' } = {}) {
+  const list = computeShoppingList(items);
+  const d = now instanceof Date && !Number.isNaN(now.getTime()) ? now : new Date();
+  const head = `${title}（${d.getMonth() + 1}月${d.getDate()}日）`;
+  if (!list.length) return `${head}\n・補充が必要な画材はありません`;
+  const rows = list.map((it) => {
+    const name = String(displayNameForList(it) || it.name || '画材').trim();
+    const size = String(it.size || '').trim();
+    const label = size && !name.includes(size) ? `${name}（${size}）` : name;
+    const need = Number(it.qty) || 0;
+    // 在庫0は「買う」、残りわずかは「あと◯」ではなくシンプルに「補充」
+    return `・${label}${need === 0 ? '' : '（補充）'}`;
+  });
+  return [head, ...rows].join('\n');
+}
+
+/** 買い物リストの名前（色名が商品名に無ければ添える） */
+function displayNameForList(item = {}) {
+  const name = String(item.name || '').trim();
+  const color = String(item.colorName || '').trim();
+  if (!color || name.includes(color)) return name;
+  return `${name} ${color}`.trim();
+}
+
+/* ---------------- 画材費レポート（月別・メーカー別・年間サマリ） ---------------- */
+
+/** 購入ログの1件（日付と金額）を取り出す。ログが無い既存データは作成日・在庫ぶんで1件とみなす */
+function purchaseEntriesOf(item = {}) {
+  const price = unitPrice(item);
+  if (price === null) return [];
+  const log = Array.isArray(item.purchaseLog) ? item.purchaseLog : [];
+  if (log.length) {
+    return log
+      .map((e) => ({ at: String(e?.at || ''), amount: Math.max(0, Number(e?.amount) || 0), qty: Math.max(0, Number(e?.qty) || 0) }))
+      .filter((e) => e.amount > 0 && e.at);
+  }
+  const qty = Math.max(0, Number(item.qty) || 0);
+  if (!qty || price <= 0) return [];
+  return [{ at: String(item.createdAt || ''), amount: price * qty, qty }];
+}
+
+/**
+ * 画材費の年次レポート。
+ * - year の購入ログを月別・メーカー別に集めて、年間の購入額と件数を出す
+ * - 単価が入っていない画材は金額に数えず、unpriced として件数だけ知らせる
+ * - 月別は1〜12月を、メーカー別は金額の大きい順に並べる
+ */
+export function costReport(items = [], { year = new Date().getFullYear() } = {}) {
+  const y = Math.trunc(Number(year)) || new Date().getFullYear();
+  const months = Array.from({ length: 12 }, (_, i) => ({ month: i + 1, value: 0, count: 0 }));
+  const byMaker = new Map();
+  let total = 0;
+  let count = 0;
+  let unpriced = 0;
+  const purchases = [];
+  for (const it of items) {
+    if (!hasPrice(it)) { unpriced += 1; continue; }
+    const maker = itemMaker(it) || '未設定';
+    for (const e of purchaseEntriesOf(it)) {
+      const at = new Date(e.at);
+      if (Number.isNaN(at.getTime()) || at.getFullYear() !== y) continue;
+      months[at.getMonth()].value += e.amount;
+      months[at.getMonth()].count += 1;
+      total += e.amount;
+      count += 1;
+      const cur = byMaker.get(maker) || { value: 0, count: 0 };
+      cur.value += e.amount;
+      cur.count += 1;
+      byMaker.set(maker, cur);
+      purchases.push({
+        date: `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`,
+        maker,
+        name: displayNameForList(it),
+        category: categoryLabel(it.category),
+        qty: e.qty,
+        amount: e.amount,
+      });
+    }
+  }
+  const makerRows = [...byMaker.entries()]
+    .map(([maker, v]) => ({ maker, value: v.value, count: v.count }))
+    .sort((a, b) => b.value - a.value || a.maker.localeCompare(b.maker, 'ja'));
+  purchases.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  return { year: y, total, count, unpriced, months, byMaker: makerRows, purchases };
+}
+
+/**
+ * 確定申告向けの画材費CSV。
+ * 年間サマリ → 月別 → メーカー別 → 購入明細 の順に1枚へまとめる（Excelでそのまま開けるBOM付き）。
+ */
+export function buildCostReportCsv(items = [], { year = new Date().getFullYear() } = {}) {
+  const report = costReport(items, { year });
+  const rows = [];
+  rows.push(['アトリコ 画材費レポート', `${report.year}年`]);
+  rows.push(['年間購入額', report.total, '件数', report.count]);
+  rows.push(['単価未入力の画材', `${report.unpriced}点（金額に含みません）`]);
+  rows.push([]);
+  rows.push(['月別', '金額', '件数']);
+  for (const m of report.months) rows.push([`${m.month}月`, m.value, m.count]);
+  rows.push([]);
+  rows.push(['メーカー別', '金額', '件数']);
+  for (const m of report.byMaker) rows.push([m.maker, m.value, m.count]);
+  rows.push([]);
+  rows.push(['購入明細', '日付', 'メーカー', '商品名', 'カテゴリ', '数量', '金額']);
+  for (const p of report.purchases) rows.push(['', p.date, p.maker, p.name, p.category, p.qty, p.amount]);
+  return `${CSV_BOM}${toCsv(rows)}\r\n`;
 }

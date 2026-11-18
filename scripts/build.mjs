@@ -15,6 +15,7 @@ export const WEB_ASSETS = [
   'support.html',
   'styles.css',
   'core.js',
+  'icloud.js',
   'links.js',
   'pro.js',
   'iap.js',

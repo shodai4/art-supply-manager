@@ -1,0 +1,15 @@
+{
+  "name": "art-icloud-sync",
+  "version": "1.0.0",
+  "private": true,
+  "description": "アトリコ用のiCloud自動バックアップ（NSUbiquitousKeyValueStore の読み書き）",
+  "license": "MIT",
+  "author": "お絵描き楽しも委員会",
+  "main": "index.js",
+  "capacitor": {
+    "ios": {
+      "src": "ios",
+      "name": "ArtICloudSync"
+    }
+  }
+}

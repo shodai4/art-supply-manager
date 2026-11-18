@@ -37,6 +37,17 @@ export const YAHOO_IMAGE_SIZE = 300;
 /** Yahoo!に要求する返却数（1件で足りるので通信量を抑える） */
 export const YAHOO_RESULTS = 1;
 
+/* ---------------- 在庫・参考価格（/stock） ---------------- */
+
+/** 在庫を調べるときにYahoo!から取る件数（安い順に見たいので多めに取って、こちらで最安を決める） */
+export const YAHOO_STOCK_RESULTS = 20;
+
+/** 在庫のキャッシュ保持期間（秒）。価格は変わるので画像より短く30分 */
+export const STOCK_CACHE_TTL_SECONDS = 30 * 60;
+
+/** 在庫キャッシュのキーの前置き */
+export const STOCK_CACHE_KEY_PREFIX = 'https://rakuten-image-proxy.internal/v2/stock/';
+
 /** 既定で許可するブラウザのオリジン（Web版・GitHub Pages・iOSアプリ・ローカル確認） */
 export const DEFAULT_ALLOWED_ORIGINS = [
   'https://shodai4.com',
@@ -111,6 +122,11 @@ export function corsHeaders(origin, env = {}) {
 /** 同一JANのキャッシュキー */
 export function cacheKey(jan) {
   return `${CACHE_KEY_PREFIX}${jan}`;
+}
+
+/** 同一JANの在庫キャッシュキー（画像とは別に持つ） */
+export function stockCacheKey(jan) {
+  return `${STOCK_CACHE_KEY_PREFIX}${jan}`;
 }
 
 /* ---------------- 使うAPIを決める（楽天・Yahoo!） ---------------- */
@@ -188,6 +204,19 @@ export function yahooApiUrl(env, jan, { results = YAHOO_RESULTS, imageSize = YAH
     params.set('affiliate_type', String(env?.YAHOO_AFFILIATE_TYPE ?? '').trim() || 'vc');
     params.set('affiliate_id', affiliateId);
   }
+  return `${YAHOO_ITEM_SEARCH_ENDPOINT}?${params.toString()}`;
+}
+
+/**
+ * Yahoo!の商品検索API（v3）のURL（在庫調べ用）。
+ * jan_code で探し、価格・在庫（inStock）を複数件取得して、こちらで最安を決める。
+ */
+export function yahooStockApiUrl(env, jan, { results = YAHOO_STOCK_RESULTS } = {}) {
+  const params = new URLSearchParams({
+    appid: yahooClientId(env),
+    jan_code: String(jan),
+    results: String(results),
+  });
   return `${YAHOO_ITEM_SEARCH_ENDPOINT}?${params.toString()}`;
 }
 
@@ -276,6 +305,33 @@ export function pickYahooItem(payload, jan) {
     };
   }
   return null;
+}
+
+/**
+ * Yahoo!の検索結果から、そのJANの商品の「在庫あり」件数と最安の参考価格をまとめる。
+ * 別のJANの商品は数えない（似ている商品で補完しない方針）。
+ * inStock が返らない応答では、価格が入っていて inStock が false でないものを在庫ありとみなす。
+ * @returns {{offers:number, inStockOffers:number, lowestPrice:number, available:boolean}}
+ */
+export function summarizeYahooStock(payload, jan) {
+  const code = normalizeJan(jan);
+  const hits = Array.isArray(payload?.hits) ? payload.hits : [];
+  let offers = 0;
+  let inStockOffers = 0;
+  let lowestPrice = 0;
+  for (const hit of hits) {
+    if (!hit || typeof hit !== 'object') continue;
+    const hitJan = normalizeJan(hit.janCode);
+    if (hitJan && hitJan !== code) continue;
+    if (!hitJan && !String(hit.url ?? '').includes(code) && !String(hit.name ?? '').includes(code)) continue;
+    const price = Number(hit.price) || 0;
+    offers += 1;
+    if (hit.inStock === false) continue;
+    if (!price) continue;
+    inStockOffers += 1;
+    if (!lowestPrice || price < lowestPrice) lowestPrice = price;
+  }
+  return { offers, inStockOffers, lowestPrice, available: inStockOffers > 0 };
 }
 
 /** 楽天APIのエラー文（新形式 errors.errorMessage と旧形式 error_description の両対応） */
@@ -461,6 +517,90 @@ function errorResponse(status, error, message, origin, env, extraHeaders = {}) {
  *                      YAHOO_AFFILIATE_TYPE / ALLOWED_ORIGINS
  * @param {{fetchImpl?: Function, cache?: object, waitUntil?: Function}} options
  */
+/**
+ * 在庫を調べる取得先（いまは Yahoo! だけ）。
+ * 楽天の検索APIには在庫の項目が無いので、楽天で出すときは items[].availability 等を
+ * 見る実装をここに足す（呼び出し側と応答の形はそのまま使える）。
+ */
+export function stockSources(env = {}) {
+  return yahooClientId(env) ? ['yahoo'] : [];
+}
+
+/** Yahoo!で在庫を調べる。返り値は { ok, source, stock? } か { ok:false, kind, status, error, message } */
+export async function fetchStockFromYahoo(jan, env, doFetch) {
+  const source = 'yahoo';
+  let res;
+  try {
+    res = await doFetch(yahooStockApiUrl(env, jan), { headers: { Accept: 'application/json' } });
+  } catch {
+    return unreachable(source);
+  }
+  let payload = null;
+  try { payload = await res.json(); } catch { payload = null; }
+  if (!res.ok || (payload && payload.Error)) {
+    return failure(source, mapYahooError(payload, res.status));
+  }
+  return { ok: true, source, stock: summarizeYahooStock(payload, jan) };
+}
+
+/**
+ * 在庫・参考価格の本体（/stock）。
+ * 商品が無い（offers: 0）のはエラーではなく「在庫なし」として 200 で返す。
+ * 設定不備や上流の失敗だけをエラーにする（画面は「確認できませんでした」と出せる）。
+ */
+async function handleStockRequest(request, env, options, origin, jan) {
+  const { fetchImpl, cache, waitUntil } = options;
+  const sources = stockSources(env);
+  if (!sources.length) {
+    return errorResponse(
+      500, 'not_configured',
+      '中継サーバーの設定が未完了です（Yahoo!APIのキーを登録してください）',
+      origin, env,
+    );
+  }
+  const key = stockCacheKey(jan);
+  if (cache && typeof cache.match === 'function') {
+    try {
+      const hit = await cache.match(key);
+      if (hit) {
+        let data = null;
+        try { data = JSON.parse(await hit.text()); } catch { data = null; }
+        if (data && typeof data.offers === 'number') {
+          return jsonResponse(data, 200, origin, env, {
+            'Cache-Control': `public, max-age=${STOCK_CACHE_TTL_SECONDS}`,
+            'X-Proxy-Cache': 'HIT',
+            'X-Proxy-Source': String(data.source || '').slice(0, 24),
+          });
+        }
+      }
+    } catch { /* キャッシュ不調でも取得は続ける */ }
+  }
+  const doFetch = fetchImpl || (typeof fetch === 'function' ? fetch.bind(globalThis) : null);
+  if (!doFetch) return errorResponse(500, 'fetch_unavailable', '中継サーバーが通信できません', origin, env);
+
+  const result = await fetchStockFromYahoo(jan, env, doFetch);
+  if (!result.ok) {
+    return errorResponse(result.status, result.error, result.message, origin, env);
+  }
+  const data = { jan, ...result.stock, source: result.source, fetchedAt: new Date().toISOString() };
+  if (cache && typeof cache.put === 'function') {
+    const stored = new Response(JSON.stringify(data), {
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': `public, max-age=${STOCK_CACHE_TTL_SECONDS}`,
+      },
+    });
+    const put = Promise.resolve(cache.put(key, stored)).catch(() => {});
+    if (typeof waitUntil === 'function') waitUntil(put);
+    else await put;
+  }
+  return jsonResponse(data, 200, origin, env, {
+    'Cache-Control': `public, max-age=${STOCK_CACHE_TTL_SECONDS}`,
+    'X-Proxy-Cache': 'MISS',
+    'X-Proxy-Source': result.source,
+  });
+}
+
 export async function handleRequest(request, env = {}, options = {}) {
   const { fetchImpl, cache, waitUntil } = options;
   const origin = request.headers.get('Origin') || '';
@@ -477,7 +617,7 @@ export async function handleRequest(request, env = {}, options = {}) {
   if (!isOriginAllowed(origin, env)) {
     return errorResponse(403, 'origin_not_allowed', 'このオリジンからは利用できません', origin, env);
   }
-  if (url.pathname !== '/' && url.pathname !== '') {
+  if (url.pathname !== '/' && url.pathname !== '' && url.pathname !== '/stock') {
     return errorResponse(404, 'not_found', '見つかりません', origin, env);
   }
 
@@ -490,6 +630,10 @@ export async function handleRequest(request, env = {}, options = {}) {
   }
   if (calcCheckDigit(jan.slice(0, 12)) !== Number(jan[12])) {
     return errorResponse(400, 'invalid_jan', 'JANコードのチェックディジットが合いません', origin, env);
+  }
+
+  if (url.pathname === '/stock') {
+    return handleStockRequest(request, env, options, origin, jan);
   }
 
   const order = providerOrder(env);

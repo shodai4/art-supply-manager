@@ -248,9 +248,9 @@ GitHub App の権限によっては `.github/workflows/*.yml` のプッシュが
 
 ---
 
-## 8. Pro課金（StoreKit）の接続点と、将来の iCloud バックアップ／同期
+## 8. Pro課金（StoreKit）の接続点と、iCloud 自動バックアップ
 
-第2弾で、無料上限（100点・フォルダ3つ）と Pro 特典（上限なし・画材費とCSV・広告なし）の土台を入れた。iCloud バックアップ／複数端末の同期は**まだ Pro の特典ではなく、これからの設計**（8.2）。課金そのものはまだ繋いでおらず、設定の「Proプレビュー」で同じ状態を再現している。以下は iPhone 版で繋ぐときの設計。
+無料上限（100点・フォルダ3つ）と Pro 特典（上限なし・画材費とCSV・写真・色見本・買い物リスト共有・確定申告レポート・広告なし）の土台を入れた。**iCloud 自動バックアップは Pro の特典ではなく全員に効く**（8.2・v1.33.0 で実装）。課金は StoreKit に接続済み（買い切り／月額）。
 
 ### 8.1 課金（非消耗型の買い切り）
 
@@ -276,27 +276,21 @@ App Store 審査で必要なこと:
 - デジタル機能の解除を外部決済へ誘導しない（App 外リンク・「Webで買う」文言を出さない）
 - プレビュー（`settings.proPreview`）は審査提出ビルドでは初期値 false のまま。デバッグ用に残す場合は開発ビルドだけに限定する
 
-### 8.2 将来の iCloud バックアップ／複数端末同期（未実装・Proの特典には出さない）
+### 8.2 iCloud 自動バックアップ（v1.33.0 で実装済み・全員に効く）
 
-いまの保存先は `localStorage`（`art-supply-manager/v1` のJSON）と IndexedDB（`art-supply-images` の写真Blob）。サーバーは持たない方針なので、同期は Apple の iCloud 側に預ける。
+保存先は `localStorage`（`art-supply-manager/v1` のJSON）と IndexedDB（`art-supply-images` の写真Blob）。サーバーは持たない方針なので、バックアップは Apple の iCloud 側に預ける。
 
-| 方式 | 保存できる量 | 向き | 実装 |
-|---|---|---|---|
-| iCloud Key-Value Store | 合計 1MB 程度 | 設定・小さなJSONのみ | `NSUbiquitousKeyValueStore` を Capacitor プラグイン経由。画材100点のJSONは数百KBになるため主用途には不足 |
-| iCloud Drive（書類フォルダ） | 容量は iCloud の空き次第 | バックアップファイルの置き場 | `@capacitor/filesystem` ＋ `UIDocumentPicker`（ユーザーが「iCloud Drive」を選ぶ）または `UIFileSharingEnabled`。既存のJSON書き出し・復元をそのまま自動化できる |
-| CloudKit（プライベートDB） | 実質無制限（ユーザーのiCloud容量） | 複数端末の自動同期 | CloudKit 対応の Capacitor プラグイン。レコード単位の差分同期・競合解決が必要 |
+実装した方式は **iCloud Key-Value Store**（`NSUbiquitousKeyValueStore`）。小さな Capacitor プラグイン `plugins/art-icloud-sync`（ローカル Pod）が読み書きし、entitlements は `scripts/configure-ios.mjs` が `App.entitlements` として作る（`com.apple.developer.ubiquity-kvstore-identifier` = `$(TeamIdentifierPrefix)com.shodai4.artsupplymanager`）。
 
-おすすめの順番:
+- 保存するのは `exportState` と同じ中身＋保存時刻（`icloud.js` の `cloudBackupText`）。写真・色見本のBlobは載せない（1MB上限と容量のため。JSON書き出しと同じ方針）
+- 起動時: **この端末にデータが無い（初回起動）ときだけ**戻す。手元にデータがあるときは置き換えず、iCloudのほうが新しいときは設定の「iCloudから復元」で選んでもらう（`decideStartup`）
+- 保存時: 2.5秒のデバウンスでiCloudへ送る。アプリが裏に回るときは待たずに送る
+- 全データ削除のあとは、空の状態をiCloudへ送る（消したものが戻らない）
+- iCloud にサインインしていない・Capability が無いときは、設定の1行に理由を出すだけで、在庫管理は止めない
+- 800KB を超えるバックアップは送らない（途中で切れたJSONを残さない）
+- 別の端末で更新されたときは `didChangeExternallyNotification` を JS に渡し、「新しいバックアップがあります」と知らせる（黙って上書きしない）
 
-1. **まず iCloud Drive へ JSON を自動保存**（毎回の保存時に同じファイル名で上書き、復元はアプリ起動時に新しいほうを読む）。既存の `exportState` / `importState` / `mergeStates` をそのまま使えるので、追加するのはファイル入出力だけ。写真（IndexedDB）はJSONに含まれないため、次段で扱う
-2. **次に CloudKit で複数端末同期**。`mergeStates` の「更新日時の新しいほうを残す」規則をそのまま競合解決に使える（画材IDは端末をまたいで一意）
-3. 写真は CloudKit の `CKAsset` か iCloud Drive 上のファイルへ。1枚30〜60KBなので100点でも数MB程度
-
-注意点:
-
-- iCloud がオフ・容量不足のときは「端末内だけで動く」に戻す（同期は失敗しても在庫管理を止めない）
-- 写真のBlobはJSONに入れない（今の設計を維持。入れると localStorage 5MB を超える）
-- 復元は「置き換える」より「まとめる（`mergeStates`）」を既定にする。取り違えでデータが減らない
+将来の複数端末の自動同期は CloudKit（プライベートDB）で。`mergeStates` の「更新日時の新しいほうを残す」規則をそのまま競合解決に使える（画材IDは端末をまたいで一意）。
 
 ## 9. 残タスク（次のステップ）
 

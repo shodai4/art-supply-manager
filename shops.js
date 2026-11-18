@@ -119,3 +119,64 @@ export function describeSearchQuery(query, item = {}) {
 
 /** 画面に出す帰属表示（App Store / ASP規約向けの短い注記） */
 export const AFFILIATE_NOTE = '通販サイトへのリンクを含みます。Amazonのアソシエイトとして、適格販売により収入を得ています。';
+
+/* ---------------- 通販シートの在庫・参考価格（Yahoo!ショッピング） ---------------- */
+
+/** 中継サーバーの在庫エンドポイント（画像の中継サーバーに /stock を足したもの） */
+export const STOCK_PROXY_PATH = '/stock';
+
+/**
+ * 在庫を問い合わせるURL。中継サーバーのURLが無い・JANが13桁でないときは空文字
+ * （リンクは今までどおり開けるので、在庫が出ないだけで止まらない）。
+ */
+export function stockApiUrl(proxyBase, jan) {
+  const base = String(proxyBase || '').trim().replace(/\/+$/, '');
+  const code = normalizeJAN(jan);
+  if (!base || !/^https:\/\//i.test(base)) return '';
+  if (!/^\d{13}$/.test(code)) return '';
+  return `${base}${STOCK_PROXY_PATH}?jan=${code}`;
+}
+
+/**
+ * 中継サーバーの応答を画面用の形にそろえる。
+ * 応答が想定と違う・JANが一致しないときは null（古い商品の情報を出さない）。
+ */
+export function parseStockPayload(payload, jan = '') {
+  if (!payload || typeof payload !== 'object') return null;
+  const code = normalizeJAN(jan);
+  const got = normalizeJAN(payload.jan || '');
+  if (code && got && got !== code) return null;
+  const offers = Math.max(0, Number(payload.offers) || 0);
+  const inStock = Math.max(0, Number(payload.inStockOffers ?? payload.inStock) || 0);
+  const lowest = Number(payload.lowestPrice) || 0;
+  return {
+    jan: got || code,
+    offers,
+    inStockOffers: inStock,
+    available: Boolean(payload.available) || inStock > 0,
+    lowestPrice: lowest > 0 ? lowest : 0,
+    source: String(payload.source || 'yahoo'),
+    checkedAt: String(payload.fetchedAt || payload.checkedAt || ''),
+  };
+}
+
+/** 参考価格の表示（1,200 -> ¥1,200） */
+export function priceLabel(value) {
+  const n = Math.round(Number(value) || 0);
+  return n > 0 ? `¥${n.toLocaleString('ja-JP')}` : '';
+}
+
+/**
+ * Yahoo!欄に出す短い文（在庫あり（¥1,200〜）／在庫なし／確認できませんでした）。
+ * 参考情報なので「〜」を付けて、出品者・送料で変わることを添える。
+ */
+export function stockLabel(info) {
+  if (!info) return '';
+  if (!info.offers) return '在庫を確認できませんでした';
+  if (!info.available) return '在庫なし';
+  const price = priceLabel(info.lowestPrice);
+  return price ? `在庫あり（${price}〜）` : '在庫あり';
+}
+
+/** 在庫表示の注記（Yahoo!の検索結果にもとづく参考情報であること） */
+export const STOCK_NOTE = 'Yahoo!ショッピングの検索結果にもとづく参考情報です（送料・出品者で変わります）';

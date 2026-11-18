@@ -26,11 +26,24 @@ export const UNLIMITED = Number.POSITIVE_INFINITY;
 export const PRO_BENEFITS = [
   { id: 'limit', label: '上限なし' },
   { id: 'cost', label: '画材費とCSV' },
+  { id: 'samples', label: '写真・色見本' },
+  { id: 'shopping', label: '買い物リスト共有' },
+  { id: 'taxreport', label: '確定申告レポート' },
   { id: 'noads', label: '広告なし' },
 ];
 
 /** Pro で開放する機能ID（上限以外） */
-export const PRO_FEATURES = ['cost', 'noads'];
+export const PRO_FEATURES = ['cost', 'samples', 'shopping', 'taxreport', 'noads'];
+
+/** 機能IDの短い名前（Pro案内の見出しに使う） */
+export const PRO_FEATURE_LABELS = {
+  item: '上限なし',
+  folder: '上限なし',
+  cost: '画材費とCSV',
+  samples: '写真・色見本',
+  shopping: '買い物リスト共有',
+  taxreport: '確定申告レポート',
+};
 
 /** Pro の状態か（プレビュー中も Pro と同じ扱い） */
 export function isPro(settings = {}) {

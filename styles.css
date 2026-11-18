@@ -1172,3 +1172,89 @@ details.advanced > .hint:first-of-type { margin-top: 0; }
 .legal-doc th, .legal-doc td { border: 1px solid var(--line); padding: 7px 8px; font-size: 12.5px; text-align: left; vertical-align: top; }
 .legal-doc th { background: var(--surface-3); font-weight: 700; }
 .legal-doc .legal-loading { margin: 10px 0; }
+
+/* ---------- カタログ上部の固定（絞り込み〜検索結果の行） ---------- */
+/* カタログは「上部（絞り込み・お気に入り・検索結果の行）」と「一覧」を縦に分け、
+   一覧だけを別のスクロール面にする。重ねて固定しないので、後ろの文字が透けない。
+   高さは画面いっぱい（上部バー・タブバー・広告を引いた分）。 */
+#view-catalog:not([hidden]) {
+  display: flex; flex-direction: column;
+  /* 古いiOS（15.0〜15.3）は dvh が無いので vh で先に指定しておく */
+  height: calc(100vh - var(--app-header-h, 40px) - var(--tabbar-h) - var(--ad-h) - env(safe-area-inset-bottom));
+  height: calc(100dvh - var(--app-header-h, 40px) - var(--tabbar-h) - var(--ad-h) - env(safe-area-inset-bottom));
+}
+/* 一覧を内側でスクロールするので、ページ自体は動かさない */
+body.catalog-mode { overflow: hidden; }
+.catalog-sticky { flex: 0 0 auto; background: var(--bg); padding-top: 8px; border-bottom: 1px solid var(--line); }
+.catalog-sticky .dict-filter { margin-top: 0; margin-bottom: 6px; }
+.catalog-head { padding-bottom: 2px; }
+.catalog-head .sechead { padding-bottom: 6px; }
+#dictResults {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 8px;
+}
+
+/* お気に入りメーカー（普段は1行・タップで折り返し表示） */
+.favmake { margin: 0 12px 6px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+.favmake[hidden] { display: none; }
+.favmake-head {
+  width: 100%; display: flex; align-items: center; gap: 6px; padding: 7px 10px;
+  background: none; border: 0; text-align: left; color: var(--soft-ink);
+  font-size: 12px; font-weight: 800; letter-spacing: .01em;
+}
+.favmake-star { flex: 0 0 auto; width: 14px; height: 14px; color: #c98a12; }
+.favmake-head .chev {
+  flex: 0 0 auto; margin-left: auto; width: 14px; height: 14px; color: var(--muted-ink);
+  transition: transform .15s ease;
+}
+.favmake[data-open="true"] .favmake-head .chev { transform: rotate(90deg); }
+.favmake-body { display: flex; flex-wrap: wrap; gap: 5px; padding: 0 10px 9px; max-height: 118px; overflow-y: auto; }
+.favmake-body[hidden] { display: none; }
+.favmake-chip {
+  flex: 0 0 auto; max-width: 100%; padding: 5px 10px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--surface-2); color: var(--chip-ink);
+  font-size: 12px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.favmake-chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--on-accent-soft); }
+.favmake-empty { margin: 0; font-size: 11px; color: var(--muted-ink); }
+
+/* メーカー見出しの星（カタログだけ）。見出しの開閉ボタンとは別のボタンにして、
+   星を押したときに開閉しないようにする。 */
+.mgrow { display: flex; align-items: stretch; }
+.mgrow .mghead { flex: 1 1 auto; min-width: 0; }
+.mgstar {
+  flex: 0 0 auto; width: 40px; border: 0; background: none;
+  display: grid; place-items: center; color: var(--muted-ink);
+}
+.mgstar .ic { width: 17px; height: 17px; }
+.mgstar.on { color: #c98a12; }
+.mgstar:active { opacity: .6; }
+
+/* ---------- 色見本・参考写真（Pro） ---------- */
+.pro-tag {
+  margin-left: 6px; padding: 0 6px; border-radius: 999px; font-size: 10px; font-weight: 800;
+  color: var(--on-accent-soft); background: var(--accent-soft); border: 1px solid var(--accent-line);
+}
+.sample-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+.sample-grid:empty { display: none; }
+.sample-thumb {
+  position: relative; width: 66px; height: 66px; border-radius: 10px; overflow: hidden;
+  border: 1px solid var(--line); background: var(--surface-2);
+}
+.sample-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sample-del {
+  position: absolute; top: 2px; right: 2px; width: 20px; height: 20px; padding: 0;
+  border-radius: 50%; border: 1px solid var(--line); background: var(--badge-bg);
+  color: var(--ink-2); display: grid; place-items: center;
+}
+.sample-del .ic { width: 12px; height: 12px; }
+.sample-lock { margin: 0; font-size: 11px; color: var(--ink-3); }
+
+/* ---------- 通販シートの在庫（Yahoo!） ---------- */
+.shop-stock { margin: 8px 0 0; font-size: 12px; font-weight: 700; color: var(--soft-ink); }
+.shop-stock[hidden] { display: none; }
+.shop-stock.ok { color: var(--good); }
+.shop-stock.none { color: var(--ink-3); }
+.shop-stock.unknown { color: var(--warn); }
+.shop-stock .shop-stock-note { display: block; margin-top: 2px; font-size: 10.5px; font-weight: 400; color: var(--muted-ink); }
