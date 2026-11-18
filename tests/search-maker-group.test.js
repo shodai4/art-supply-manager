@@ -78,7 +78,7 @@ test('画面: メーカー見出しで分けて描き、見出しはタップで
   assert.match(app, /<use href="#i-chevron"\/>/);
   assert.match(app, /<span class="mgname">\$\{esc\(label\)\}<\/span><b>\$\{countBadge\(total\)\}<\/b>/);
   // 閉じているメーカーの中身は描かない（見出しだけ）
-  assert.match(app, /seriesBlockHtml\(surface, g\.maker, s, \{\n        open: openSeries\(g, s\), inner: body\(s\.items, s\.name, g\),\n      \}\)/);
+  assert.match(app, /seriesBlockHtml\(surface, g\.maker, s, \{\n          open: sOpen, inner: sOpen \? body\(s\.items, s\.name, g\) : '',\n        \}\)/);
   assert.match(app, /\$\{open \? inner : ''\}/);
   assert.match(css, /\.mghead\s*\{[^}]*font-size:\s*14px[^}]*font-weight:\s*700/);
   assert.match(css, /\.mg\.open \.mghead \.chev\s*\{[^}]*transform:\s*rotate\(90deg\)/);

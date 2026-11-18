@@ -785,9 +785,13 @@ function itemTreeHtml(groups, opts = {}) {
     const mOpen = openMaker(g);
     const inner = !mOpen ? '' : (lazyMaker
       ? lazyMaker(g)
-      : seriesOf(g).map((s) => seriesBlockHtml(surface, g.maker, s, {
-        open: openSeries(g, s), inner: body(s.items, s.name, g),
-      })).join(''));
+      : seriesOf(g).map((s) => {
+        const sOpen = openSeries(g, s);
+        // 閉じているシリーズの中身は作らない（行のHTMLを組み立てるのも重いため）
+        return seriesBlockHtml(surface, g.maker, s, {
+          open: sOpen, inner: sOpen ? body(s.items, s.name, g) : '',
+        });
+      }).join(''));
     return `<section class="mg${mOpen ? ' open' : ''}">
       ${makerHeadHtml({ surface, maker: g.maker, label: g.label, total: g.total, open: mOpen })}
       ${inner}
