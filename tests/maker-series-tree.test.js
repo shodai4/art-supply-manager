@@ -72,6 +72,18 @@ test('行の名前: 見出しのメーカー名・シリーズ名を繰り返さ
   for (const [entry, want] of cases) assert.equal(seriesItemLabel(entry), want, entry.name);
 });
 
+test('行の名前: シリーズ名と共通の頭（語の区切りまで）も落とす', () => {
+  // シリーズ名が途中までしか一致しない（「ベーシックス」まで共通）
+  assert.equal(seriesItemLabel({ name: 'リキテックス ベーシックス ウルトラマリンブルー 118ml', maker: 'リキテックス', series: 'ベーシックス 380(043)', colorName: 'ウルトラマリンブルー' }),
+    'ウルトラマリンブルー 118ml');
+  assert.equal(seriesItemLabel({ name: '名村大成堂 水彩筆 ラフィーネ LR 10号', maker: '名村大成堂', series: '水彩筆 Raffine ラフィーネ ロングラウンド' }),
+    'ラフィーネ LR 10号');
+  // 共通の頭が語の区切りで終わらないときは落とさない（別の商品名を削らない）
+  assert.equal(seriesItemLabel({ name: 'ホルベイン 油絵具セット', maker: 'ホルベイン', series: '油絵具 12色' }), '油絵具セット');
+  // 何も残らないときは商品名のまま（空欄にしない）
+  assert.equal(seriesItemLabel({ name: 'ベーシックス', series: 'ベーシックス' }), 'ベーシックス');
+});
+
 test('行の名前: 色名が名前に無ければ足し、何も残らなければ商品名に戻す', () => {
   assert.equal(seriesItemLabel({ name: '15ml', maker: 'ホルベイン', series: '油絵具', colorName: 'コバルトブルー' }), 'コバルトブルー 15ml');
   assert.equal(seriesItemLabel({ name: 'コピック', maker: 'コピック', series: '' }), 'コピック');

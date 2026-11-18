@@ -983,6 +983,19 @@ export function seriesItemLabel(entry = {}, series = '') {
     dropMaker();
     if (rest === before) break;
   }
+  // シリーズ名と商品名の「共通の頭」も落とす（シリーズ「ベーシックス 380(043)」に対する
+  // 「ベーシックス ウルトラマリンブルー 118ml」のように、シリーズ名が途中までしか一致しないとき）。
+  // 語の区切り（空白）で終わる共通の頭だけを対象にし、何も残らないときは触らない
+  if (group && rest !== group) {
+    let n = 0;
+    while (n < rest.length && n < group.length && rest[n] === group[n]) n += 1;
+    const head = rest.slice(0, n);
+    const cut = head.lastIndexOf(' ', head.length - 1);
+    if (cut >= 1) {
+      const next = rest.slice(cut + 1).trim();
+      if (next) rest = next;
+    }
+  }
   if (color && !squish(rest).includes(squish(color))) rest = rest ? `${color} ${rest}` : color;
   if (!rest) rest = name || color || group;
   return rest;
