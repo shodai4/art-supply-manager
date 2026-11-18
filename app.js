@@ -69,6 +69,9 @@ import {
   THEME_MODES, normalizeTheme, resolveTheme, themeColor, themeLabel, readStoredTheme,
   writeStoredTheme, prefersDark,
 } from './theme.js';
+import {
+  TUTORIAL_LEAD, tutorialHtml, slideIndexAt, readGuideSeen, writeGuideSeen,
+} from './tutorial.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -3696,8 +3699,122 @@ $('dictResults').addEventListener('click', (e) => {
   if (d) openItemSheet(null, dictPreset(d));
 });
 
-/* ---------------- チュートリアル（使い方） ---------------- */
-$('btnGuide').addEventListener('click', () => openSheet('sheetGuide'));
+/* ---------------- 使い方（チュートリアル） ---------------- */
+// タブごとのアコーディオンを開くと、その中で「画面の写真＋短い説明」を横にめくれる。
+// 中身（画像と文）は tutorial.js にまとめてあり、ここは操作だけを受け持つ。
+const guideList = $('guideList');
+let guideRaf = 0;
+
+/** 使い方の中身を1回だけ作る（画像は遅延読み込み） */
+function renderGuide() {
+  if (!guideList || guideList.dataset.ready === '1') return;
+  guideList.innerHTML = tutorialHtml();
+  const lead = $('guideLead');
+  if (lead) lead.textContent = TUTORIAL_LEAD;
+  guideList.dataset.ready = '1';
+}
+
+/** そのスワイプの「いま何枚目か」をドットと左右ボタンへ反映する */
+function syncGuideNav(swipe) {
+  const body = swipe?.parentElement;
+  if (!body) return;
+  const count = swipe.querySelectorAll('.gslide').length;
+  const index = slideIndexAt(swipe.scrollLeft, swipe.clientWidth, count);
+  body.querySelectorAll('.gdot').forEach((dot, i) => {
+    dot.setAttribute('aria-selected', i === index ? 'true' : 'false');
+  });
+  const prev = body.querySelector('[data-gnav="-1"]');
+  const next = body.querySelector('[data-gnav="1"]');
+  if (prev) prev.disabled = index <= 0;
+  if (next) next.disabled = index >= count - 1;
+  swipe.dataset.index = String(index);
+}
+
+/** スクロール中は1フレームに1回だけ合わせる（スワイプで重くならないように） */
+function scheduleGuideSync(swipe) {
+  if (guideRaf) return;
+  guideRaf = requestAnimationFrame(() => {
+    guideRaf = 0;
+    syncGuideNav(swipe);
+  });
+}
+
+/** 使い方を開く（tabId を渡すとそのタブを開いた状態で出す） */
+function openGuide(tabId) {
+  renderGuide();
+  openSheet('sheetGuide');
+  if (tabId) {
+    const acc = guideList?.querySelector(`.gacc[data-gtab="${tabId}"]`);
+    if (acc) acc.open = true;
+  }
+  // 幅が決まってから、ドットと左右ボタンの状態を合わせる
+  requestAnimationFrame(() => {
+    guideList?.querySelectorAll('.gswipe').forEach(syncGuideNav);
+  });
+  markGuideSeen();
+}
+
+/** 初回案内のカード（まだ使い方を見ていないときだけ出す） */
+function renderGuideIntro() {
+  const card = $('guideIntro');
+  if (!card) return;
+  card.hidden = readGuideSeen(safeStorage());
+}
+
+/** 使い方を見た印を付け、初回案内のカードを下げる */
+function markGuideSeen() {
+  if (!readGuideSeen(safeStorage())) writeGuideSeen(safeStorage(), true);
+  renderGuideIntro();
+}
+
+if (guideList) {
+  // アコーディオンは1つだけ開く（開いたタブのドットを合わせる）
+  guideList.addEventListener('toggle', (e) => {
+    const acc = e.target.closest?.('.gacc');
+    if (!acc || !acc.open) return;
+    guideList.querySelectorAll('.gacc[open]').forEach((other) => {
+      if (other !== acc) other.open = false;
+    });
+    const swipe = acc.querySelector('.gswipe');
+    if (swipe) scheduleGuideSync(swipe);
+    // 開いたタブが見出しの位置に来るように、シートの中を送る（写真と説明が1画面に収まる）
+    // （開いた中身の高さが決まるのは次の描画なので、少し置いてから送る）
+    const sheet = acc.closest('.sheet');
+    if (sheet && typeof sheet.scrollTo === 'function') {
+      setTimeout(() => {
+        sheet.scrollTo({ top: Math.max(0, acc.offsetTop - 8), behavior: 'smooth' });
+      }, 60);
+    }
+  }, true);
+  // スワイプ（scroll はバブらないので capture で拾う）
+  guideList.addEventListener('scroll', (e) => {
+    const swipe = e.target.closest?.('.gswipe');
+    if (swipe) scheduleGuideSync(swipe);
+  }, true);
+  // 左右ボタンとドット
+  guideList.addEventListener('click', (e) => {
+    const body = e.target.closest?.('.gacc-body');
+    const swipe = body?.querySelector('.gswipe');
+    if (!swipe) return;
+    const nav = e.target.closest('[data-gnav]');
+    if (nav) {
+      swipe.scrollBy({ left: (Number(nav.dataset.gnav) || 0) * swipe.clientWidth, behavior: 'smooth' });
+      return;
+    }
+    const dot = e.target.closest('[data-goto]');
+    if (dot) swipe.scrollTo({ left: (Number(dot.dataset.goto) || 0) * swipe.clientWidth, behavior: 'smooth' });
+  });
+}
+
+$('btnGuide').addEventListener('click', () => openGuide());
+if ($('btnGuideIntro')) $('btnGuideIntro').addEventListener('click', () => openGuide('stock'));
+if ($('btnGuideIntroClose')) {
+  // 案内を閉じただけでも「見た」ことにして、次からは出さない
+  $('btnGuideIntroClose').addEventListener('click', () => {
+    writeGuideSeen(safeStorage(), true);
+    renderGuideIntro();
+  });
+}
 
 /* ---------------- PWA（アプリ内では Service Worker を使わない） ---------------- */
 if ('serviceWorker' in navigator && !isNativeShell(window)) {
@@ -3719,6 +3836,8 @@ if (NATIVE_APP && state.settings.proPreview) {
   save();
 }
 
+renderGuide();
+renderGuideIntro();
 seedSamplesOnFirstRun();
 render();
 preloadPhotos().then((ok) => {

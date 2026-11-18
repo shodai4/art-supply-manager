@@ -384,11 +384,64 @@ button, a, select, label, summary, .hbtn, .vpill, .fab, .tabbar button { touch-a
 .mghead:active { opacity: .65; }
 
 /* ---------- チュートリアル（使い方） ---------- */
-.guide { display: flex; flex-direction: column; gap: 10px; padding: 2px 0 6px; }
-.gstep { border-top: 1px solid var(--line); padding-top: 9px; }
-.gstep:first-child { border-top: none; padding-top: 0; }
-.gstep b { display: block; font-size: 13px; font-weight: 800; color: var(--ink); margin-bottom: 3px; }
-.gstep span { display: block; font-size: 12.5px; line-height: 1.6; color: var(--ink-2); }
+/* タブごとにアコーディオン → 開くと「画面の写真＋短い説明」を横にめくる（1タブ1行、最初は閉じる） */
+.guide { display: flex; flex-direction: column; gap: 8px; padding: 2px 0 6px; }
+.gacc { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow: hidden; }
+.gacc > summary {
+  list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px;
+  padding: 13px 12px; font-size: 13.5px; font-weight: 800; color: var(--ink);
+}
+.gacc > summary::-webkit-details-marker { display: none; }
+.gacc > summary:active { background: var(--surface-2); }
+.gacc[open] > summary { border-bottom: 1px solid var(--line); background: var(--surface-3); }
+.gacc-mark { flex: 0 0 auto; font-size: 11px; color: var(--muted-ink); transition: transform .15s ease; }
+.gacc[open] .gacc-mark { transform: rotate(90deg); }
+.gacc-title { flex: 0 0 auto; white-space: nowrap; }
+.gacc-note {
+  flex: 1 1 auto; min-width: 0; font-size: 11.5px; font-weight: 600; color: var(--ink-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.gacc-count {
+  flex: 0 0 auto; min-width: 19px; text-align: center; font-size: 10.5px; font-weight: 800;
+  color: var(--on-accent-soft); background: var(--accent-soft); border: 1px solid var(--accent-line);
+  border-radius: 999px; padding: 1px 6px;
+}
+.gacc-body { padding: 10px 0 8px; }
+
+/* 横スライド（スワイプ＋スクロールスナップ。ドットと左右のボタンでも動かせる） */
+.gswipe {
+  display: flex; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory;
+  scroll-behavior: smooth; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; padding: 0;
+}
+.gswipe::-webkit-scrollbar { display: none; }
+.gswipe:focus-visible { outline: 2px solid var(--accent-line); outline-offset: -2px; }
+.gslide { flex: 0 0 100%; min-width: 0; margin: 0; padding: 0 12px; box-sizing: border-box; scroll-snap-align: center; scroll-snap-stop: always; }
+.gslide img {
+  /* 縦長の画面写真を、比率を変えずにシートの高さへ収める（幅は高さに合わせて縮む） */
+  display: block; width: auto; height: auto; max-width: 100%; max-height: 64vh;
+  margin: 0 auto; border-radius: 12px; background: var(--surface-2); pointer-events: none;
+}
+.gcap { display: block; font-size: 12.5px; line-height: 1.55; color: var(--ink-2); padding: 7px 2px 0; }
+.gnum { font-size: 11px; font-weight: 800; color: var(--muted-ink); margin-right: 6px; }
+.gnav-row { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 8px 12px 0; }
+.gnav {
+  flex: 0 0 auto; width: 34px; height: 30px; border: 1px solid var(--line); border-radius: 9px;
+  background: var(--surface); color: var(--ink); font-size: 16px; line-height: 1; font-weight: 700;
+}
+.gnav:active { background: var(--accent-soft); color: var(--on-accent-soft); }
+.gnav[disabled] { opacity: .35; }
+.gdots { display: flex; align-items: center; justify-content: center; gap: 6px; flex: 1 1 auto; }
+.gdot { width: 7px; height: 7px; padding: 0; border: none; border-radius: 50%; background: var(--line); }
+.gdot[aria-selected="true"] { background: var(--accent); transform: scale(1.25); }
+
+/* 初回案内のカード（まだ使い方を見ていないときだけ、在庫タブの上に出す） */
+.firstrun { position: relative; }
+.firstrun .hint { margin: 0 0 8px; }
+.firstrun-x {
+  position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; border: none; border-radius: 50%;
+  background: var(--surface-2); color: var(--soft-ink); display: grid; place-items: center;
+}
 
 /* ---------- 色見本アルバム（写真か色名がある画材をタイルで） ---------- */
 

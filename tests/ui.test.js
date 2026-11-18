@@ -256,33 +256,35 @@ test('右下の＋の上に、文字なしの読取ボタンがある（ツー�
   assert.match(app, /\$\('btnScan'\)\.addEventListener\('click', \(\) => \{\s*openSheet\('sheetScan'\)/);
 });
 
-test('設定タブの「使い方」から、主要機能のチュートリアルを開ける', () => {
+test('設定タブの「使い方」から、写真付きのチュートリアルを開ける', async () => {
   const html = read('index.html');
   const app = read('app.js');
   const css = read('styles.css');
+  const { TUTORIAL_TABS } = await import('../tutorial.js');
 
   // 設定タブ内のカード（危険な操作の前）
   const guideCard = html.indexOf('id="guideCard"');
   assert.ok(guideCard > 0, '使い方のカードがありません');
   assert.ok(guideCard < html.indexOf('id="btnWipe"'), '使い方は危険な操作より上に置く');
   assert.match(html, /id="btnGuide">チュートリアルを見る</);
-  // シートが開く
+  // シートが開く（中身は tutorial.js から作る）
   assert.match(html, /<div class="sheet" id="sheetGuide" role="dialog" aria-modal="true" aria-labelledby="guideTitle">/);
   assert.match(html, /data-close="sheetGuide"/);
-  assert.match(app, /\$\('btnGuide'\)\.addEventListener\('click', \(\) => openSheet\('sheetGuide'\)\)/);
+  assert.match(html, /id="guideList"/);
+  assert.match(app, /\$\('btnGuide'\)\.addEventListener\('click', \(\) => openGuide\(\)\)/);
+  assert.match(app, /guideList\.innerHTML = tutorialHtml\(\)/);
 
-  // 主要機能がひととおり載っている（短い日本語・絵文字なし）
+  // タブ4つと写真の説明に、主要な機能の言葉が入っている（短い日本語・絵文字なし）
   const sheet = html.slice(html.indexOf('id="sheetGuide"'), html.indexOf('<!-- 通販シート -->'));
-  for (const word of ['バーコード', '連続スキャン', '辞書', '買うものリスト', 'フォルダ', '子フォルダ', 'まとめて移動', 'バックアップ', 'ナイトモード']) {
-    assert.ok(sheet.includes(word), `${word} の説明がありません`);
-  }
   assert.equal(EMOJI.test(sheet), false, 'チュートリアルに絵文字がある');
-  assert.ok((sheet.match(/class="gstep"/g) || []).length >= 10, '項目が少なすぎる');
-  // チュートリアルの見出しと本文のスタイルがある
-  assert.match(css, /\.gstep b\s*\{[^}]*font-weight:\s*800/);
-  assert.match(css, /\.gstep span\s*\{[^}]*font-size:\s*12\.5px/);
-  // 文字の大きさを変える導線（拡大抑止の代わり）を書いておく
-  assert.match(sheet, /端末の設定/);
+  const text = JSON.stringify(TUTORIAL_TABS);
+  for (const word of ['在庫', '補充', 'カタログ', '設定', 'バーコード', '連続スキャン', '内蔵辞書', 'フォルダ', 'お気に入り']) {
+    assert.ok(text.includes(word), `${word} の説明がありません`);
+  }
+  // アコーディオンと横スライドのスタイルがある
+  assert.match(css, /\.gacc\[open\]/);
+  assert.match(css, /\.gswipe\s*\{[^}]*overflow-x:\s*auto/);
+  assert.match(css, /\.gslide img\s*\{[^}]*max-height/);
 });
 
 test('画面サイズは固定（ダブルタップ・ピンチで拡大しない）', () => {

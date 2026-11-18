@@ -1,10 +1,12 @@
 // アトリコ Service Worker（オフライン用キャッシュ）
-const CACHE = 'art-supply-manager-v50';
+const CACHE = 'art-supply-manager-v51';
 const ASSETS = [
   './', './index.html', './privacy.html', './terms.html', './support.html',
-  './styles.css', './app.js', './core.js', './links.js', './images.js', './pro.js', './iap.js', './samples.js', './theme.js', './jan-database.js', './jan-extra.js',
+  './styles.css', './app.js', './core.js', './links.js', './images.js', './pro.js', './iap.js', './samples.js', './theme.js', './tutorial.js', './jan-database.js', './jan-extra.js',
   './jan-extra.json', './shops.js', './scanner.js', './scan-guard.js', './scan-open-gate.js', './scan-flow.js', './auto-image.js', './admob.js', './export-file.js',
   './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png', './apple-touch-icon.png',
+  './assets/tutorial/stock-1.webp', './assets/tutorial/stock-2.webp', './assets/tutorial/stock-3.webp', './assets/tutorial/stock-4.webp',
+  './assets/tutorial/restock-1.webp', './assets/tutorial/catalog-1.webp', './assets/tutorial/catalog-2.webp', './assets/tutorial/settings-1.webp',
 ];
 
 self.addEventListener('install', (e) => {

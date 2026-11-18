@@ -287,10 +287,10 @@ test('画面: 親カードは「計 N点」と ┣ / └ の行、別の場所�
 
 test('画面: 版とキャッシュを上げる（index.html と package.json が揃う）', () => {
   const pkg = JSON.parse(read('package.json'));
-  assert.equal(pkg.version, '1.28.0');
+  assert.equal(pkg.version, '1.29.0');
   assert.match(read('index.html'), new RegExp(`app\\.js\\?v=${pkg.version.replace(/\./g, '\\.')}`));
   assert.match(read('index.html'), new RegExp(`styles\\.css\\?v=${pkg.version.replace(/\./g, '\\.')}`));
-  assert.match(read('sw.js'), /art-supply-manager-v50/);
+  assert.match(read('sw.js'), /art-supply-manager-v51/);
   // 空の状態でも壊れない
   assert.equal(blankState().items.length, 0);
 });

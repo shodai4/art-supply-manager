@@ -20,6 +20,7 @@ export const WEB_ASSETS = [
   'iap.js',
   'samples.js',
   'theme.js',
+  'tutorial.js',
   'images.js',
   'jan-database.js',
   'jan-extra.js',
@@ -39,6 +40,14 @@ export const WEB_ASSETS = [
   'icon-512.png',
   'apple-touch-icon.png',
   'vendor/html5-qrcode.min.js',
+  'assets/tutorial/stock-1.webp',
+  'assets/tutorial/stock-2.webp',
+  'assets/tutorial/stock-3.webp',
+  'assets/tutorial/stock-4.webp',
+  'assets/tutorial/restock-1.webp',
+  'assets/tutorial/catalog-1.webp',
+  'assets/tutorial/catalog-2.webp',
+  'assets/tutorial/settings-1.webp',
 ];
 
 /**
