@@ -46,9 +46,9 @@ test('必須項目と出典URLが揃っている', () => {
   }
 });
 
-test('出典は実在ページ（まつえだ・世界堂・ステッドラー公式・たのめーる）に限られ、商品名に実体参照が残らない', () => {
+test('出典は実在ページ（まつえだ・世界堂・ステッドラー公式・たのめーる・e-画材）に限られ、商品名に実体参照が残らない', () => {
   for (const e of JAN_DICTIONARY) {
-    assert.match(e.source, /^https:\/\/(www\.matueda\.com\/\?pid=\d+|webshop\.sekaido\.co\.jp\/product\/[A-Z0-9]+|www\.staedtler\.jp\/|www\.askul\.co\.jp\/|www\.tanomail\.com\/product\/\d+\/|www\.sasabegazai\.co\.jp\/pop\.html\?id=\d+$)/, `出典が不正: ${e.jan} ${e.source}`);
+    assert.match(e.source, /^https:\/\/(www\.matueda\.com\/\?pid=\d+|webshop\.sekaido\.co\.jp\/product\/[A-Z0-9]+|www\.staedtler\.jp\/|www\.askul\.co\.jp\/|www\.tanomail\.com\/product\/\d+\/|www\.sasabegazai\.co\.jp\/pop\.html\?id=\d+$|www\.e-gazai\.com\/shop\/g\/g\d+\/)/, `出典が不正: ${e.jan} ${e.source}`);
     assert.equal(/&(amp|lt|gt|quot|#\d+);/.test(e.name), false, `実体参照が残る: ${e.jan} ${e.name}`);
     assert.equal(/^[★☆※]/.test(e.name), false, `販売店の装飾が残る: ${e.jan} ${e.name}`);
   }

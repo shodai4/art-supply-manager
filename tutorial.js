@@ -86,7 +86,7 @@ export const TUTORIAL_TABS = [
       {
         image: `${TUTORIAL_ASSET_DIR}/catalog-1.webp`,
         alt: 'カタログタブ。メーカー・カテゴリ・シリーズ・キーワードで絞り込む画面',
-        caption: 'メーカー・カテゴリ・シリーズで、内蔵辞書37,822件から絞り込めます。名前でも探せます。',
+        caption: 'メーカー・カテゴリ・シリーズで、内蔵辞書38,140件から絞り込めます。名前でも探せます。',
         focus: 0.24,
         ...SHOT,
       },

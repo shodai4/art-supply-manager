@@ -4,7 +4,7 @@
  * 見たいこと:
  *   1. 一覧の見出し（メーカー・シリーズ）をまとめて開け閉めできる（全開・全閉の切り替え）
  *   2. 1つでも閉じていれば「すべて開く」、全開なら「すべて閉じる」と出る
- *   3. 件数ではボタンを出し分けない（未絞り込みの37,822件でも押せる。重さは遅延描画で抑える）
+ *   3. 件数ではボタンを出し分けない（未絞り込みの38,140件でも押せる。重さは遅延描画で抑える）
  *   4. 在庫（場所ごと・メーカーごと）・補充・カタログの見出し行にボタンが置かれ、押すと描き直す
  */
 import test from 'node:test';
@@ -69,16 +69,16 @@ test('まとめて閉じると、メーカーもシリーズも全部閉じる',
   assert.equal(groupToggleSummary(GROUPS, state).allOpen, false);
 });
 
-test('件数ではボタンを出し分けない（37,822件・8,812シリーズでも「すべて開く」を出す）', () => {
+test('件数ではボタンを出し分けない（38,140件・8,854シリーズでも「すべて開く」を出す）', () => {
   const state = createGroupOpenState();
   // 未絞り込みのカタログと同じ規模（4万件・8千シリーズ）でも出す
   const huge = [{
     maker: 'ホルベイン',
-    total: 37822,
+    total: 38140,
     series: Array.from({ length: 8812 }, (_, i) => ({ name: `s${i}`, total: 5 })),
   }];
   assert.equal(groupToggleSummary(huge, state).allowed, true, '件数が多いと出さないままになっている');
-  assert.equal(groupToggleSummary(huge, state).items, 37822);
+  assert.equal(groupToggleSummary(huge, state).items, 38140);
   assert.equal(groupToggleSummary(huge, state).seriesHeads, 8812);
   // 空の一覧では出さない（開け閉めする見出しが無い）
   assert.equal(groupToggleSummary([], state).allowed, false);

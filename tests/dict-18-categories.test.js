@@ -294,6 +294,6 @@ test('版（package.json・index.html・sw.js）がそろっている', () => {
   assert.ok(bytes < 12 * 1024 * 1024, `jan-database.js が大きすぎます: ${(bytes / 1048576).toFixed(1)}MB`);
 });
 
-test('内蔵辞書の件数は減っていない（37,822件）', () => {
-  assert.equal(JAN_DICTIONARY.length, 37822);
+test('内蔵辞書の件数は減っていない（38,140件）', () => {
+  assert.equal(JAN_DICTIONARY.length, 38140);
 });
