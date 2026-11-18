@@ -706,11 +706,18 @@ function syncBottomMetrics() {
   if (header) {
     document.documentElement.style.setProperty('--app-header-h', `${Math.ceil(header.getBoundingClientRect().height)}px`);
   }
+  // キーボードが出ている間は見えている高さが変わるので、カタログの高さもそれに合わせる
+  const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+  const viewH = vv && vv.height ? vv.height : (typeof window !== 'undefined' ? window.innerHeight : 0);
+  if (viewH) document.documentElement.style.setProperty('--view-h', `${Math.round(viewH)}px`);
   // FABは「＋」とその上の「読取」の2段分（52 + 8 + 44）＋余白。選択中は隠すので0
   const fabH = (ui.tab === 'stock' || ui.tab === 'shopping') && !ui.selectMode ? 118 : 0;
   document.documentElement.style.setProperty('--fab-h', `${fabH}px`);
 }
 window.addEventListener('resize', syncBottomMetrics);
+if (typeof window !== 'undefined' && window.visualViewport) {
+  window.visualViewport.addEventListener('resize', syncBottomMetrics);
+}
 
 function renderHeader() {
   // 見出しは「アトリコ」だけ（種数は右上の「N / 100点」で足りる）

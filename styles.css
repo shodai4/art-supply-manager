@@ -1179,9 +1179,10 @@ details.advanced > .hint:first-of-type { margin-top: 0; }
    高さは画面いっぱい（上部バー・タブバー・広告を引いた分）。 */
 #view-catalog:not([hidden]) {
   display: flex; flex-direction: column;
-  /* 古いiOS（15.0〜15.3）は dvh が無いので vh で先に指定しておく */
+  /* 高さはJSが実測した見えている高さ（--view-h）を優先する（キーボードが出ても一覧が隠れない）。
+     古いiOS（15.0〜15.3）は dvh が無いので vh も先に置いておく。 */
   height: calc(100vh - var(--app-header-h, 40px) - var(--tabbar-h) - var(--ad-h) - env(safe-area-inset-bottom));
-  height: calc(100dvh - var(--app-header-h, 40px) - var(--tabbar-h) - var(--ad-h) - env(safe-area-inset-bottom));
+  height: calc(var(--view-h, 100dvh) - var(--app-header-h, 40px) - var(--tabbar-h) - var(--ad-h) - env(safe-area-inset-bottom));
 }
 /* 一覧を内側でスクロールするので、ページ自体は動かさない */
 body.catalog-mode { overflow: hidden; }

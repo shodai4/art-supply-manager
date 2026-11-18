@@ -33,7 +33,7 @@ test('一覧だけがスクロールする（重ねないので透けない）',
   const view = /#view-catalog:not\(\[hidden\]\) \{([^}]*)\}/.exec(css);
   assert.ok(view, '#view-catalog の高さ指定がない');
   assert.match(view[1], /display: flex; flex-direction: column;/);
-  assert.match(view[1], /height: calc\(100dvh - var\(--app-header-h, 40px\) - var\(--tabbar-h\)/);
+  assert.match(view[1], /height: calc\(var\(--view-h, 100dvh\) - var\(--app-header-h, 40px\) - var\(--tabbar-h\)/);
   // 古いiOS向けに vh の行も先に置く
   assert.match(view[1], /height: calc\(100vh - var\(--app-header-h, 40px\)/);
   const list = /#dictResults \{([^}]*)\}/.exec(css);
