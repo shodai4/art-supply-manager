@@ -39,6 +39,9 @@
   --toast-ink: #ffffff;
   --shadow-1: 0 1px 2px rgba(46, 38, 24, .07);
   --shadow-2: 0 1px 1px rgba(46, 38, 24, .04);
+  /* 使い方の画面写真の枠（白い画面の写真でも、枠の縁がシートの背景に溶けない濃さ） */
+  --frame-line: #c6bdab;
+  --frame-shadow: 0 1px 3px rgba(46, 38, 24, .18), 0 8px 18px -12px rgba(46, 38, 24, .55);
   --radius: 14px;
   /* 下部UIの高さ（操作ドックはJSが実測して上書きする） */
   --tabbar-h: 56px;
@@ -91,6 +94,9 @@
   --toast-ink: #10161d;
   --shadow-1: 0 1px 2px rgba(0, 0, 0, .38);
   --shadow-2: 0 1px 1px rgba(0, 0, 0, .3);
+  /* 暗い画面では、枠は周りより少し明るい線にする（黒い写真の縁でも分かる） */
+  --frame-line: #4b5764;
+  --frame-shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 7px 16px -11px rgba(0, 0, 0, .7);
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -438,6 +444,10 @@ button, a, select, label, summary, .hbtn, .vpill, .fab, .tabbar button { touch-a
 .gslide img {
   display: block; width: 100%; height: min(320px, 42vh); object-fit: cover;
   margin: 0 auto; border-radius: 12px; background: var(--surface-2); pointer-events: none;
+  /* 写真の下端が白い画面（画材を追加のシートなど）でも、枠の輪郭が分かるようにする。
+     はっきりめの枠線＋下へ落ちるうっすらした影。色はテーマ側の変数で切り替える。 */
+  border: 1.5px solid var(--frame-line);
+  box-shadow: var(--frame-shadow);
 }
 .gcap { display: block; font-size: 12.5px; line-height: 1.55; color: var(--ink-2); padding: 6px 4px 0; }
 .gnum { font-size: 11px; font-weight: 800; color: var(--muted-ink); margin-right: 6px; }

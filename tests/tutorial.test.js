@@ -193,7 +193,7 @@ test('Service Worker と www/（iOSバンドル）にも画像と tutorial.js �
   }
   // Service Worker（オフラインでも写真が出る）
   const sw = read('sw.js');
-  assert.match(sw, /art-supply-manager-v52/);
+  assert.match(sw, /art-supply-manager-v53/);
   assert.ok(sw.includes("'./tutorial.js'"), 'sw.js に tutorial.js がない');
   for (const image of tutorialImages()) {
     assert.ok(sw.includes(`'./${image}'`), `sw.js に ${image} がない`);
@@ -223,4 +223,25 @@ test('使い方のCSS（アコーディオン・横スナップ・ドット）�
   assert.match(css, /body\[data-ad-banner="true"\] #sheetGuide \{[^}]*max-height:\s*calc\(92vh - var\(--ad-h\)\)/);
   // 絵文字は使わない
   assert.equal(EMOJI.test(css), false, 'CSSに絵文字がある');
+});
+
+test('画面写真の枠は、白い画面の写真でも背景に溶けないよう枠線と影で囲む（ライト・ダーク両方）', () => {
+  const css = read('styles.css');
+  // 枠線（1.5px〜2px の実線）と、下へ落ちるうっすらした影
+  assert.match(css, /\.gslide img \{[^}]*border:\s*1\.5px solid var\(--frame-line\)/);
+  assert.match(css, /\.gslide img \{[^}]*box-shadow:\s*var\(--frame-shadow\)/);
+  // ライトとダークの両方で、枠線の色と影の濃さを持つ（片方だけだと、そのテーマで枠が消える）
+  const light = css.slice(0, css.indexOf(':root[data-theme="dark"]'));
+  const dark = css.slice(css.indexOf(':root[data-theme="dark"]'));
+  for (const [name, block] of [['ライト', light], ['ダーク', dark]]) {
+    assert.match(block, /--frame-line:\s*#[0-9a-f]{6}/i, `${name}テーマに --frame-line がない`);
+    assert.match(block, /--frame-shadow:\s*0 1px/, `${name}テーマに --frame-shadow がない`);
+  }
+  // 枠線の色は、シートの面（--surface）と写真の下地（--surface-2）のどちらとも別の色にする
+  const line = light.match(/--frame-line:\s*(#[0-9a-f]{6})/i)[1].toLowerCase();
+  assert.notEqual(line, light.match(/--surface:\s*(#[0-9a-f]{6})/i)[1].toLowerCase(), '枠線がシートの面と同じ色');
+  assert.notEqual(line, light.match(/--surface-2:\s*(#[0-9a-f]{6})/i)[1].toLowerCase(), '枠線が写真の下地と同じ色');
+  // 高さと切り取り方は変えない（説明文とページャーが広告帯に隠れないため）
+  assert.match(css, /\.gslide img \{[^}]*height:\s*min\(320px,\s*42vh\)/);
+  assert.match(css, /\.gslide img \{[^}]*object-fit:\s*cover/);
 });
