@@ -72,7 +72,26 @@ export function buildWebDir({ root = ROOT, outDir = WWW_DIR, assets = WEB_ASSETS
   return { copied, missing };
 }
 
+/**
+ * 壊れた iOS プロジェクトの掃除。
+ * CI は `if [ ! -d ios ]; then npx cap add ios; fi` のあと `npx cap sync ios` を実行するため、
+ * ios/ が「あるが中身が足りない」（Podfile や xcodeproj が無い）状態で残っていると、
+ * cap add が飛ばされて sync が ENOENT で落ちる。iOS プロジェクトは生成物（gitignore 済み）なので、
+ * その形のときだけ丸ごと消して、次の cap add で作り直させる。
+ */
+export function cleanBrokenIos({ root = ROOT } = {}) {
+  const iosDir = path.join(root, 'ios');
+  if (!fs.existsSync(iosDir)) return { removed: false, reason: 'no-ios' };
+  const complete = fs.existsSync(path.join(iosDir, 'App', 'Podfile'))
+    && fs.existsSync(path.join(iosDir, 'App', 'App.xcodeproj', 'project.pbxproj'));
+  if (complete) return { removed: false, reason: 'complete' };
+  fs.rmSync(iosDir, { recursive: true, force: true });
+  return { removed: true, reason: 'incomplete' };
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const ios = cleanBrokenIos();
+  if (ios.removed) console.log('[build] 壊れた ios/ を消しました（次の cap add ios で作り直します）');
   const { copied, missing } = buildWebDir();
   console.log(`[build] www/ へ ${copied.length} ファイルをコピーしました`);
   if (missing.length) {

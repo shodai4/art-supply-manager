@@ -498,7 +498,11 @@ export function applyAll({
       : [SCANNER_PLUGIN_CLASS, ICLOUD_PLUGIN_CLASS].flatMap((c) => verifyCapConfigContent(content, c));
     results.push({ file: 'capacitor.config.json', action: modified ? 'updated' : 'verified', problems });
   }
-  // iCloud のキー・バリュー保存の entitlements（無ければ作り、違えば直す）
+  // iCloud のキー・バリュー保存の entitlements（無ければ作り、違えば直す）。
+  // iOS プロジェクトが無いときは作らない（テストが空の ios/ を作ってしまい、
+  // CI の `if [ ! -d ios ]` が cap add を飛ばして sync が落ちるのを防ぐ）。
+  const hasProject = fs.existsSync(plistPath) || fs.existsSync(projectPath);
+  if (!hasProject) return results;
   const wanted = entitlementsContent();
   let entitlementsAction = 'verified';
   if (!fs.existsSync(entitlementsPath)) {

@@ -9,6 +9,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createItem, blankState } from '../core.js';
@@ -19,7 +20,7 @@ import {
 import {
   entitlementsContent, verifyEntitlementsContent, addEntitlementSetting,
   configurePodfileContent, verifyPodfileContent, ICLOUD_PLUGIN_CLASS,
-  ICLOUD_ENTITLEMENT_KEY, configureCapConfigContent, verifyCapConfigContent,
+  ICLOUD_ENTITLEMENT_KEY, configureCapConfigContent, verifyCapConfigContent, applyAll,
 } from '../scripts/configure-ios.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -139,6 +140,22 @@ test('iOSのプラグインと entitlements（iCloudのキー・バリュー保�
   const withEnt = addEntitlementSetting(pbx);
   assert.equal((withEnt.match(/CODE_SIGN_ENTITLEMENTS = App\/App\.entitlements;/g) || []).length, 2);
   assert.equal(addEntitlementSetting(withEnt), withEnt);
+
+  // iOS プロジェクトが無いときは entitlements を作らない（空の ios/ を作らない）
+  {
+    const dir = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'artiko-icloud-'));
+    const res = applyAll({
+      plistPath: path.join(dir, 'none.plist'),
+      podfilePath: path.join(dir, 'none'),
+      projectPath: path.join(dir, 'none.pbxproj'),
+      lockPath: path.join(dir, 'none.lock'),
+      capConfigPath: path.join(dir, 'none.json'),
+      entitlementsPath: path.join(dir, 'ios', 'App', 'App', 'App.entitlements'),
+    });
+    assert.equal(fs.existsSync(path.join(dir, 'ios')), false, 'iOSプロジェクトが無いのに ios/ を作っている');
+    assert.equal(res.some((r) => r.file === 'App.entitlements'), false);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 
   // ネイティブプラグインは packageClassList に載せる（載っていないとJSから見えない）
   const cap = configureCapConfigContent('{"packageClassList":[]}', ICLOUD_PLUGIN_CLASS);
