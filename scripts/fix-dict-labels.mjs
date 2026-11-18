@@ -154,13 +154,18 @@ for (const e of entries) {
     const hit = missing.find(isCode);
     if (hit) { e.code = hit; recovered.code += 1; }
   }
-  const rest = missing.filter((t) => !isCode(t));
+  // シリーズ名にすでに出ている語（「単色 2本入」の 2本入 など）は、規格として数え直さない
+  const seriesKey = bare(e.series || '');
+  const rest = missing.filter((t) => !isCode(t) && !seriesKey.includes(bare(t)))
+    .sort((a, b) => a.length - b.length);
   // 色名として拾うのは、色を持つカテゴリ（絵具・色鉛筆・パステル・マーカー等）とその他だけ。
   // 紙・筆・キャンバス・額縁は規格や厚みの語が多く、色名に入れると誤りになる。
   const colorOk = PAINT_CATS.has(e.category) || e.category === 'other';
   if (!e.size) {
-    const hit = rest.find(isSize);
-    if (hit) { e.size = hit; recovered.size += 1; }
+    let hit = rest.find(isSize);
+    // 「1012本入」のように色番が食いついた語は、色番を外してから見る（「2本入」）
+    if (hit && e.code && hit.startsWith(e.code)) hit = hit.slice(e.code.length).trim();
+    if (hit && !seriesKey.includes(bare(hit))) { e.size = hit; recovered.size += 1; }
   }
   if (!e.colorName && colorOk) {
     const hit = rest.find(isColorWord);
@@ -233,7 +238,6 @@ for (let pass = 0; pass < 4; pass += 1) {
       const tokens = series.split(/\s+/);
       if (tokens.length < 2) continue;
       const selfN = count.get(series) || 0;
-      if (selfN > 2) continue; // 大きい製品ラインは動かさない（細分化した1〜2件だけを畳む）
       for (let k = tokens.length - 1; k >= 1; k -= 1) {
         const base = tokens.slice(0, k).join(' ');
         const rest = tokens.slice(k);
@@ -241,15 +245,24 @@ for (let pass = 0; pass < 4; pass += 1) {
         const baseN = count.get(base) || 0;
         const nKinds = kinds.get(base)?.size || 0;
         if (!exists && nKinds < 2) continue;
-        if (exists && baseN < selfN) continue;
+        // 落とす部分が「単色・2本入・チューブ・木箱」など仕様だけなら、件数が多くても基準へ畳む
+        const specOnly = rest.every((t) => isSetWord(t) || isSize(t) || isGrade(t) || isCode(t));
+        if (exists && baseN < selfN && !(specOnly && baseN >= 3)) continue;
         const strict = rest.every((t) => isVariantToken(t) || isLineupToken(t));
         const relaxed = !strict && exists && baseN >= 3 && rest.length <= 3
           && rest.every((t) => !SHAPE_RE.test(NF(t)));
-        if (!strict && !relaxed) continue;
-        merges.push({ maker, from: series, to: base, rest: rest.join(' '), n: selfN, baseN });
+        // 大きい製品ラインは、仕様だけの残りか、件数1〜2の細分化のときだけ動かす
+        if (selfN > 2 && !(specOnly && exists && baseN >= 3)) continue;
+        if (!strict && !relaxed && !specOnly) continue;
+        merges.push({ maker, from: series, to: base, rest: rest.join(' '), n: selfN, baseN, spec: specOnly });
         e.series = base;
         const restText = rest.join(' ').trim();
-        if (restText && !e.colorName) e.colorName = restText;
+        if (specOnly) {
+          // 「単色」「5本入」などの仕様は、行の補足（size）に残して見分けられるようにする
+          if (restText && !e.size) e.size = restText;
+        } else if (restText && !e.colorName) {
+          e.colorName = restText;
+        }
         changed += 1;
         break;
       }
