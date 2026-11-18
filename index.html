@@ -15,7 +15,7 @@ try {
 } catch (e) { /* 保存が読めないときはライト */ }
 </script>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="styles.css?v=1.29.0">
+<link rel="stylesheet" href="styles.css?v=1.30.0">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 </head>
@@ -171,6 +171,7 @@ try {
           <svg class="ic" aria-hidden="true"><use href="#i-grid"/></svg>
           <span id="itemSecTitle">すべての画材</span>
           <b id="itemCount">0</b>
+          <button type="button" class="allbtn" id="allToggleItems" data-all-surface="place" hidden>すべて開く</button>
           <span class="segslot" id="segSlotItems"></span>
         </div>
         <div id="itemList"></div>
@@ -182,6 +183,7 @@ try {
       <div class="sechead">
         <svg class="ic" aria-hidden="true"><use href="#i-grid"/></svg>
         <span>メーカー</span>
+        <button type="button" class="allbtn" id="allToggleMaker" data-all-surface="maker" hidden>すべて開く</button>
         <span class="segslot" id="segSlotMaker"></span>
       </div>
       <p class="lede">メーカーごとに開いて見られます</p>
@@ -197,7 +199,12 @@ try {
 
   <!-- 買い物リスト -->
   <section id="view-shopping" hidden>
-    <p class="lede">補充が必要なもの</p>
+    <div class="sechead" id="shoppingSecHead">
+      <svg class="ic" aria-hidden="true"><use href="#i-grid"/></svg>
+      <span>補充が必要なもの</span>
+      <b id="shoppingCount">0</b>
+      <button type="button" class="allbtn" id="allToggleShopping" data-all-surface="shopping" hidden>すべて開く</button>
+    </div>
     <div id="shoppingList"></div>
   </section>
 
@@ -240,6 +247,7 @@ try {
         <svg class="ic" aria-hidden="true"><use href="#i-grid"/></svg>
         <span>検索結果</span>
         <b id="dictResCount">0</b>
+        <button type="button" class="allbtn" id="allToggleCatalog" data-all-surface="catalog" hidden>すべて開く</button>
       </div>
       <div id="dictResults"></div>
     </div>
@@ -651,6 +659,6 @@ try {
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<script type="module" src="app.js?v=1.29.0"></script>
+<script type="module" src="app.js?v=1.30.0"></script>
 </body>
 </html>

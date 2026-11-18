@@ -7,7 +7,7 @@ import {
   isValidJAN, normalizeJAN, detectMaker, lookupJAN, itemMaker, listMakers,
   groupDictionarySearch, planDictGroups, compareMakerName, DICT_MAKER_PAGE,
   planSeriesGroups, catalogItemLabel, seriesItemLabel, groupItemsByMakerSeries,
-  createGroupOpenState, GROUP_KEY_SEP,
+  createGroupOpenState, GROUP_KEY_SEP, GROUP_EXPAND_LIMITS, groupToggleSummary,
   dictionaryRowDetail, dictionarySeriesList,
   normalizeImageUrl, recordPurchase, costSummary, costRows, buildItemsCsvText, mergeStates,
   folderParentId, folderChildren, folderChain, folderDepth, folderPathLabel, folderSubtreeIds,
@@ -795,6 +795,84 @@ function itemTreeBlockHtml(groups, opts = {}) {
   return inner ? `<div class="makers">${inner}</div>` : '';
 }
 
+/* ---------------- 見出しの「すべて開く／すべて閉じる」 ---------------- */
+// 一覧（在庫の場所ごと／メーカーごと・補充・カタログ）の見出し行の右端に、メーカーとシリーズを
+// まとめて開け閉めする小さなボタンを出す。
+// カタログは未絞り込みだと3万件あるので、件数が GROUP_EXPAND_LIMITS を超えるときは
+// ボタンを出さない（開けっ放しでDOMが重くならないように、絞り込んでから使う）。
+
+/** 面ごとの開閉の記憶（カタログだけは集計を使い回す入れ物を持っている） */
+function groupStateForSurface(surface) {
+  return surface === 'catalog' ? dictGroupState : groupStateOf(surface);
+}
+
+/** 面ごとの一覧の入れ物（開いているかどうかをDOMから見る） */
+const GROUP_TOGGLE_ROOTS = { place: 'itemList', maker: 'makerGroups', shopping: 'shoppingList', catalog: 'dictResults' };
+
+/**
+ * その一覧に「閉じている見出し」が残っているか。
+ * 検索中は当たった見出しを自動で開くので、記憶（state）ではなく、いま出ている見出しの
+ * aria-expanded を見る（見える状態とボタンの文言を必ず一致させる）。
+ */
+function anyGroupClosed(surface) {
+  const root = $(GROUP_TOGGLE_ROOTS[surface] || '');
+  if (!root) return true;
+  return Boolean(root.querySelector('[data-g-maker][aria-expanded="false"]'));
+}
+
+/** ボタンの文言と出し分け（全開なら「すべて閉じる」、1つでも閉じていれば「すべて開く」） */
+function applyGroupToggle(btn, summary, allOpen) {
+  if (!btn) return;
+  const show = Boolean(summary && summary.allowed);
+  btn.hidden = !show;
+  if (!show) return;
+  const open = allOpen ?? Boolean(summary.allOpen);
+  btn.textContent = open ? 'すべて閉じる' : 'すべて開く';
+  btn.dataset.groupAction = open ? 'close' : 'open';
+  btn.setAttribute('aria-label', open
+    ? 'メーカーとシリーズをすべて閉じる'
+    : 'メーカーとシリーズをすべて開く');
+}
+
+/** ボタンを、いまの一覧（groups）と、いま出ている見出しの開閉に合わせる */
+function syncGroupToggle(btn, groups, surface) {
+  if (!btn) return;
+  applyGroupToggle(btn, groupToggleSummary(groups, groupStateForSurface(surface)), !anyGroupClosed(surface));
+}
+
+/** 面ごとの、いまの一覧（詳細を数える前の軽い形） */
+function currentGroupsForSurface(surface) {
+  const items = surface === 'shopping'
+    ? favoritesFirst(sortItems([...computeShoppingList(state.items)], state.settings.sort))
+    : (surface === 'maker' ? favoritesFirst(sortItems(state.items, state.settings.sort)) : currentList());
+  return groupItemsByMakerSeries(items, { makerOf: itemMaker });
+}
+
+/**
+ * カタログの検索結果の見出し。件数が上限を超えるときは数えずに null（ボタンを出さない）。
+ * 上限内ならシリーズまで数えても軽い。
+ */
+function catalogGroupToggle() {
+  const { groups = [], total = 0 } = dictGroups || {};
+  if (!groups.length || total <= 0 || total > GROUP_EXPAND_LIMITS.items) return null;
+  const items = groups.flatMap((g) => g.items || []);
+  const full = groupItemsByMakerSeries(items, { makerOf: (d) => String(d?.maker || 'メーカー不明') });
+  const summary = groupToggleSummary(full, dictGroupState);
+  return summary.allowed ? summary : null;
+}
+
+/** いま押すと開くのか閉じるのかを決める（ボタンと表示の両方で同じ判定を使う） */
+function groupToggleTarget(surface) {
+  return surface === 'catalog'
+    ? catalogGroupToggle()
+    : groupToggleSummary(currentGroupsForSurface(surface), groupStateForSurface(surface));
+}
+
+/** 押したときに開くのか閉じるのか（いま出ている見出しの開閉で決める） */
+function groupToggleIsClose(surface) {
+  return !anyGroupClosed(surface);
+}
+
 /** 画材一覧（今いる場所のすべて。検索中は全体から探す） */
 function renderItemSection() {
   // 「メーカーごと」を見ている間は場所の一覧を作らない（隠れているうえ、行数が多いと重い）
@@ -813,7 +891,7 @@ function renderItemSection() {
         : (root ? '未分類' : folderOf(ui.folderId).name));
   $('itemCount').textContent = String(list.length);
   // 「お気に入り」「すべての画材」はどのフォルダから来たかが分かるよう、フォルダの色の点を出す
-  renderItemTree($('itemList'), list, {
+  const groups = renderItemTree($('itemList'), list, {
     surface: 'place',
     emptyKey: fav ? 'favorites' : (unfiledOnly ? 'unfiled' : 'items'),
     // お気に入り・すべての画材・未分類は、どのフォルダのものか分かるようにする
@@ -821,6 +899,7 @@ function renderItemSection() {
     // フォルダを1つだけ開いているときは、まとめずに「他：アトリエ1」を添える
     otherPlaces: ui.folderId !== 'all' && !fav && !all && !ui.query,
   });
+  syncGroupToggle($('allToggleItems'), groups, 'place');
 }
 
 /**
@@ -833,6 +912,7 @@ function renderMakerView() {
   const items = favoritesFirst(sortItems(state.items, state.settings.sort));
   if (!items.length) {
     $('makerGroups').innerHTML = '<div class="empty"><b>まだ画材がありません</b>右下の＋ か 読取 から登録できます</div>';
+    syncGroupToggle($('allToggleMaker'), [], 'maker');
     return;
   }
   const groups = groupItemsByMakerSeries(items, { makerOf: itemMaker });
@@ -841,6 +921,7 @@ function renderMakerView() {
     surface: 'maker',
     body: (list, seriesName) => itemsBodyHtml(list, { showFolder: true, seriesName }),
   });
+  syncGroupToggle($('allToggleMaker'), groups, 'maker');
 }
 
 /** アイテムの実物画像（手元写真 → 画像URL の順。無ければ空文字でアイコン表示） */
@@ -1073,7 +1154,7 @@ function emptyListHtml(emptyKey) {
  * 中身はグリッド／リストの設定に従う（itemsBodyHtml）。
  */
 function renderItemTree(el, items, opts = {}) {
-  if (!items.length) { el.innerHTML = emptyListHtml(opts.emptyKey); return; }
+  if (!items.length) { el.innerHTML = emptyListHtml(opts.emptyKey); return []; }
   const groups = groupItemsByMakerSeries(items, { makerOf: itemMaker });
   el.innerHTML = itemTreeBlockHtml(groups, {
     surface: opts.surface || 'place',
@@ -1081,14 +1162,18 @@ function renderItemTree(el, items, opts = {}) {
     autoOpen: Boolean(ui.query),
     body: (list, seriesName) => itemsBodyHtml(list, { ...opts, seriesName }),
   });
+  return groups;
 }
 
 function renderShopping() {
   // 補充タブも在庫と同じ「メーカー ＞ シリーズ」（シリーズの中は並び設定・お気に入りが先頭）
   const list = favoritesFirst(sortItems([...computeShoppingList(state.items)], state.settings.sort));
-  renderItemTree($('shoppingList'), list, {
+  const groups = renderItemTree($('shoppingList'), list, {
     surface: 'shopping', emptyKey: 'shopping', shopChip: true, forceList: true, noJanGroup: true,
   });
+  syncGroupToggle($('allToggleShopping'), groups, 'shopping');
+  const count = $('shoppingCount');
+  if (count) count.textContent = String(list.length);
 }
 
 function currentList() {
@@ -1533,6 +1618,25 @@ document.addEventListener('click', (e) => {
   toggleGroupOpen(surface, isSeries ? 'series' : 'maker', maker, name);
   if (surface === 'catalog') { renderSearchTab(); return; }
   if (surface === 'dict') { renderDictList($('dictQ').value); return; }
+  render();
+});
+
+/**
+ * 見出し行の右端の「すべて開く／すべて閉じる」。
+ * 押したときの判定（開くか閉じるか）は、ボタンの文言を決めたのと同じ材料から取り直す。
+ * 件数が上限を超えていたら何もしない（ボタン自体を出していない）。
+ */
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-all-surface]');
+  if (!btn) return;
+  const surface = btn.dataset.allSurface || 'place';
+  const summary = groupToggleTarget(surface);
+  if (!summary || !summary.allowed) return;
+  const state = groupStateForSurface(surface);
+  const closing = groupToggleIsClose(surface);
+  if (closing) state.closeAll(summary.entries);
+  else state.openAll(summary.entries);
+  if (surface === 'catalog') { renderSearchTab(); return; }
   render();
 });
 
@@ -3648,6 +3752,8 @@ function renderSearchTab() {
   });
   $('dictResults').innerHTML = tree
     || '<p class="hint" style="margin:12px">見つかりません。商品名・メーカー・JANの一部で探してみてください</p>';
+  // 見出し行の右端の「すべて開く／すべて閉じる」（件数が多いときは出さない）
+  applyGroupToggle($('allToggleCatalog'), catalogGroupToggle(), !anyGroupClosed('catalog'));
 }
 
 $('dictQTab').addEventListener('input', (e) => {

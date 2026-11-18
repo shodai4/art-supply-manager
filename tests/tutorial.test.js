@@ -34,12 +34,18 @@ test('タブは「1. 在庫」「2. 補充」「3. カタログ」「4. 設定�
   }
 });
 
-test('写真の割り当ては 在庫4枚・補充1枚・カタログ2枚・設定1枚（計8枚）', () => {
+test('写真の割り当ては 在庫3枚・補充1枚・カタログ2枚・設定1枚（計7枚）', () => {
   const counts = Object.fromEntries(TUTORIAL_TABS.map((tab) => [tab.id, tab.slides.length]));
-  assert.deepEqual(counts, { stock: 4, restock: 1, catalog: 2, settings: 1 });
-  assert.equal(TUTORIAL_SLIDE_TOTAL, 8);
-  assert.equal(tutorialImages().length, 8);
-  assert.equal(new Set(tutorialImages()).size, 8, '同じ画像が2回使われている');
+  assert.deepEqual(counts, { stock: 3, restock: 1, catalog: 2, settings: 1 });
+  assert.equal(TUTORIAL_SLIDE_TOTAL, 7);
+  assert.equal(tutorialImages().length, 7);
+  assert.equal(new Set(tutorialImages()).size, 7, '同じ画像が2回使われている');
+  // バーコードの画面（4枚目）は外した（探すのは右上の読取ボタンから）
+  assert.equal(tutorialImages().some((image) => /stock-4\./.test(image)), false, 'stock-4 がまだ使われている');
+  for (const file of ['tutorial.js', 'scripts/build.mjs', 'sw.js']) {
+    assert.equal(/stock-4\.webp/.test(read(file)), false, `${file} に stock-4.webp が残っている`);
+  }
+  assert.equal(fs.existsSync(path.join(ROOT, `${TUTORIAL_ASSET_DIR}/stock-4.webp`)), false, 'stock-4.webp が残っている');
 });
 
 test('画像は assets/tutorial/ に実在し、WebP として軽い（1枚100KB未満）', () => {
@@ -66,6 +72,22 @@ test('写真は縦長で、ステータスバーと広告帯を切った比率�
       assert.ok(ratio > 1.7 && ratio < 2.0, `${slide.image} の縦横比が想定外: ${ratio.toFixed(2)}`);
     }
   }
+});
+
+test('正方形の枠に切り取る位置（focus）が、全スライドに 0〜1 で入っている', () => {
+  for (const tab of TUTORIAL_TABS) {
+    for (const slide of tab.slides) {
+      const focus = Number(slide.focus);
+      assert.equal(Number.isFinite(focus), true, `${slide.image} に focus がない`);
+      assert.ok(focus >= 0 && focus <= 1, `${slide.image} の focus が範囲外: ${focus}`);
+    }
+  }
+  // HTML の img にも、その位置が object-position として入る（--core のCSSだけでは切り取る位置を変えられない）
+  const html = tutorialHtml();
+  assert.equal((html.match(/style="object-position:50% \d+%"/g) || []).length, TUTORIAL_SLIDE_TOTAL);
+  // 下端の広告帯に説明とページャーを隠されないよう、枠は正方形に近い高さで切り取る
+  const stock3 = TUTORIAL_TABS[0].slides[2];
+  assert.equal(stock3.focus, 1, '＋メニューの画面は下端（＋のメニュー）を見せる');
 });
 
 test('説明は短く（1〜2行）、絵文字を使っていない', () => {
@@ -171,7 +193,7 @@ test('Service Worker と www/（iOSバンドル）にも画像と tutorial.js �
   }
   // Service Worker（オフラインでも写真が出る）
   const sw = read('sw.js');
-  assert.match(sw, /art-supply-manager-v51/);
+  assert.match(sw, /art-supply-manager-v52/);
   assert.ok(sw.includes("'./tutorial.js'"), 'sw.js に tutorial.js がない');
   for (const image of tutorialImages()) {
     assert.ok(sw.includes(`'./${image}'`), `sw.js に ${image} がない`);
@@ -193,8 +215,12 @@ test('使い方のCSS（アコーディオン・横スナップ・ドット）�
   assert.match(css, /scroll-snap-type: x mandatory/);
   assert.match(css, /\.gslide \{[^}]*scroll-snap-align: center/);
   assert.match(css, /\.gdot\[aria-selected="true"\]/);
-  // 写真はシートに収まる高さに抑える（縦長の画面をそのまま出すと説明とドットが画面外へ行く）
-  assert.match(css, /\.gslide img \{[^}]*max-height: 64vh/);
+  // 写真は正方形に近い枠に切り取り、説明文とページャーが広告帯の上に収まるようにする
+  assert.match(css, /\.gslide img \{[^}]*height:\s*min\(320px,\s*42vh\)/);
+  assert.match(css, /\.gslide img \{[^}]*object-fit:\s*cover/);
+  // 広告バナーが出ている間は、シート自体をバナーの上で終わらせる（説明とページャーを隠さない）
+  assert.match(css, /body\[data-ad-banner="true"\] #sheetGuide \{[^}]*bottom:\s*calc\(var\(--ad-h\)/);
+  assert.match(css, /body\[data-ad-banner="true"\] #sheetGuide \{[^}]*max-height:\s*calc\(92vh - var\(--ad-h\)\)/);
   // 絵文字は使わない
   assert.equal(EMOJI.test(css), false, 'CSSに絵文字がある');
 });

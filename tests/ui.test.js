@@ -278,13 +278,13 @@ test('設定タブの「使い方」から、写真付きのチュートリア�
   const sheet = html.slice(html.indexOf('id="sheetGuide"'), html.indexOf('<!-- 通販シート -->'));
   assert.equal(EMOJI.test(sheet), false, 'チュートリアルに絵文字がある');
   const text = JSON.stringify(TUTORIAL_TABS);
-  for (const word of ['在庫', '補充', 'カタログ', '設定', 'バーコード', '連続スキャン', '内蔵辞書', 'フォルダ', 'お気に入り']) {
+  for (const word of ['在庫', '補充', 'カタログ', '設定', '内蔵辞書', 'フォルダ', 'お気に入り', '保管場所', 'メーカー']) {
     assert.ok(text.includes(word), `${word} の説明がありません`);
   }
   // アコーディオンと横スライドのスタイルがある
   assert.match(css, /\.gacc\[open\]/);
   assert.match(css, /\.gswipe\s*\{[^}]*overflow-x:\s*auto/);
-  assert.match(css, /\.gslide img\s*\{[^}]*max-height/);
+  assert.match(css, /\.gslide img\s*\{[^}]*object-fit:\s*cover/);
 });
 
 test('画面サイズは固定（ダブルタップ・ピンチで拡大しない）', () => {

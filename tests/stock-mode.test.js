@@ -61,7 +61,7 @@ test('在庫タブの中に「場所 / メーカー」の切り替えがあり�
   assert.ok(place.includes('id="folderSec"') && place.includes('id="folderGrid"'), 'フォルダがありません');
   assert.ok(place.includes('id="itemSec"') && place.includes('id="itemList"'), '在庫一覧がありません');
   // メーカーごと＝メーカー別のまとまり（初期は隠す）
-  assert.match(stock, /id="stockMakerView" hidden[\s\S]{0,300}id="makerGroups"/);
+  assert.match(stock, /id="stockMakerView" hidden[\s\S]{0,600}id="makerGroups"/);
 
   // 初期値と、押したときの切り替え
   assert.match(app, /stockMode: 'place'/);
@@ -224,5 +224,5 @@ test('画材が無いときは「メーカーごと」でも案内を出す（�
   assert.match(app, /function renderMakerView\(\) \{[\s\S]{0,400}if \(!items\.length\) \{[\s\S]{0,200}まだ画材がありません/);
   // 場所ごと・補充も同じ案内（共通の emptyListHtml）を使う
   assert.match(app, /function emptyListHtml\(emptyKey\) \{/);
-  assert.match(app, /if \(!items\.length\) \{ el\.innerHTML = emptyListHtml\(opts\.emptyKey\); return; \}/);
+  assert.match(app, /if \(!items\.length\) \{ el\.innerHTML = emptyListHtml\(opts\.emptyKey\); return \[\]; \}/);
 });

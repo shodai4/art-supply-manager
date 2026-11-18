@@ -7,6 +7,8 @@
  *   - 説明は1〜2行（長くしない）。絵文字は使わない（絵描き向けに、文字は少なく）。
  *   - 画像は assets/tutorial/ に置き、Service Worker と www/（iOSバンドル）にも入れる。
  *   - 画像は端末のステータスバーと広告帯を切ったもの（720px幅の WebP）。
+ *   - 画面では正方形に近い枠（高さ320px）に切り取って出す。下端のAdMobバナーに
+ *     説明文とページャーが隠れないよう、縦長のままでは出さない（styles.css の .gslide img）。
  */
 
 /** 画像の置き場所（Service Worker・www/ の一覧と合わせる） */
@@ -20,8 +22,14 @@ export const GUIDE_SEEN_KEY = 'art-supply-manager/guideSeen';
 
 /** 画像の既定サイズ（幅720px。縦は端末の画面比） */
 const SHOT = { w: 720, h: 1291 };
-/** バーコード読み取りの画面だけ縦が少し長い */
-const SHOT_TALL = { w: 720, h: 1389 };
+
+/**
+ * 正方形の枠に入れるときの縦の寄せ（0=上端, 0.5=中央, 1=下端）。
+ * 枠には画面の高さの約55%しか入らないので、そのスライドで説明している所
+ * （フォルダの並び・−＋の付いた行・＋のメニューなど）が切れない位置に寄せる。
+ * 値は「はみ出した分のうち、上をどれだけ捨てるか」（CSS の object-position と同じ）。
+ */
+const FOCUS = { top: 0, mid: 0.45, bottom: 1 }; // 目安（微調整は各スライドで直接指定）
 
 /**
  * タブ（アコーディオン）4つ。slides の順がそのまま「画像1 → 画像2 …」の順。
@@ -37,25 +45,22 @@ export const TUTORIAL_TABS = [
         image: `${TUTORIAL_ASSET_DIR}/stock-1.webp`,
         alt: '在庫タブの最初の画面。お気に入り・すべての画材と、保管場所のフォルダが並ぶ',
         caption: '最初はこの画面。お気に入り・すべての画材の下に、保管場所のフォルダが並びます。',
+        focus: FOCUS.top,
         ...SHOT,
       },
       {
         image: `${TUTORIAL_ASSET_DIR}/stock-2.webp`,
         alt: 'フォルダの中。メーカーとシリーズごとに画材が並び、−＋と星が付いている',
         caption: 'フォルダを開くとメーカー＞シリーズ別。−＋で在庫数、星でお気に入りを変えられます。',
+        focus: FOCUS.mid,
         ...SHOT,
       },
       {
         image: `${TUTORIAL_ASSET_DIR}/stock-3.webp`,
         alt: '＋を押したときに出る「カタログから選ぶ」と「自分で入力」の2択',
         caption: '＋を押すと「カタログから選ぶ」か「自分で入力」を選べます。',
+        focus: FOCUS.bottom,
         ...SHOT,
-      },
-      {
-        image: `${TUTORIAL_ASSET_DIR}/stock-4.webp`,
-        alt: 'バーコードの読み取り画面。枠の中にバーコードを入れると読み取る',
-        caption: 'バーコードは枠に入れるだけ。連続スキャンをONにすると、閉じずに読み続けられます。',
-        ...SHOT_TALL,
       },
     ],
   },
@@ -68,6 +73,7 @@ export const TUTORIAL_TABS = [
         image: `${TUTORIAL_ASSET_DIR}/restock-1.webp`,
         alt: '補充タブ。少なくなった画材と使い切った画材が、メーカーとシリーズごとにまとまる',
         caption: '少なくなった画材と使い切った画材が、自動でここにまとまります。通販ボタンから探せます。',
+        focus: FOCUS.top,
         ...SHOT,
       },
     ],
@@ -80,13 +86,15 @@ export const TUTORIAL_TABS = [
       {
         image: `${TUTORIAL_ASSET_DIR}/catalog-1.webp`,
         alt: 'カタログタブ。メーカー・カテゴリ・シリーズ・キーワードで絞り込む画面',
-        caption: 'メーカー・カテゴリ・シリーズ・キーワードで、内蔵辞書37,822件から絞り込めます。',
+        caption: 'メーカー・カテゴリ・シリーズで、内蔵辞書37,822件から絞り込めます。名前でも探せます。',
+        focus: 0.24,
         ...SHOT,
       },
       {
         image: `${TUTORIAL_ASSET_DIR}/catalog-2.webp`,
         alt: 'シリーズを開いた検索結果。商品ごとに「追加」ボタンが並ぶ',
         caption: 'シリーズを開いて「追加」を押すだけで、その画材が在庫に入ります。',
+        focus: 0.9,
         ...SHOT,
       },
     ],
@@ -100,6 +108,7 @@ export const TUTORIAL_TABS = [
         image: `${TUTORIAL_ASSET_DIR}/settings-1.webp`,
         alt: '設定タブ。表示の切り替え、サンプル、画材名を最新にする、使い方、プランの並び',
         caption: '表示の切り替え、サンプル、画材名を最新にする、この使い方、プランはここから。',
+        focus: 0.25,
         ...SHOT,
       },
     ],
@@ -127,9 +136,12 @@ function esc(value) {
 /** 画像1枚分（写真＋説明） */
 function slideHtml(tab, slide, index) {
   const total = tab.slides.length;
+  // 正方形の枠に切り取るときの縦の寄せ（0〜1）
+  const focus = Math.min(1, Math.max(0, Number(slide.focus) || 0)) * 100;
   return [
     `<figure class="gslide" data-gslide="${index}">`,
     `<img src="${esc(slide.image)}" alt="${esc(slide.alt)}" width="${slide.w}" height="${slide.h}"`,
+    ` style="object-position:50% ${focus.toFixed(0)}%"`,
     ' loading="lazy" decoding="async" draggable="false">',
     `<figcaption class="gcap"><span class="gnum">${index + 1}/${total}</span>${esc(slide.caption)}</figcaption>`,
     '</figure>',

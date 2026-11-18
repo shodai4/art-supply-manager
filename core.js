@@ -956,7 +956,64 @@ export function createGroupOpenState({ defaultOpen = false } = {}) {
   const reset = () => {
     openMakers.clear(); closedMakers.clear(); openSeries.clear(); closedSeries.clear();
   };
-  return { isOpen, isOpenWhen, isClosedManually, toggle, reset, openMakers, closedMakers, openSeries, closedSeries };
+  /** 見出し1つを開いた／閉じた状態にする（手で押したときと同じ記憶の持ち方） */
+  const setOpen = (level, maker, name = '', open = true) => {
+    const { open: o, closed: c } = setsOf(level);
+    const key = keyOf(level, maker, name);
+    o.delete(key);
+    c.delete(key);
+    (open ? o : c).add(key);
+  };
+  /**
+   * 「すべて開く／すべて閉じる」。entries は [{maker, series:[名前…]}]。
+   * メーカーと、その中のシリーズをまとめて開け閉めする。
+   */
+  const setAll = (entries, open) => {
+    for (const e of Array.isArray(entries) ? entries : []) {
+      const maker = String(e?.maker ?? '');
+      setOpen('maker', maker, '', open);
+      for (const name of Array.isArray(e?.series) ? e.series : []) setOpen('series', maker, String(name ?? ''), open);
+    }
+  };
+  const openAll = (entries) => setAll(entries, true);
+  const closeAll = (entries) => setAll(entries, false);
+  return {
+    isOpen, isOpenWhen, isClosedManually, toggle, reset, setOpen, openAll, closeAll,
+    openMakers, closedMakers, openSeries, closedSeries,
+  };
+}
+
+/**
+ * 「すべて開く／すべて閉じる」を出してよいかの上限。
+ * カタログで未絞り込みの3万件を一気に開くとDOMが重くなって固まるので、
+ * 件数（とシリーズ見出しの数）がこの範囲のときだけボタンを出す＝絞り込んでから使う。
+ */
+export const GROUP_EXPAND_LIMITS = { items: 300, series: 60 };
+
+/**
+ * 一覧の見出しをまとめて開け閉めするときの材料（表示用）。
+ *
+ * @param {Array} groups  groupItemsByMakerSeries() の戻り値（[{maker,total,series:[{name,total}]}]）
+ * @param {{isOpen:Function}} state  createGroupOpenState() の戻り値
+ * @param {{items:number, series:number}} limits  上限（既定は GROUP_EXPAND_LIMITS）
+ * @returns {{entries:Array, items:number, seriesHeads:number, allowed:boolean, allOpen:boolean}}
+ *   entries … openAll/closeAll に渡す形 / allowed … ボタンを出してよいか / allOpen … いま全部開いているか
+ */
+export function groupToggleSummary(groups, state, limits = GROUP_EXPAND_LIMITS) {
+  const list = Array.isArray(groups) ? groups : [];
+  const entries = list.map((g) => ({
+    maker: String(g?.maker ?? ''),
+    series: (Array.isArray(g?.series) ? g.series : []).map((s) => String(s?.name ?? s ?? '')),
+  }));
+  const items = list.reduce((n, g) => n + Number(g?.total || 0), 0);
+  const seriesHeads = entries.reduce((n, e) => n + e.series.length, 0);
+  const allowed = entries.length > 0
+    && items <= Number(limits?.items ?? GROUP_EXPAND_LIMITS.items)
+    && seriesHeads <= Number(limits?.series ?? GROUP_EXPAND_LIMITS.series);
+  // 全部開いているかは、実際に描くときと同じ判定（isOpen）に聞く
+  const allOpen = allowed && entries.every((e) => state.isOpen('maker', e.maker)
+    && e.series.every((name) => state.isOpen('series', e.maker, name)));
+  return { entries, items, seriesHeads, allowed, allOpen };
 }
 
 /**

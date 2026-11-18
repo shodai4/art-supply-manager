@@ -43,7 +43,6 @@ export const WEB_ASSETS = [
   'assets/tutorial/stock-1.webp',
   'assets/tutorial/stock-2.webp',
   'assets/tutorial/stock-3.webp',
-  'assets/tutorial/stock-4.webp',
   'assets/tutorial/restock-1.webp',
   'assets/tutorial/catalog-1.webp',
   'assets/tutorial/catalog-2.webp',

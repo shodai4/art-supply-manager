@@ -102,10 +102,16 @@ test('カタログの商品行はメーカー見出しと同じ細さ（追加�
   // 見出しはほどよい高さのまま（タップしやすい）
   assert.match(head[1], /padding:\s*13px 0/);
   assert.match(series[1], /min-height:\s*34px/);
-  // 商品行は上下の余白を詰めて、見出しと同じくらいの細さにする
-  // （横の余白は「メーカー ＞ シリーズ」のまとまり（.makers）が持つので、行は持たない）
-  assert.match(row[1], /padding:\s*5px 0/);
+  // 商品行はシリーズ見出しの内側に少し左を空けた薄いカードにする（在庫・補充の行と同じトーンで、
+  // 「メーカー ＞ シリーズ ＞ 商品」の親子関係がひと目で分かるようにする）
+  assert.match(row[1], /margin:\s*5px 8px 0/);
+  assert.match(row[1], /padding:\s*6px 9px/);
+  assert.match(row[1], /border:\s*1px solid var\(--line\)/);
+  assert.match(row[1], /border-radius:\s*10px/);
+  assert.match(row[1], /background:\s*var\(--card\)/);
   assert.match(row[1], /align-items:\s*center/);
+  // 横幅いっぱいの下線の行には戻さない
+  assert.equal(/border-bottom:\s*1px solid var\(--line\)/.test(row[1]), false, '下線のフラットな行に戻っている');
   // 追加ボタンも小さめ（行の高さを决めるのはボタンなので、ここも詰める）
   assert.match(add[1], /min-height:\s*30px/);
   assert.match(add[1], /font-size:\s*12px/);

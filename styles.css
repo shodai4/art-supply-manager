@@ -184,6 +184,18 @@ button, a, select, label, summary, .hbtn, .vpill, .fab, .tabbar button { touch-a
   background: var(--surface-3); border-radius: 999px; padding: 0 6px; line-height: 15px;
 }
 .sechead .ic:first-child { flex: 0 0 auto; }
+/* 見出しの名前は1行に保ち、長いフォルダ名でも右のボタンを押し出さない */
+.sechead > span:not(.segslot) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 見出し行の右端の「すべて開く／すべて閉じる」（メーカー・シリーズをまとめて開け閉めする） */
+.sechead .allbtn {
+  flex: 0 0 auto; margin-left: auto; min-height: 22px; padding: 1px 8px;
+  border: 1px solid var(--line); border-radius: 999px; background: var(--surface-2);
+  color: var(--soft-ink); font-size: 10.5px; font-weight: 800; line-height: 1.6; white-space: nowrap;
+}
+.sechead .allbtn:active { background: var(--accent-soft); color: var(--on-accent-soft); }
+.sechead .allbtn[hidden] { display: none; }
+/* ボタンの後ろに置く見方の切り替え（segslot）は、余白を取らずボタンの右横に並べる */
+.sechead .allbtn + .segslot { margin-left: 0; }
 /* hidden で畳めるようにする（.sechead は display: flex なので、指定しないと隠れない） */
 .sechead[hidden] { display: none; }
 /* お気に入りは在庫一覧の先頭の固定フォルダになったので、横並びの帯は使わない */
@@ -406,7 +418,7 @@ button, a, select, label, summary, .hbtn, .vpill, .fab, .tabbar button { touch-a
   color: var(--on-accent-soft); background: var(--accent-soft); border: 1px solid var(--accent-line);
   border-radius: 999px; padding: 1px 6px;
 }
-.gacc-body { padding: 10px 0 8px; }
+.gacc-body { padding: 8px 0 6px; }
 
 /* 横スライド（スワイプ＋スクロールスナップ。ドットと左右のボタンでも動かせる） */
 .gswipe {
@@ -416,13 +428,18 @@ button, a, select, label, summary, .hbtn, .vpill, .fab, .tabbar button { touch-a
 }
 .gswipe::-webkit-scrollbar { display: none; }
 .gswipe:focus-visible { outline: 2px solid var(--accent-line); outline-offset: -2px; }
-.gslide { flex: 0 0 100%; min-width: 0; margin: 0; padding: 0 12px; box-sizing: border-box; scroll-snap-align: center; scroll-snap-stop: always; }
+.gslide {
+  flex: 0 0 100%; min-width: 0; margin: 0; padding: 0 8px; box-sizing: border-box;
+  display: flex; flex-direction: column; scroll-snap-align: center; scroll-snap-stop: always;
+}
+/* 画面写真は正方形に近いコンパクトな枠に切り取って収める。
+   縦長のまま（旧 max-height: 64vh）だと、下端のAdMobバナーが説明文とページャーに重なっていた。
+   切り取る上下の位置は、スライドごとの object-position（tutorial.js の focus）で決める。 */
 .gslide img {
-  /* 縦長の画面写真を、比率を変えずにシートの高さへ収める（幅は高さに合わせて縮む） */
-  display: block; width: auto; height: auto; max-width: 100%; max-height: 64vh;
+  display: block; width: 100%; height: min(320px, 42vh); object-fit: cover;
   margin: 0 auto; border-radius: 12px; background: var(--surface-2); pointer-events: none;
 }
-.gcap { display: block; font-size: 12.5px; line-height: 1.55; color: var(--ink-2); padding: 7px 2px 0; }
+.gcap { display: block; font-size: 12.5px; line-height: 1.55; color: var(--ink-2); padding: 6px 4px 0; }
 .gnum { font-size: 11px; font-weight: 800; color: var(--muted-ink); margin-right: 6px; }
 .gnav-row { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 8px 12px 0; }
 .gnav {
@@ -434,6 +451,16 @@ button, a, select, label, summary, .hbtn, .vpill, .fab, .tabbar button { touch-a
 .gdots { display: flex; align-items: center; justify-content: center; gap: 6px; flex: 1 1 auto; }
 .gdot { width: 7px; height: 7px; padding: 0; border: none; border-radius: 50%; background: var(--line); }
 .gdot[aria-selected="true"] { background: var(--accent); transform: scale(1.25); }
+
+/* 使い方のシートは、下端のAdMobバナーに重ならないようバナーの上で終わらせる。
+   バナーはネイティブが webview の上に描くので、シートの位置と高さをバナーの分だけ上げる。
+   （シートの下パディングも --ad-h を足してあるが、スクロール中は中身がパディングの所まで
+   流れてくるので、それだけでは説明文とページャーがバナーに隠れる） */
+body[data-ad-banner="true"] #sheetGuide {
+  bottom: calc(var(--ad-h) + env(safe-area-inset-bottom));
+  max-height: calc(92vh - var(--ad-h));
+  padding-bottom: 12px;
+}
 
 /* 初回案内のカード（まだ使い方を見ていないときだけ、在庫タブの上に出す） */
 .firstrun { position: relative; }
@@ -748,13 +775,19 @@ body[data-ad-banner="true"] .foot {
 /* 辞書の一覧はシート自身が左右の余白を持つので、まとまりの余白は重ねない */
 #dictList .makers { margin: 0; }
 /* 行は「メーカー ＞ シリーズ」の左右余白（.makers）の中に置くので、横の余白は持たせない */
-.dres { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--line); }
+.dres {
+  display: flex; align-items: center; gap: 8px;
+  margin: 5px 8px 0; padding: 6px 9px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--card);
+  box-shadow: var(--shadow-2);
+}
+.dres:last-of-type { margin-bottom: 6px; }
 .dres-main { flex: 1 1 auto; min-width: 0; text-align: left; background: none; border: none; padding: 0; color: var(--ink); }
 .dres-name { display: block; font-size: 12.5px; font-weight: 700; line-height: 1.25; }
 .dres-sub { display: block; font-size: 11px; line-height: 1.15; color: var(--ink-2); margin-top: 1px; }
 /* シリーズの中で、まだ描いていないぶんを足すボタン（カタログ） */
 .dgroupmore {
-  display: block; width: 100%; margin: 6px 0 8px; min-height: 36px;
+  display: block; width: auto; margin: 8px 8px 8px; min-height: 36px;
   border: 1px solid var(--line); border-radius: 10px; background: var(--surface);
   color: var(--ink-2); font-size: 12.5px; font-weight: 700;
 }
