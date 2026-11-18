@@ -8,3 +8,5 @@ www/
 ios/
 !plugins/art-barcode-scanner/ios/
 !plugins/art-barcode-scanner/ios/**
+!plugins/art-icloud-sync/ios/
+!plugins/art-icloud-sync/ios/**

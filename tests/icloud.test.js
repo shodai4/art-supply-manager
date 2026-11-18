@@ -79,9 +79,14 @@ test('大きすぎるバックアップは送らない（iCloud KVSの1MB上限�
 });
 
 test('設定に出す状態文と保存時刻', () => {
-  assert.equal(savedAtLabel('2026-11-19T02:40:00+09:00'), '11/19 02:40');
+  // 端末の時刻表示（実行環境のタイムゾーンで変わるので、同じ値から期待値を作る）
+  const at = '2026-11-19T02:40:00+09:00';
+  const d = new Date(at);
+  const pad = (n) => String(n).padStart(2, '0');
+  const expect = `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  assert.equal(savedAtLabel(at), expect);
   assert.equal(savedAtLabel('broken'), '');
-  assert.match(cloudStatusText({ native: true, available: true, savedAt: '2026-11-19T02:40:00+09:00' }), /iCloudに自動保存（最終 11\/19 02:40）/);
+  assert.match(cloudStatusText({ native: true, available: true, savedAt: at }), new RegExp(`iCloudに自動保存（最終 ${expect}`));
   assert.match(cloudStatusText({ native: true, available: true, pending: true }), /新しいバックアップ/);
   assert.match(cloudStatusText({ native: false, available: false }), /iPhoneアプリ/);
   assert.match(cloudStatusText({ native: true, available: false, reason: 'no-account' }), /サインイン/);
