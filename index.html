@@ -15,7 +15,7 @@ try {
 } catch (e) { /* 保存が読めないときはライト */ }
 </script>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="styles.css?v=1.34.0">
+<link rel="stylesheet" href="styles.css?v=1.35.0">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 </head>
@@ -208,6 +208,11 @@ try {
       <button type="button" class="allbtn" id="allToggleShopping" data-all-surface="shopping" hidden>すべて開く</button>
     </div>
     <div id="shoppingList"></div>
+    <!-- 補充タブの「＋」で増やした分を、まとめて「十分」にするバー（確定待ちがあるときだけ出す） -->
+    <div class="restockbar" id="restockBar" hidden>
+      <div class="rtext"><b id="restockBarCount">0件</b><span id="restockBarNote"></span></div>
+      <button type="button" class="btn primary" id="restockConfirm">補充を確定</button>
+    </div>
   </section>
 
   <!-- カタログ（まだ持っていない画材を内蔵JAN辞書から探して、そのまま自分の在庫へ追加） -->
@@ -683,6 +688,6 @@ try {
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<script type="module" src="app.js?v=1.34.0"></script>
+<script type="module" src="app.js?v=1.35.0"></script>
 </body>
 </html>

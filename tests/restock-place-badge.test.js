@@ -27,7 +27,8 @@ test('補充タブの行には、場所の色の点つきでフォルダ名が�
   assert.match(itemRow, /\? `\$\{placeChip\}<button class="folder-tag shop-chip" data-shop-for="\$\{esc\(it\.id\)\}">通販<\/button>`/);
   // 在庫タブの行は、これまでどおりフォルダ名の移動ボタン（バッジは出さない）
   assert.match(itemRow, /: `<button class="folder-tag" data-move="\$\{esc\(it\.id\)\}">\$\{esc\(f\.name\)\} ▾<\/button>`/);
-  assert.match(itemRow, /<div class="it-sub">\n        \$\{first\}\n        <span class="badge \$\{st\.tone\}"/);
+  // 行の右には充足のバッジ（補充タブで「＋」している間は、その数「＋N」に入れ替わる）
+  assert.match(itemRow, /<div class="it-sub">\n        \$\{first\}\n        \$\{bump[\s\S]{0,160}<span class="badge \$\{st\.tone\}"/);
 });
 
 test('場所バッジは小さく、長い名前は省略する（行の高さを崩さない）', () => {

@@ -379,6 +379,26 @@ button, a, select, label, summary, .hbtn, .vpill, .fab, .tabbar button { touch-a
 .selbar .selcount { font-size: 13px; font-weight: 800; min-width: 44px; }
 .selbar .btn.mini { padding: 9px 12px; }
 .selbar .btn.mini:disabled { opacity: .45; }
+
+/* 補充タブの「補充を確定」バー（選択バーと同じく、タブバーの上に固定する）。
+   確定待ちがあるときだけJSが hidden を外す。 */
+.restockbar {
+  position: fixed; left: 0; right: 0; bottom: calc(var(--tabbar-h) + var(--ad-h) + env(safe-area-inset-bottom)); z-index: 28;
+  display: flex; align-items: center; gap: 10px; padding: 9px 12px;
+  background: var(--surface); border-top: 1px solid var(--line); box-shadow: 0 -2px 10px rgba(16, 32, 56, .1);
+}
+.restockbar[hidden] { display: none; }
+.restockbar .rtext { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.restockbar .rtext b { font-size: 13px; font-weight: 800; }
+.restockbar .rtext span { font-size: 11px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.restockbar .btn.primary { flex: 0 0 auto; padding: 11px 16px; font-size: 14px; border-radius: 12px; }
+/* 確定バーが出ている間は、右下の「＋」「読取」をバーの上へ逃がす（ボタンを重ねない） */
+body[data-restock-bar="true"] .fab {
+  bottom: calc(var(--tabbar-h) + var(--dock-h) + 14px + 62px + var(--ad-h) + env(safe-area-inset-bottom));
+}
+body[data-restock-bar="true"] .fab.scan {
+  bottom: calc(var(--tabbar-h) + var(--dock-h) + 14px + 52px + 8px + 62px + var(--ad-h) + env(safe-area-inset-bottom));
+}
 /* 選択中は右下のFABを出さない（操作バーと重ねない。render() が visibility を切り替える） */
 
 /* ---------- メーカー別タブ（見出しをタップして開く） ---------- */
@@ -514,6 +534,10 @@ body[data-ad-banner="true"] #sheetGuide {
   background: var(--surface-2); color: var(--ink-2); overflow: hidden; text-overflow: ellipsis;
 }
 .badge.place .pdot { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; }
+/* 補充タブで「＋」したが、まだ「補充を確定」していない行（何個増やしたか） */
+.badge.bump { background: var(--accent-soft); color: var(--accent); }
+.item.pending { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent), var(--shadow-2); }
+.item.pending .it-side .qty { color: var(--accent); }
 
 /* ---------- 同じ画材が複数の場所にあるときのまとめ（計 N点 ＋ ┣/└ の行） ---------- */
 /* 親カードは1枚だけ出し、中にフォルダごとの行を縦に並べる。

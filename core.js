@@ -431,6 +431,73 @@ export function computeShoppingList(items) {
     });
 }
 
+/* ---------------- 補充タブの「確定待ち」（＋で増やしたが、まだ十分にしていない分） ---------------- */
+// 補充タブの「＋」は、押した場でステータスを「十分」にしない（押した瞬間に一覧から消えると、
+// 2〜3個買い足すときに続けて押せない）。増やした数だけ在庫に足し、画材は一覧に残したまま
+// 「＋2」のように数えておき、「補充を確定」でまとめて「十分」へ切り替える。
+// この数え（{ 画材ID: 増やした数 }）は端末に保存するので、タブを移ってもアプリを閉じても残る。
+
+/**
+ * 確定待ちの数えを、安全な形（正の整数だけ・実在する画材だけ）に整える。
+ * @param {object} pending  { [itemId]: 増やした数 }
+ * @param {Array|null} items  渡すと、まだ補充リストに残っている画材だけに絞る（消した・十分にした分は捨てる）
+ */
+export function normalizeRestockPending(pending, items = null) {
+  const out = {};
+  if (!pending || typeof pending !== 'object' || Array.isArray(pending)) return out;
+  const alive = Array.isArray(items)
+    ? new Set(computeShoppingList(items).map((i) => String(i.id)))
+    : null;
+  for (const [id, count] of Object.entries(pending)) {
+    const n = Math.trunc(Number(count) || 0);
+    const key = String(id || '');
+    if (!key || n <= 0) continue;
+    if (alive && !alive.has(key)) continue;
+    out[key] = n;
+  }
+  return out;
+}
+
+/** 1件の確定待ちを増やす／戻す（0になったら消す）。新しいオブジェクトを返す */
+export function bumpRestockPending(pending, id, delta = 1) {
+  const base = normalizeRestockPending(pending);
+  const key = String(id || '');
+  if (!key) return base;
+  const next = { ...base };
+  const count = (base[key] || 0) + Math.trunc(Number(delta) || 0);
+  if (count > 0) next[key] = count;
+  else delete next[key];
+  return next;
+}
+
+/** 確定待ちのまとめ（何件・何個増やしたか） */
+export function restockSummary(pending) {
+  const map = normalizeRestockPending(pending);
+  const ids = Object.keys(map);
+  return { items: ids.length, added: ids.reduce((n, id) => n + map[id], 0), pending: map };
+}
+
+/**
+ * 「補充を確定」。確定待ちの画材をまとめて「十分（enough）」にする。
+ * 在庫が0のものは「使い切り」のまま（足せていないので、補充リストに残す）。
+ * @returns {{items: Array, confirmed: number, kept: number}}  confirmed=十分にした件数 / kept=数えから外した件数
+ */
+export function confirmRestock(items = [], pending = {}) {
+  const map = normalizeRestockPending(pending);
+  const list = Array.isArray(items) ? items : [];
+  let confirmed = 0;
+  let kept = 0;
+  const next = list.map((it) => {
+    const bump = map[String(it?.id)];
+    if (!bump) return it;
+    const qty = Number(it.qty) || 0;
+    if (qty <= 0) { kept += 1; return it; }
+    confirmed += 1;
+    return { ...it, status: 'enough', updatedAt: new Date().toISOString() };
+  });
+  return { items: next, confirmed, kept };
+}
+
 /* ---------------- 検索の下ごしらえ（ひらがな・カタカナ・全角半角・大文字小文字のゆらぎ吸収） ---------------- */
 
 /**
@@ -1716,6 +1783,8 @@ export function blankState() {
     version: APP_VERSION,
     folders: DEFAULT_FOLDERS.map((f) => ({ ...f, parentId: null })),
     items: [],
+    // 補充タブで「＋」したが、まだ「補充を確定」していない画材（{ 画材ID: 増やした数 }）
+    restockPending: {},
     settings: {
       sort: 'updated', layout: 'grid', askBeforeDelete: true, theme: 'auto',
       rakutenAppId: '', rakutenAccessKey: '', imageProxyUrl: '',
@@ -1849,6 +1918,8 @@ export function exportState(state) {
     exportedAt: new Date().toISOString(),
     folders: state.folders,
     items: state.items,
+    // 補充の確定待ちも持ち運ぶ（機種変更・復元のあとでも「補充を確定」を押せる）
+    restockPending: normalizeRestockPending(state?.restockPending),
     settings: state.settings,
   }, null, 2);
 }
@@ -1893,7 +1964,13 @@ export function importState(text) {
     const it = createItem(raw);
     return ids.has(it.folderId) ? it : { ...it, folderId: folders[0].id };
   });
-  return { version: APP_VERSION, folders, items, settings: { ...blankState().settings, ...(data.settings || {}) } };
+  return {
+    version: APP_VERSION,
+    folders,
+    items,
+    restockPending: normalizeRestockPending(data.restockPending, items),
+    settings: { ...blankState().settings, ...(data.settings || {}) },
+  };
 }
 
 /** カテゴリIDの表示名 */

@@ -2,6 +2,7 @@
 import {
   STORAGE_KEY, CATEGORIES, STATUSES, DEFAULT_FOLDERS, SORT_MODES, MAKER_NONE,
   createItem, adjustStock, computeShoppingList, filterItems, moveItems, sortItems, countByFolder,
+  normalizeRestockPending, bumpRestockPending, restockSummary, confirmRestock,
   addFolder, updateFolder, moveFolder, reorderFolders, deleteFolder, upsertItem, deleteItems,
   exportState, importState, summarize, blankState, isEmptyStock, toggleFavorite, favoritesFirst,
   isValidJAN, normalizeJAN, detectMaker, lookupJAN, itemMaker, listMakers,
@@ -1198,6 +1199,8 @@ function itemRow(it, opts = {}) {
   const glyph = GLYPH[it.category];
   const thumbColor = glyph ? glyph.color : guessColor(it);
   const thumbIcon = glyph ? glyph.icon : 'i-tube';
+  // 補充タブで「＋」して、まだ「補充を確定」していない数（何個増やしたか）
+  const bump = Math.max(0, Math.trunc(Number(opts.pending?.[it.id]) || 0));
   const selected = ui.selectMode && isSelected(ui.selected, it.id);
   const selectAttrs = ui.selectMode ? ` data-select="${esc(it.id)}" aria-pressed="${selected ? 'true' : 'false'}"` : '';
   const fav = it.favorite === true;
@@ -1214,7 +1217,7 @@ function itemRow(it, opts = {}) {
   // フォルダを1つだけ開いているときの「他：アトリエ 1点」（行の幅は使わず、次の行に小さく）
   const others = opts.otherPlaces ? otherPlaceSummary(state.items, it, state.folders) : '';
   return `
-  <article class="item swipe${isEmpty ? ' item-card--empty' : ''}${ui.selectMode ? ' selecting' : ''}${selected ? ' sel' : ''}" data-empty="${isEmpty ? '1' : '0'}" data-id="${esc(it.id)}" data-swipe-id="${esc(it.id)}" data-swipe-kind="item"${selectAttrs}>
+  <article class="item swipe${isEmpty ? ' item-card--empty' : ''}${ui.selectMode ? ' selecting' : ''}${selected ? ' sel' : ''}${bump ? ' pending' : ''}" data-empty="${isEmpty ? '1' : '0'}" data-id="${esc(it.id)}" data-swipe-id="${esc(it.id)}" data-swipe-kind="item"${selectAttrs}>
     ${swipeDeleteButton(it.id)}
     <div class="swipe-inner">
     <span class="thumb"><svg class="ic" aria-hidden="true" style="color:${esc(thumbColor)}"><use href="#${thumbIcon}"/></svg>${shelfImage(it)}${ui.selectMode ? '<span class="selmark" aria-hidden="true"></span>' : ''}</span>
@@ -1222,7 +1225,9 @@ function itemRow(it, opts = {}) {
       <h3 class="it-name" title="タップで編集">${esc(rowName(it, opts))}</h3>
       <div class="it-sub">
         ${first}
-        <span class="badge ${st.tone}" title="${esc(st.label)}">${esc(st.short || st.label)}</span>
+        ${bump
+    ? `<span class="badge bump" title="「補充を確定」で十分になります">＋${bump}</span>`
+    : `<span class="badge ${st.tone}" title="${esc(st.label)}">${esc(st.short || st.label)}</span>`}
       </div>
       ${others ? `<div class="it-other">${esc(others)}</div>` : ''}
     </div>
@@ -1335,13 +1340,77 @@ function renderItemTree(el, items, opts = {}) {
 
 function renderShopping() {
   // 補充タブも在庫と同じ「メーカー ＞ シリーズ」（シリーズの中は並び設定・お気に入りが先頭）
+  const pending = normalizeRestockPending(state.restockPending, state.items);
   const list = favoritesFirst(sortItems([...computeShoppingList(state.items)], state.settings.sort));
   const groups = renderItemTree($('shoppingList'), list, {
-    surface: 'shopping', emptyKey: 'shopping', shopChip: true, forceList: true, noJanGroup: true,
+    surface: 'shopping', emptyKey: 'shopping', shopChip: true, forceList: true, noJanGroup: true, pending,
   });
   syncGroupToggle($('allToggleShopping'), groups, 'shopping');
   const count = $('shoppingCount');
   if (count) count.textContent = String(list.length);
+  renderRestockBar(pending);
+}
+
+/* ---------------- 補充タブの「補充を確定」（＋で増やした分をまとめて反映） ---------------- */
+// ＋を押した場でステータスを「十分」にすると一覧から消えてしまい、2〜3個買い足すときに
+// 続けて押せない。押した分は在庫に足して一覧に残し、「＋2」と数えておく。
+// 「補充を確定」で、確定待ちの全画材をまとめて「十分」にして補充リストから外す。
+
+/** 補充タブの行の −/＋（確定待ちに数え、ステータスは確定まで変えない） */
+function stepRestock(it, delta) {
+  const pending = normalizeRestockPending(state.restockPending, state.items);
+  // 確定待ちでない行の−は、これまでどおり在庫を減らす
+  if (delta < 0 && !(pending[it.id] > 0)) {
+    const next = adjustStock(it, -1);
+    state = upsertItem(state, next);
+    save(); render();
+    if (next.qty === 0) toast('使い切りました。補充リストに入れています');
+    return;
+  }
+  // ＋は買い足しとして購入ログにも残し（画材費の「記録済み」に積まれる）、在庫を1つ増やす。
+  // −は確定待ちを1つ戻す（押し過ぎてもその場で戻せる）。
+  const next = adjustStock(delta > 0 ? recordPurchase(it, delta) : it, delta);
+  // 在庫0で「十分」のまま残っていた画材は、＋で数が入ると補充リストから消えてしまう。
+  // 確定するまでは一覧に残す（ステータスは「十分」にしない）。
+  const staying = (next.status === 'low' || next.status === 'empty') ? next : { ...next, status: 'low' };
+  state = {
+    ...upsertItem(state, staying),
+    restockPending: bumpRestockPending(pending, it.id, delta),
+  };
+  save(); render();
+}
+
+/** 画面下の「補充を確定」バー（確定待ちがあるときだけ出す） */
+function renderRestockBar(pending = normalizeRestockPending(state.restockPending, state.items)) {
+  const bar = $('restockBar');
+  if (!bar) return;
+  const sum = restockSummary(pending);
+  const show = ui.tab === 'shopping' && sum.items > 0;
+  bar.hidden = !show;
+  // 確定バーが出ている間は、右下の＋／読取をバーの上へ逃がす（CSSがこの目印を見る）
+  const flag = String(show);
+  if (document.body.dataset.restockBar !== flag) document.body.dataset.restockBar = flag;
+  if (!show) return;
+  const countEl = $('restockBarCount');
+  const noteEl = $('restockBarNote');
+  const btn = $('restockConfirm');
+  if (countEl) countEl.textContent = `${sum.items}件`;
+  if (noteEl) noteEl.textContent = `＋${sum.added}個 買い足した分をまとめて確定`;
+  if (btn) {
+    btn.textContent = `補充を確定（${sum.items}件）`;
+    btn.setAttribute('aria-label', `補充した${sum.items}件をまとめて十分にする`);
+  }
+}
+
+/** 「補充を確定」— 確定待ちの画材をまとめて「十分」へ切り替え、補充リストから外す */
+function confirmRestockAction() {
+  const pending = normalizeRestockPending(state.restockPending, state.items);
+  const { items, confirmed, kept } = confirmRestock(state.items, pending);
+  if (!confirmed && !kept) return;
+  state = { ...state, items, restockPending: {} };
+  save(); render();
+  if (confirmed) toast(`${confirmed}件を「十分」にしました`);
+  if (kept) toast(`${kept}件は在庫が0のままなので、補充リストに残しています`);
 }
 
 /* ---------------- 補充リストのコピー・共有（Pro） ---------------- */
@@ -1373,6 +1442,7 @@ async function shareShoppingList() {
 
 $('btnShopCopy').addEventListener('click', copyShoppingList);
 $('btnShopShare').addEventListener('click', shareShoppingList);
+$('restockConfirm').addEventListener('click', confirmRestockAction);
 
 function currentList() {
   // 親フォルダを開くと、配下のフォルダの画材もまとめて見る（直感的な挙動）
@@ -2042,6 +2112,8 @@ document.addEventListener('click', (e) => {
     const it = state.items.find((i) => i.id === step.dataset.id);
     if (!it) return;
     const delta = Number(step.dataset.step) || 0;
+    // 補充タブの −/＋ は「補充を確定」でまとめて反映する（押した場では十分にしない）
+    if (step.closest('#shoppingList')) { stepRestock(it, delta); return; }
     // 買い足し（＋）は、単価があれば購入ログにも残す（画材費の「記録済み」に積まれる）
     const next = adjustStock(delta > 0 ? recordPurchase(it, delta) : it, delta);
     state = upsertItem(state, next);
@@ -4096,26 +4168,35 @@ function catalogToggleInPlace(head, isSeries, open) {
   const maker = head?.dataset.gMaker || '';
   const name = isSeries ? (head.dataset.gSeries || '') : '';
   head.setAttribute('aria-expanded', open ? 'true' : 'false');
-  // メーカー見出しはお気に入りの星と同じ行（.mgrow）に入っているので、まとまり（.mg）まで戻す
-  const block = head.closest('.mg') || head.parentElement;
+  // 開け閉めするのは、押した見出しのまとまりだけ。
+  //  - メーカー見出しは、お気に入りの星と同じ行（.mgrow）に入っているので、まとまり（.mg）まで戻す
+  //  - シリーズ見出しは、そのシリーズのまとまり（.sgroup）。ここで .mg まで戻すと、
+  //    子のシリーズを閉じたつもりが親メーカーの中身（.lazybody）ごと外れて、
+  //    メーカーまで閉じてしまう（シリーズを開くときもメーカーの入れ物を見つけて何も起きない）
+  const block = isSeries
+    ? (head.closest('.sgroup') || head.parentElement)
+    : (head.closest('.mg') || head.parentElement);
   if (!block || !dictLazyRender) { renderSearchTab(); return; }
   block.classList.toggle('open', open);
-  const body = [...block.children].find((el) => el.classList?.contains('lazybody'));
+  // 中身の入れ物は、メーカーのものとシリーズのものを取り違えないよう、目印で探す
+  const body = [...block.children].find((el) => {
+    if (!el.classList?.contains('lazybody')) return false;
+    return isSeries
+      ? el.hasAttribute('data-lazy-series') && (el.dataset.sgroup || '') === name
+      : el.hasAttribute('data-lazy-maker');
+  });
   if (!open) {
     if (body) body.remove();
   } else if (!body) {
-    const el = document.createElement('div');
-    el.className = 'lazybody';
     if (isSeries) {
-      el.dataset.lazySeries = maker;
-      el.dataset.sgroup = name;
+      block.insertAdjacentHTML('beforeend', dictLazyRender.seriesInner(maker, name));
+      const el = [...block.children].find((x) => x.classList?.contains('lazybody'));
+      if (el) fillCatalogSeriesBody(el);
     } else {
+      const el = document.createElement('div');
+      el.className = 'lazybody';
       el.dataset.lazyMaker = maker;
-    }
-    block.appendChild(el);
-    // 押した見出しのすぐ下なので、待たずに描く
-    if (isSeries) fillCatalogSeriesBody(el);
-    else {
+      block.appendChild(el);
       // メーカーを開き直すときは、中のシリーズの開閉を今の状態で数え直す
       // （その場で開いたシリーズを、閉じたまま描き戻さない）
       dictLazyRender.forget?.(maker);
@@ -4430,8 +4511,15 @@ function renderSearchTab() {
 
   // 開いたときに描く材料（メーカーの中のシリーズ、シリーズの中の行）。
   // メーカーの中身も行も、画面に近づいたときにこの材料から描く（遅延描画）。
+  // シリーズの中身の入れ物（「もっと見る」で足した件数も引き継ぐ）は、一覧の描画と
+  // その場で開いたときの両方で同じ形にしたいので、ここ1か所で作る。
+  const seriesInnerHtml = (maker, name) => {
+    const p = seriesPlanOf(maker).at.get(name);
+    return `<div class="lazybody" data-lazy-series="${esc(maker)}" data-sgroup="${esc(name)}" data-limit="${Number(p?.shown?.length || 0)}"></div>`;
+  };
   dictLazyRender = {
     seriesCount: (maker) => seriesPlanOf(maker).series.length,
+    seriesInner: (maker, name) => seriesInnerHtml(maker, name),
     seriesBlocks: (maker, from = 0, to = Infinity) => {
       const { series, at } = seriesPlanOf(maker);
       return series.slice(from, to).map((s) => {
@@ -4439,9 +4527,7 @@ function renderSearchTab() {
         const open = Boolean(p?.open);
         return seriesBlockHtml('catalog', maker, s, {
           open,
-          inner: open
-            ? `<div class="lazybody" data-lazy-series="${esc(maker)}" data-sgroup="${esc(s.name)}" data-limit="${Number(p?.shown?.length || 0)}"></div>`
-            : '',
+          inner: open ? seriesInnerHtml(maker, s.name) : '',
         });
       }).join('');
     },
