@@ -355,6 +355,34 @@ export function favoritesFirst(items = []) {
  */
 export const ALL_FOLDER_ID = 'all-items';
 
+/**
+ * 在庫タブの初期画面（フォルダ一覧のトップ＝「すべて」）。ui.folderId の初期値と同じ。
+ * 下部タブの「在庫」をもう一度押したときに戻る先。
+ */
+export const STOCK_HOME_FOLDER = 'all';
+
+/**
+ * 在庫タブを初期画面へ戻す必要があるか（＝戻すものがあるか）。
+ * 初期画面は「フォルダ一覧のトップ・場所ごとの並び・検索も絞り込みも選択も無い」状態。
+ * すでに初期画面なら false（描き直さず、最上部へ戻すだけでよい）。
+ *
+ * @param {object} ui  画面の状態（folderId / query / searchOpen / selectMode / selected / …）
+ * @returns {boolean}
+ */
+export function needsStockHome(ui = {}) {
+  const u = ui || {};
+  return String(u.folderId ?? STOCK_HOME_FOLDER) !== STOCK_HOME_FOLDER
+    || String(u.query ?? '') !== ''
+    || Boolean(u.searchOpen)
+    || Boolean(u.selectMode)
+    || (Array.isArray(u.selected) && u.selected.length > 0)
+    || Boolean(u.favoriteOnly)
+    || String(u.category ?? 'all') !== 'all'
+    || String(u.status ?? 'all') !== 'all'
+    || String(u.maker ?? 'all') !== 'all'
+    || String(u.stockMode ?? 'place') !== 'place';
+}
+
 /** 特別フォルダ「すべての画材」の見た目（名前・色）。フォルダとしては保存しない */
 export const ALL_FOLDER = { id: ALL_FOLDER_ID, name: 'すべての画材', color: '#2b66c4', parentId: null };
 
@@ -902,7 +930,7 @@ export function compareSeriesColor(a = {}, b = {}) {
   }
   const la = catalogItemLabel(a);
   const lb = catalogItemLabel(b);
-  const byLabel = la.localeCompare(lb, 'ja', { numeric: true, sensitivity: 'base' });
+  const byLabel = localeCompareJa(la, lb);
   if (byLabel) return byLabel;
   return String(a?.name || '').localeCompare(String(b?.name || ''), 'ja', { numeric: true });
 }
@@ -984,22 +1012,18 @@ export function createGroupOpenState({ defaultOpen = false } = {}) {
 }
 
 /**
- * 「すべて開く／すべて閉じる」を出してよいかの上限。
- * カタログで未絞り込みの3万件を一気に開くとDOMが重くなって固まるので、
- * 件数（とシリーズ見出しの数）がこの範囲のときだけボタンを出す＝絞り込んでから使う。
- */
-export const GROUP_EXPAND_LIMITS = { items: 300, series: 60 };
-
-/**
  * 一覧の見出しをまとめて開け閉めするときの材料（表示用）。
+ *
+ * 件数では出し分けない（未絞り込みの37,822件・8,812シリーズでも「すべて開く」を出す）。
+ * 大量に開いたときに固まらないのは、カタログ側が画面の近くだけを遅延して描くから
+ * （app.js の catalogLazyObserver）。ここは「一覧にメーカー見出しがあるか」だけを見る。
  *
  * @param {Array} groups  groupItemsByMakerSeries() の戻り値（[{maker,total,series:[{name,total}]}]）
  * @param {{isOpen:Function}} state  createGroupOpenState() の戻り値
- * @param {{items:number, series:number}} limits  上限（既定は GROUP_EXPAND_LIMITS）
  * @returns {{entries:Array, items:number, seriesHeads:number, allowed:boolean, allOpen:boolean}}
  *   entries … openAll/closeAll に渡す形 / allowed … ボタンを出してよいか / allOpen … いま全部開いているか
  */
-export function groupToggleSummary(groups, state, limits = GROUP_EXPAND_LIMITS) {
+export function groupToggleSummary(groups, state) {
   const list = Array.isArray(groups) ? groups : [];
   const entries = list.map((g) => ({
     maker: String(g?.maker ?? ''),
@@ -1007,9 +1031,8 @@ export function groupToggleSummary(groups, state, limits = GROUP_EXPAND_LIMITS) 
   }));
   const items = list.reduce((n, g) => n + Number(g?.total || 0), 0);
   const seriesHeads = entries.reduce((n, e) => n + e.series.length, 0);
-  const allowed = entries.length > 0
-    && items <= Number(limits?.items ?? GROUP_EXPAND_LIMITS.items)
-    && seriesHeads <= Number(limits?.series ?? GROUP_EXPAND_LIMITS.series);
+  // 開け閉めする見出しが1つも無ければ、ボタンは出さない
+  const allowed = entries.length > 0;
   // 全部開いているかは、実際に描くときと同じ判定（isOpen）に聞く
   const allOpen = allowed && entries.every((e) => state.isOpen('maker', e.maker)
     && e.series.every((name) => state.isOpen('series', e.maker, name)));
@@ -1089,6 +1112,15 @@ export function catalogItemLabel(entry = {}) {
   return label || name || color || series || '';
 }
 
+// 五十音順の照合器は1回だけ作って使い回す（localeCompare を毎回呼ぶと、
+// 1社に1,400シリーズある所の並べ替えに50ms近くかかる。同じ設定なので並びは変わらない）
+const SERIES_COLLATOR = typeof Intl !== 'undefined' && typeof Intl.Collator === 'function'
+  ? new Intl.Collator('ja', { numeric: true, sensitivity: 'base' })
+  : null;
+const localeCompareJa = (a, b) => (SERIES_COLLATOR
+  ? SERIES_COLLATOR.compare(String(a), String(b))
+  : String(a).localeCompare(String(b), 'ja', { numeric: true, sensitivity: 'base' }));
+
 /**
  * シリーズ名の並び（五十音順）。ja ロケールの照合を使い、
  * かなの種類（ひらがな・カタカナ）や濃淡だけで違う名前は、既存の読み比べで決める。
@@ -1097,7 +1129,7 @@ export function compareSeriesName(a, b) {
   const sa = String(a ?? '');
   const sb = String(b ?? '');
   if (sa === sb) return 0;
-  const byLocale = sa.localeCompare(sb, 'ja', { numeric: true, sensitivity: 'base' });
+  const byLocale = localeCompareJa(sa, sb);
   if (byLocale !== 0) return byLocale;
   return compareMakerName(sa, sb);
 }

@@ -78,7 +78,8 @@ test('画面: メーカー見出しで分けて描き、見出しはタップで
   assert.match(app, /<use href="#i-chevron"\/>/);
   assert.match(app, /<span class="mgname">\$\{esc\(label\)\}<\/span><b>\$\{countBadge\(total\)\}<\/b>/);
   // 閉じているメーカーの中身は描かない（見出しだけ）
-  assert.match(app, /\$\{sOpen \? body\(s\.items, s\.name, g\) : ''\}/);
+  assert.match(app, /seriesBlockHtml\(surface, g\.maker, s, \{\n        open: openSeries\(g, s\), inner: body\(s\.items, s\.name, g\),\n      \}\)/);
+  assert.match(app, /\$\{open \? inner : ''\}/);
   assert.match(css, /\.mghead\s*\{[^}]*font-size:\s*14px[^}]*font-weight:\s*700/);
   assert.match(css, /\.mg\.open \.mghead \.chev\s*\{[^}]*transform:\s*rotate\(90deg\)/);
   // 見出しの区切り線（最初の見出しには付けない）
@@ -104,8 +105,8 @@ test('画面: 結果の各行からメーカー名とJANのグレー表示を消
   assert.match(app, /<span class="dres-have">登録済み<\/span>/);
   assert.match(app, /data-dict-pick="\$\{esc\(d\.jan\)\}"/);
   // シリーズ見出しの件数と「もっと見る（残り N 件）」で、全件にたどれる
-  assert.match(app, /もっと見る（残り \$\{p\.rest\.toLocaleString\('ja-JP'\)\}件）/);
-  assert.match(app, /data-dict-smore="\$\{esc\(g\.maker\)\}" data-sgroup="\$\{esc\(name\)\}"/);
+  assert.match(app, /もっと見る（残り \$\{rest\.toLocaleString\('ja-JP'\)\}件）/);
+  assert.match(app, /data-dict-smore="\$\{esc\(maker\)\}" data-sgroup="\$\{esc\(name\)\}"/);
 });
 
 test('行の補足（色・容量）は、商品名にすでに入っているものを繰り返さない', () => {

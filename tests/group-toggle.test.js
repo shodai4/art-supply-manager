@@ -4,7 +4,7 @@
  * 見たいこと:
  *   1. 一覧の見出し（メーカー・シリーズ）をまとめて開け閉めできる（全開・全閉の切り替え）
  *   2. 1つでも閉じていれば「すべて開く」、全開なら「すべて閉じる」と出る
- *   3. カタログで件数が多いときはボタンを出さない（DOMが重くなって固まらないための安全ガード）
+ *   3. 件数ではボタンを出し分けない（未絞り込みの37,822件でも押せる。重さは遅延描画で抑える）
  *   4. 在庫（場所ごと・メーカーごと）・補充・カタログの見出し行にボタンが置かれ、押すと描き直す
  */
 import test from 'node:test';
@@ -13,7 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  createGroupOpenState, groupToggleSummary, GROUP_EXPAND_LIMITS, groupItemsByMakerSeries,
+  createGroupOpenState, groupToggleSummary, groupItemsByMakerSeries,
 } from '../core.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -69,25 +69,18 @@ test('まとめて閉じると、メーカーもシリーズも全部閉じる',
   assert.equal(groupToggleSummary(GROUPS, state).allOpen, false);
 });
 
-test('件数が多い一覧ではボタンを出さない（カタログの未絞り込み対策）', () => {
+test('件数ではボタンを出し分けない（37,822件・8,812シリーズでも「すべて開く」を出す）', () => {
   const state = createGroupOpenState();
-  // 37,822件のような大きな一覧（シリーズ見出しも多い）
+  // 未絞り込みのカタログと同じ規模（4万件・8千シリーズ）でも出す
   const huge = [{
-    maker: 'ホルベイン', total: 4222, series: [{ name: 'アーティスト色鉛筆', total: 7 }],
+    maker: 'ホルベイン',
+    total: 37822,
+    series: Array.from({ length: 8812 }, (_, i) => ({ name: `s${i}`, total: 5 })),
   }];
-  assert.equal(groupToggleSummary(huge, state).allowed, false, '件数が多くても出してしまう');
-  // ちょうど上限までは出す
-  const okItems = [{ maker: 'A', total: GROUP_EXPAND_LIMITS.items, series: [{ name: 's', total: 1 }] }];
-  assert.equal(groupToggleSummary(okItems, state).allowed, true);
-  assert.equal(groupToggleSummary([{ maker: 'A', total: GROUP_EXPAND_LIMITS.items + 1, series: [] }], state).allowed, false);
-  // シリーズ見出しが多いときも出さない（1件ずつのシリーズが並ぶと行が多くなる）
-  const manySeries = [{
-    maker: 'A',
-    total: 60,
-    series: Array.from({ length: GROUP_EXPAND_LIMITS.series + 1 }, (_, i) => ({ name: `s${i}`, total: 1 })),
-  }];
-  assert.equal(groupToggleSummary(manySeries, state).allowed, false);
-  // 空の一覧では出さない
+  assert.equal(groupToggleSummary(huge, state).allowed, true, '件数が多いと出さないままになっている');
+  assert.equal(groupToggleSummary(huge, state).items, 37822);
+  assert.equal(groupToggleSummary(huge, state).seriesHeads, 8812);
+  // 空の一覧では出さない（開け閉めする見出しが無い）
   assert.equal(groupToggleSummary([], state).allowed, false);
   assert.equal(groupToggleSummary(null, state).allowed, false);
 });
@@ -139,8 +132,21 @@ test('見出し行にボタンがあり、押すと状態を作り直して描�
   assert.match(app, /syncGroupToggle\(\$\('allToggleMaker'\), groups, 'maker'\)/);
   assert.match(app, /syncGroupToggle\(\$\('allToggleShopping'\), groups, 'shopping'\)/);
   assert.match(app, /applyGroupToggle\(\$\('allToggleCatalog'\), catalogGroupToggle\(\), !anyGroupClosed\('catalog'\)\)/);
-  // カタログは、件数が上限を超えていたら数えずにやめる
-  assert.match(app, /total > GROUP_EXPAND_LIMITS\.items\) return null/);
+  // カタログは件数でボタンを隠さない（材料は条件が変わったときだけ作り、あとは数えるだけ）
+  assert.match(app, /function catalogGroupToggle\(\) \{\n  if \(!dictToggleGroups\.length\) return null;/);
+  assert.match(app, /dictToggleGroups = dictGroups\.groups\.map\(\(g\) => \(\{/);
+  assert.equal(/GROUP_EXPAND_LIMITS/.test(app), false, '件数の上限でボタンを隠している');
+  assert.equal(/GROUP_EXPAND_LIMITS/.test(read('core.js')), false);
+  // 未絞り込みで「すべて開く」を押しても固まらないよう、画面の近くだけを遅延して描く
+  assert.match(app, /const catalogLazyObserver = typeof IntersectionObserver === 'function'/);
+  assert.match(app, /function observeCatalogLazy\(root\) \{/);
+  assert.match(app, /function fillCatalogMakerBody\(el\) \{/);
+  assert.match(app, /function fillCatalogSeriesBody\(el\) \{/);
+  assert.match(app, /lazyMaker: \(g\) => `<div class="lazybody" data-lazy-maker="\$\{esc\(g\.maker\)\}"><\/div>`/);
+  assert.match(app, /observeCatalogLazy\(\$\('dictResults'\)\);/);
+  // 見出しの開け閉めは描き直さず、その場だけ（スクロール位置を飛ばさない）
+  assert.match(app, /function catalogToggleInPlace\(head, isSeries, open\) \{/);
+  assert.match(app, /if \(surface === 'catalog'\) \{ catalogToggleInPlace\(head, isSeries, open\); return; \}/);
   // 見た目は控えめな小さなチップ
   assert.match(css, /\.sechead \.allbtn \{[^}]*font-size:\s*10\.5px/);
   assert.match(css, /\.sechead \.allbtn \{[^}]*border-radius:\s*999px/);

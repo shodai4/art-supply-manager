@@ -422,10 +422,10 @@ test('カタログタブは「メーカー」→（カテゴリ）→検索バ�
   assert.ok(note > input, '検索バーの案内文はバーのすぐ下');
   assert.ok(results > note, '検索結果は検索バーの下');
 
-  // メーカーの見出しが検索バーのカードより上にある（塊ごと入れ替わっている）
-  const makerHead = search.indexOf('<span>メーカー</span>');
-  const searchCard = search.lastIndexOf('<div class="card">', input);
-  assert.ok(makerHead > 0 && makerHead < searchCard, 'メーカーの塊が検索バーより下にある');
+  // メーカー・カテゴリ・シリーズ・検索は1枚の枠にまとまっている（見出しの行を重ねて縦幅を食わない）
+  const filterCard = search.indexOf('<div class="card dict-filter">');
+  assert.ok(filterCard > 0 && filterCard < maker, '絞り込みが1枚の枠にまとまっていない');
+  assert.equal((search.match(/<div class="card dict-filter">/g) || []).length, 1, '絞り込みの枠が分かれている');
 });
 
 test('設定タブは 表示→サンプル→JAN辞書→使い方→プラン→画材費→バックアップ の順に並ぶ', () => {

@@ -15,7 +15,7 @@ try {
 } catch (e) { /* 保存が読めないときはライト */ }
 </script>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="styles.css?v=1.31.0">
+<link rel="stylesheet" href="styles.css?v=1.32.0">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 </head>
@@ -210,37 +210,26 @@ try {
 
   <!-- カタログ（まだ持っていない画材を内蔵JAN辞書から探して、そのまま自分の在庫へ追加） -->
   <section id="view-catalog" hidden>
-    <div class="fsec">
-      <div class="sechead">
-        <svg class="ic" aria-hidden="true"><use href="#i-folder"/></svg>
-        <span>メーカー</span>
-      </div>
-      <div class="card">
+    <!-- 絞り込み（メーカー・カテゴリ・シリーズ・検索）は1枚の枠にまとめ、下の検索結果を広く見せる。
+         見出しの行を重ねず、名前は左の小さなラベルだけにする（375×812で結果がすぐ見える高さ）。 -->
+    <div class="card dict-filter">
+      <div class="dfrow">
+        <label class="dflabel" for="dictMakerSel">メーカー</label>
         <select id="dictMakerSel" aria-label="メーカーで絞る"></select>
       </div>
-    </div>
-    <div class="fsec" id="dictCatSec" hidden>
-      <div class="sechead">
-        <svg class="ic" aria-hidden="true"><use href="#i-grid"/></svg>
-        <span>カテゴリ</span>
+      <div class="dfrow" id="dictCatSec" hidden>
+        <span class="dflabel">カテゴリ</span>
+        <div class="chipwrap chiprow" id="dictCatChips"></div>
       </div>
-      <div class="chipwrap" id="dictCatChips"></div>
-    </div>
-    <div class="fsec" id="dictSeriesSec" hidden>
-      <div class="sechead">
-        <svg class="ic" aria-hidden="true"><use href="#i-tube"/></svg>
-        <span>シリーズ</span>
-      </div>
-      <div class="card">
+      <div class="dfrow" id="dictSeriesSec" hidden>
+        <label class="dflabel" for="dictSeriesSel">シリーズ</label>
         <select id="dictSeriesSel" aria-label="シリーズで絞る"></select>
       </div>
-    </div>
-    <div class="card">
       <div class="dict-search">
         <input id="dictQTab" type="search" placeholder="商品名・メーカー・JAN" autocomplete="off" inputmode="search" enterkeyhint="search" aria-label="内蔵辞書を検索">
         <button id="dictQTabClear" aria-label="検索をやめる"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button>
       </div>
-      <p class="hint" id="dictTabNote" style="margin:8px 0 0"></p>
+      <p class="hint dict-note" id="dictTabNote"></p>
     </div>
     <div class="fsec">
       <div class="sechead">
@@ -659,6 +648,6 @@ try {
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<script type="module" src="app.js?v=1.31.0"></script>
+<script type="module" src="app.js?v=1.32.0"></script>
 </body>
 </html>

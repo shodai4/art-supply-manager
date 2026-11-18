@@ -7,13 +7,13 @@ import {
   isValidJAN, normalizeJAN, detectMaker, lookupJAN, itemMaker, listMakers,
   groupDictionarySearch, planDictGroups, compareMakerName, DICT_MAKER_PAGE,
   planSeriesGroups, catalogItemLabel, seriesItemLabel, groupItemsByMakerSeries,
-  createGroupOpenState, GROUP_KEY_SEP, GROUP_EXPAND_LIMITS, groupToggleSummary,
+  createGroupOpenState, GROUP_KEY_SEP, groupToggleSummary,
   dictionaryRowDetail, dictionarySeriesList,
   normalizeImageUrl, recordPurchase, costSummary, costRows, buildItemsCsvText, mergeStates,
   folderParentId, folderChildren, folderChain, folderDepth, folderPathLabel, folderSubtreeIds,
   folderTree, folderOptions, countByFolderDeep,
   FAVORITE_FOLDER_ID, FAVORITE_FOLDER, isFavoriteFolder, favoriteItems, countFavorites,
-  ALL_FOLDER_ID, ALL_FOLDER, isAllFolder, unfiledItems,
+  ALL_FOLDER_ID, ALL_FOLDER, isAllFolder, unfiledItems, STOCK_HOME_FOLDER, needsStockHome,
   toggleSelection, isSelected, selectAllIds, pruneSelection, searchDictionary, dictionaryHaystack,
   isMakerGroupOn, withSortMode,
   findItemByJanInFolder, itemsByJanInOtherFolders,
@@ -179,6 +179,9 @@ function applyDictionarySync(result) {
   renderDictionaryState();
 }
 
+/** カタログの一覧を描き直さない描画のあいだ true（行を選んだ直後の描き直しで使う） */
+let renderSkipCatalog = false;
+
 /** 設定・辞書シートの件数表示を更新 */
 function renderDictionaryState() {
   const merged = mergeDictionaries(JAN_DICTIONARY, extraEntries);
@@ -187,7 +190,8 @@ function renderDictionaryState() {
   const state = $('dictSyncState');
   if (state) state.textContent = describeSyncState(dictSync, { cachedCount: extraEntries.length });
   if ($('sheetDict')?.classList.contains('open')) renderDictList($('dictQ').value);
-  if (ui.tab === 'catalog') renderSearchTab();
+  // カタログを描き直さない描画（行を選んだ直後など）では、ここからも描き直さない
+  if (ui.tab === 'catalog' && !renderSkipCatalog) renderSearchTab();
 }
 
 /** jan-extra.json を取りに行って合成する（起動時・「辞書を更新」） */
@@ -517,7 +521,8 @@ function displayName(item) {
 /* ---------------- rendering ---------------- */
 // 在庫タブは「お気に入り → フォルダ → 画材」を上から1つの流れで並べる（ファイル／メモ型）。
 // 下部の2段ドックは無くし、操作は右上の検索と「⋯」メニューにまとめている。
-function render() {
+function render({ keepCatalogList = false } = {}) {
+  renderSkipCatalog = keepCatalogList;
   applyTheme();
   renderHeader();
   renderHeaderActions();
@@ -527,7 +532,8 @@ function render() {
   renderItemSection();
   renderMakerView();
   renderShopping();
-  renderSearchTab();
+  // カタログで行を選んだときは、一覧を描き直さない（スクロール位置を保つ）
+  if (!keepCatalogList) renderSearchTab();
   renderFolders();
   renderSettings();
   renderFilterSheet();
@@ -552,6 +558,7 @@ function render() {
   $('btnAdd').style.visibility = fabVisible ? 'visible' : 'hidden';
   $('btnScan').style.visibility = fabVisible ? 'visible' : 'hidden'; // 右下の＋の上（読取）
   syncBottomMetrics();
+  renderSkipCatalog = false;
 }
 
 /**
@@ -761,6 +768,8 @@ function seriesHeadHtml({ surface, maker, name, total, open }) {
  *  - openMaker    … メーカーを開いているか (group) => bool（カタログは計画に従う）
  *  - openSeries   … シリーズを開いているか (group, series) => bool
  *  - body         … シリーズの中身 (items, seriesName, group) => HTML
+ *  - lazyMaker    … メーカーの中身を後から描く（(group) => HTML。カタログだけが使う）
+ *                   4万件の一覧でも、見出しだけを先に置いて画面の近くだけを描ける
  */
 function itemTreeHtml(groups, opts = {}) {
   const {
@@ -770,23 +779,31 @@ function itemTreeHtml(groups, opts = {}) {
     seriesOf = (g) => g.series || [],
     openMaker = (g) => isGroupOpenWhen(surface, 'maker', g.maker, '', autoOpen),
     openSeries = (g, s) => isGroupOpenWhen(surface, 'series', g.maker, s.name, autoOpen),
+    lazyMaker = null,
   } = opts;
   return (Array.isArray(groups) ? groups : []).map((g) => {
     const mOpen = openMaker(g);
-    const inner = mOpen
-      ? seriesOf(g).map((s) => {
-        const sOpen = openSeries(g, s);
-        return `<div class="sgroup${sOpen ? ' open' : ''}">
-          ${seriesHeadHtml({ surface, maker: g.maker, name: s.name, total: s.total, open: sOpen })}
-          ${sOpen ? body(s.items, s.name, g) : ''}
-        </div>`;
-      }).join('')
-      : '';
+    const inner = !mOpen ? '' : (lazyMaker
+      ? lazyMaker(g)
+      : seriesOf(g).map((s) => seriesBlockHtml(surface, g.maker, s, {
+        open: openSeries(g, s), inner: body(s.items, s.name, g),
+      })).join(''));
     return `<section class="mg${mOpen ? ' open' : ''}">
       ${makerHeadHtml({ surface, maker: g.maker, label: g.label, total: g.total, open: mOpen })}
       ${inner}
     </section>`;
   }).join('');
+}
+
+/**
+ * 2段目のシリーズ見出しと、その中身の入れ物（全一覧で同じ形）。
+ * 中身は開いているときだけ置く（閉じたシリーズの行はDOMに持たない）。
+ */
+function seriesBlockHtml(surface, maker, s, { open, inner }) {
+  return `<div class="sgroup${open ? ' open' : ''}">
+          ${seriesHeadHtml({ surface, maker, name: s.name, total: s.total, open })}
+          ${open ? inner : ''}
+        </div>`;
 }
 
 /** 「メーカー ＞ シリーズ」のまとまりを、一覧の左右余白つきで置く */
@@ -798,8 +815,8 @@ function itemTreeBlockHtml(groups, opts = {}) {
 /* ---------------- 見出しの「すべて開く／すべて閉じる」 ---------------- */
 // 一覧（在庫の場所ごと／メーカーごと・補充・カタログ）の見出し行の右端に、メーカーとシリーズを
 // まとめて開け閉めする小さなボタンを出す。
-// カタログは未絞り込みだと3万件あるので、件数が GROUP_EXPAND_LIMITS を超えるときは
-// ボタンを出さない（開けっ放しでDOMが重くならないように、絞り込んでから使う）。
+// カタログも件数では出し分けない（未絞り込みの37,822件・8,812シリーズでも押せる）。
+// 大量に開いても固まらないよう、行は画面の近くだけをあとから描く（下の catalogLazyObserver）。
 
 /** 面ごとの開閉の記憶（カタログだけは集計を使い回す入れ物を持っている） */
 function groupStateForSurface(surface) {
@@ -849,15 +866,13 @@ function currentGroupsForSurface(surface) {
 }
 
 /**
- * カタログの検索結果の見出し。件数が上限を超えるときは数えずに null（ボタンを出さない）。
- * 上限内ならシリーズまで数えても軽い。
+ * カタログの検索結果の見出しをまとめて開け閉めする材料。
+ * 材料（メーカーとシリーズ名）は検索条件が変わったときだけ作っておき（dictToggleGroups）、
+ * ここでは数えるだけ（描き直しのたびに4万件を数え直さない）。
  */
 function catalogGroupToggle() {
-  const { groups = [], total = 0 } = dictGroups || {};
-  if (!groups.length || total <= 0 || total > GROUP_EXPAND_LIMITS.items) return null;
-  const items = groups.flatMap((g) => g.items || []);
-  const full = groupItemsByMakerSeries(items, { makerOf: (d) => String(d?.maker || 'メーカー不明') });
-  const summary = groupToggleSummary(full, dictGroupState);
+  if (!dictToggleGroups.length) return null;
+  const summary = groupToggleSummary(dictToggleGroups, dictGroupState);
   return summary.allowed ? summary : null;
 }
 
@@ -1615,8 +1630,9 @@ document.addEventListener('click', (e) => {
   const isSeries = head.hasAttribute('data-g-series');
   const name = isSeries ? (head.dataset.gSeries || '') : '';
   // 見出しの開け閉めは、どの面でも同じ1つの仕組み（面ごとに状態を覚える）
-  toggleGroupOpen(surface, isSeries ? 'series' : 'maker', maker, name);
-  if (surface === 'catalog') { renderSearchTab(); return; }
+  const open = toggleGroupOpen(surface, isSeries ? 'series' : 'maker', maker, name);
+  // カタログは描き直さず、押した見出しの下だけを開け閉めする（スクロール位置を飛ばさない）
+  if (surface === 'catalog') { catalogToggleInPlace(head, isSeries, open); return; }
   if (surface === 'dict') { renderDictList($('dictQ').value); return; }
   render();
 });
@@ -1640,8 +1656,42 @@ document.addEventListener('click', (e) => {
   render();
 });
 
+/**
+ * 在庫タブを初期画面（フォルダ一覧のトップ）へ戻す。
+ * フォルダの中・検索中・絞り込み中・選択中・メーカーごとの並びのどれかを、
+ * トップ（フォルダ一覧）＋検索と絞り込みを解除＋場所ごとの並びに戻し、ページの先頭へ。
+ * すでに初期画面のときは描き直さない（最上部にいなければ、先頭へ戻すだけ）。
+ * @returns {boolean} 画面を戻したか
+ */
+function stockHome() {
+  if (!needsStockHome(ui)) {
+    if ((window.scrollY || 0) > 0) window.scrollTo({ top: 0 });
+    return false;
+  }
+  ui.folderId = STOCK_HOME_FOLDER;
+  ui.stockMode = 'place';
+  ui.query = '';
+  if ($('q')) $('q').value = '';
+  ui.searchOpen = false;
+  ui.favoriteOnly = false;
+  ui.category = 'all';
+  ui.status = 'all';
+  ui.maker = 'all';
+  exitSelect();
+  stopScanner();
+  render();
+  window.scrollTo({ top: 0 });
+  return true;
+}
+
 // 下タブの切り替え（＋の「カタログから選ぶ」からも同じ処理を通す）
 function selectTab(tab) {
+  // 同じタブをもう一度押したら、在庫は初期画面へ戻す（ほかのタブは先頭へ戻すだけ）
+  if (tab === ui.tab) {
+    if (tab === 'stock') { stockHome(); return; }
+    window.scrollTo({ top: 0 });
+    return;
+  }
   ui.tab = tab;
   if (tab !== 'stock') { exitSelect(); ui.searchOpen = false; ui.query = ''; $('q').value = ''; }
   stopScanner();
@@ -3508,10 +3558,228 @@ let dictTabTimer = 0;
 let dictTabBuiltFor = null; // メーカーの選択肢を作った辞書（辞書が変わったら作り直す）
 let dictOpenScope = ''; // 手で開け閉めした状態を覚えている検索条件（条件が変わったら捨てる）
 const dictMoreSeries = new Map(); // シリーズの「もっと見る」で足した件数（キーは「メーカー\0シリーズ」）
+
+/* ---------------- カタログの遅延描画（数万件を一度にDOMへ置かない） ---------------- */
+// 「すべて開く」を未絞り込み（37,822件・8,812シリーズ）で押しても固まらないよう、
+// DOMへ置くのは画面（とその前後）に近づいた見出しと行だけにする。
+//  - メーカーの中身（シリーズ見出し）は、メーカー見出しが近づいたら少しずつ置く
+//    （1社に1,400シリーズある所もあるので、一度に全部は置かない。続きの目印で次のぶんを置く）
+//  - シリーズの行は、シリーズ見出しが近づいたら置く（初回は DICT_MAKER_PAGE 行まで）
+// 描き足しは1フレーム DICT_LAZY_MS までに区切り、残りは次のフレームへ回す（画面を固めない）。
+const DICT_LAZY_MARGIN = '600px 0px'; // 画面のこれだけ先までを先に描く
+const DICT_LAZY_SERIES_CHUNK = 24; // メーカー1つで一度に置くシリーズ見出しの数
+const DICT_LAZY_MS = 8; // 1フレームで描き足す時間の上限
+let dictLazyRender = null; // いま描いてあるカタログの材料（renderSearchTab が作る）
+const catalogLazyQueue = []; // まだ描いていない入れ物の列
+let catalogLazyFlush = 0;
+const catalogLazyObserver = typeof IntersectionObserver === 'function'
+  ? new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      const el = entry.target;
+      if (!entry.isIntersecting) continue;
+      // メーカーの中身の「続きの目印」は、本体に置き換えて次のぶんを描く
+      if (el.hasAttribute('data-lazy-more')) {
+        catalogLazyObserver.unobserve(el);
+        const body = el.closest('[data-lazy-maker]');
+        el.remove();
+        if (body) queueCatalogLazy(body);
+        continue;
+      }
+      queueCatalogLazy(el);
+    }
+  }, { rootMargin: DICT_LAZY_MARGIN })
+  : null;
+
+/** 描く入れ物を列に積む（同じものを二重に積まない） */
+function queueCatalogLazy(el) {
+  if (!el || el.dataset.done === '1' || el.dataset.queued === '1') return;
+  el.dataset.queued = '1';
+  catalogLazyQueue.push(el);
+  scheduleCatalogLazyFlush();
+}
+
+/** 列を1フレーム DICT_LAZY_MS まで処理し、残りは次のフレームへ回す */
+function scheduleCatalogLazyFlush() {
+  if (catalogLazyFlush) return;
+  catalogLazyFlush = requestAnimationFrame(() => {
+    catalogLazyFlush = 0;
+    const start = performance.now();
+    while (catalogLazyQueue.length && performance.now() - start < DICT_LAZY_MS) {
+      const target = catalogLazyQueue.shift();
+      target.dataset.queued = '';
+      if (!target.isConnected || target.dataset.done === '1') continue;
+      if (target.hasAttribute('data-lazy-maker')) fillCatalogMakerBody(target);
+      else fillCatalogSeriesBody(target);
+    }
+    if (catalogLazyQueue.length) scheduleCatalogLazyFlush();
+  });
+}
+
+/** 一覧の中の、まだ描いていない入れ物を監視する */
+function observeCatalogLazy(root) {
+  if (!root) return;
+  observeCatalogLazySlots([...root.querySelectorAll('[data-lazy-maker],[data-lazy-series]')]);
+}
+
+/** 入れ物を監視する（IntersectionObserver が無ければ、すぐ描く） */
+function observeCatalogLazySlots(list) {
+  for (const el of list) {
+    if (!el || el.dataset.done === '1') continue;
+    if (catalogLazyObserver) catalogLazyObserver.observe(el);
+    else queueCatalogLazy(el);
+  }
+}
+
+/** HTMLを足し、足した中にあった「まだ描いていない入れ物」を返す */
+function appendCatalogHtml(el, html) {
+  const tpl = document.createElement('template');
+  tpl.innerHTML = html;
+  const fresh = [...tpl.content.querySelectorAll('[data-lazy-maker],[data-lazy-series]')];
+  el.appendChild(tpl.content);
+  return fresh;
+}
+
+/** メーカーの中身（シリーズ見出しの並び）を、少しずつ置く */
+function fillCatalogMakerBody(el) {
+  if (!el || !dictLazyRender || el.dataset.done === '1') return;
+  const maker = el.dataset.lazyMaker || '';
+  const total = dictLazyRender.seriesCount(maker);
+  const drawn = Number(el.dataset.drawn || 0);
+  const next = Math.min(total, drawn + DICT_LAZY_SERIES_CHUNK);
+  // 「続きの目印」は、いつも最後に置き直す（前のものを残すと、その下に足せない）
+  const mark = el.querySelector('[data-lazy-more]');
+  if (mark) { catalogLazyObserver?.unobserve(mark); mark.remove(); }
+  if (next > drawn) {
+    const fresh = appendCatalogHtml(el, dictLazyRender.seriesBlocks(maker, drawn, next));
+    el.dataset.drawn = String(next);
+    // 置いたシリーズ見出し（開いているもの）の中身も、近づいたら描く
+    observeCatalogLazySlots(fresh);
+  }
+  if (next < total) {
+    // 続きの目印（画面に近づいたら、次のぶんを描く）
+    el.insertAdjacentHTML('beforeend', `<div class="lazymore" data-lazy-more="${esc(maker)}"></div>`);
+    observeCatalogLazySlots([el.querySelector('[data-lazy-more]')]);
+  } else {
+    el.dataset.done = '1';
+    catalogLazyObserver?.unobserve(el);
+  }
+}
+
+/**
+ * 描き直す前に、いま画面のいちばん上にある見出しを覚えておく
+ * （描き直すと遅延描画で高さが変わるので、同じ見出しまで戻してスクロールを飛ばさない）。
+ */
+function catalogScrollAnchor() {
+  if (ui.tab !== 'catalog' || window.scrollY <= 0) return null;
+  const heads = [...document.querySelectorAll('#dictResults [data-g-maker]')];
+  const top = heads.find((h) => h.getBoundingClientRect().bottom > 96);
+  if (!top) return null;
+  return {
+    maker: top.dataset.gMaker || '',
+    series: top.hasAttribute('data-g-series') ? (top.dataset.gSeries || '') : '',
+  };
+}
+
+/** 覚えた見出しが見える位置まで戻す（シリーズは、その見出しが現れるまでメーカーの中身を描く） */
+function restoreCatalogAnchor(anchor) {
+  const root = $('dictResults');
+  if (!root || !anchor) return;
+  const findSeries = () => [...root.querySelectorAll('[data-g-series]')]
+    .find((h) => (h.dataset.gMaker || '') === anchor.maker && (h.dataset.gSeries || '') === anchor.series);
+  const makerBody = anchor.series
+    ? [...root.querySelectorAll('[data-lazy-maker]')].find((el) => (el.dataset.lazyMaker || '') === anchor.maker)
+    : null;
+  for (let i = 0; makerBody && !findSeries() && makerBody.dataset.done !== '1' && i < 80; i += 1) {
+    fillCatalogMakerBody(makerBody);
+  }
+  const target = (anchor.series && findSeries())
+    || [...root.querySelectorAll('[data-g-maker]')].find((h) => (h.dataset.gMaker || '') === anchor.maker);
+  if (target) target.scrollIntoView({ block: 'start' });
+}
+
+/** シリーズの中身（商品行）を置く。残りは「もっと見る」に回す */
+function fillCatalogSeriesBody(el) {
+  if (!el || !dictLazyRender || el.dataset.done === '1') return;
+  const maker = el.dataset.lazySeries || '';
+  const name = el.dataset.sgroup || '';
+  const items = dictLazyRender.items(maker, name);
+  const limit = Math.min(items.length, Number(el.dataset.limit || 0) || DICT_MAKER_PAGE);
+  const drawn = Math.min(Number(el.dataset.drawn || 0), limit);
+  // 「もっと見る」は行の最後に置くので、いったん外して描き直す
+  el.querySelector('[data-dict-smore]')?.remove();
+  if (limit > drawn) {
+    el.insertAdjacentHTML('beforeend',
+      items.slice(drawn, limit).map((d) => dictLazyRender.row(d, name)).join(''));
+    el.dataset.drawn = String(limit);
+  }
+  const rest = items.length - limit;
+  if (rest > 0) {
+    el.insertAdjacentHTML('beforeend', `<button type="button" class="dgroupmore" data-dict-smore="${esc(maker)}" data-sgroup="${esc(name)}">もっと見る（残り ${rest.toLocaleString('ja-JP')}件）</button>`);
+  }
+  el.dataset.done = '1';
+  catalogLazyObserver?.unobserve(el);
+}
+
+/**
+ * シリーズの「もっと見る」。描き直さずに、そのシリーズへ続きを足す
+ * （描き直すと上で描いた行が消えて、スクロール位置が飛ぶため）。
+ */
+function catalogShowMore(btn) {
+  const maker = btn?.dataset.dictSmore || '';
+  const name = btn?.dataset.sgroup || '';
+  const key = groupKey(maker, name);
+  // 描き直しても覚えているように、足した件数を控えておく
+  dictMoreSeries.set(key, (dictMoreSeries.get(key) || 0) + DICT_MAKER_PAGE);
+  const el = btn.closest('[data-lazy-series]');
+  if (!el || !dictLazyRender) { renderSearchTab(); return; }
+  const items = dictLazyRender.items(maker, name);
+  const limit = Math.min(items.length, Number(el.dataset.drawn || 0) + DICT_MAKER_PAGE);
+  el.dataset.limit = String(limit);
+  el.dataset.done = '';
+  fillCatalogSeriesBody(el);
+}
+
+/**
+ * カタログの見出しを押したときの開け閉め。一覧を描き直さず、その場だけ足す／外す
+ * （描き直すと、上で描いた行が消えてスクロール位置が飛ぶため）。
+ */
+function catalogToggleInPlace(head, isSeries, open) {
+  const maker = head?.dataset.gMaker || '';
+  const name = isSeries ? (head.dataset.gSeries || '') : '';
+  head.setAttribute('aria-expanded', open ? 'true' : 'false');
+  const block = head.parentElement;
+  if (!block || !dictLazyRender) { renderSearchTab(); return; }
+  block.classList.toggle('open', open);
+  const body = [...block.children].find((el) => el.classList?.contains('lazybody'));
+  if (!open) {
+    if (body) body.remove();
+  } else if (!body) {
+    const el = document.createElement('div');
+    el.className = 'lazybody';
+    if (isSeries) {
+      el.dataset.lazySeries = maker;
+      el.dataset.sgroup = name;
+    } else {
+      el.dataset.lazyMaker = maker;
+    }
+    block.appendChild(el);
+    // 押した見出しのすぐ下なので、待たずに描く
+    if (isSeries) fillCatalogSeriesBody(el);
+    else {
+      // メーカーを開き直すときは、中のシリーズの開閉を今の状態で数え直す
+      // （その場で開いたシリーズを、閉じたまま描き戻さない）
+      dictLazyRender.forget?.(maker);
+      fillCatalogMakerBody(el);
+    }
+  }
+  applyGroupToggle($('allToggleCatalog'), catalogGroupToggle(), !anyGroupClosed('catalog'));
+}
 // メーカー・シリーズの開閉は、全画面共通の dictGroupState（カタログは既定で閉じる）
 // タップで開いた／閉じた見出しは、検索語での自動展開より優先する
 // 同じ条件の描き直し（見出しの開閉・もっと見る）で数万件を数え直さないよう、直前の集計を使い回す
 let dictGroups = { groups: [], total: 0 };
+// 「すべて開く／すべて閉じる」の材料（[{maker, total, series:[名前…]}]。条件が変わったときだけ作る）
+let dictToggleGroups = [];
 let dictGroupsKey = null;
 let dictGroupsDict = null;
 // シリーズの選択肢（検索語・メーカー・カテゴリで決まる。シリーズ自身の選択は見ない）
@@ -3590,9 +3858,15 @@ function dictPreset(d) {
 }
 
 /** 辞書の商品を、そのまま自分の在庫へ入れる（入れ先はいま見ているフォルダ） */
-function addDictToStock(d) {
-  if (!d) return;
-  if (!canAddItem(state, state.settings).ok) { openProSheet('item'); return; }
+/**
+ * 辞書の商品を、そのまま自分の在庫へ入れる（入れ先はいま見ているフォルダ）。
+ * keepList … カタログの一覧を描き直さない（押した行だけ「登録済み」に変える。
+ *            描き直すと、遅延描画で高さが変わりスクロール位置が飛ぶため）
+ * @returns {boolean} 在庫に追加できたか
+ */
+function addDictToStock(d, { keepList = false } = {}) {
+  if (!d) return false;
+  if (!canAddItem(state, state.settings).ok) { openProSheet('item'); return false; }
   const folderId = scanFolderId(state, ui.folderId);
   // 別のフォルダに同じJANがあっても、このフォルダの在庫として独立して追加する
   const others = itemsByJanInOtherFolders(state.items, d.jan, folderId).length;
@@ -3603,10 +3877,11 @@ function addDictToStock(d) {
   });
   state = upsertItem(state, item);
   save();
-  render();
+  render({ keepCatalogList: keepList });
   toast(`「${item.name}」を在庫に追加しました${others ? '（別のフォルダにもあり）' : ''}`);
   // カタログからそのまま在庫に入れたときも、商品画像を静かに取りに行く
   autoFillItemImage(item);
+  return true;
 }
 
 /** 検索タブ（カタログ）の描画（メーカー・カテゴリで絞り、結果からそのまま在庫へ追加） */
@@ -3669,12 +3944,19 @@ function renderSearchTab() {
     dictGroups = groupDictionarySearch(mergedDict, dictTabQuery, {
       hay: dictionaryHaystack(mergedDict), maker: dictTabMaker, category: dictTabCategory, series: dictTabSeries,
     });
+    // 「すべて開く／すべて閉じる」の材料も、条件が変わったときだけ作る（4万件を毎描画で数えない）
+    dictToggleGroups = dictGroups.groups.map((g) => ({
+      maker: g.maker,
+      total: g.items.length,
+      series: [...new Set(g.items.map((d) => String(d?.series || '').trim()))],
+    }));
     dictGroupsKey = groupsKey;
     dictGroupsDict = mergedDict;
   }
   const { groups, total } = dictGroups;
-  const cond = [dictTabMaker, dictTabCategory ? (CATEGORIES.find((c) => c.id === dictTabCategory)?.label || '') : '', dictTabSeries].filter(Boolean).join(' / ');
-  $('dictTabNote').textContent = `内蔵辞書 ${mergedDict.length.toLocaleString('ja-JP')}件から探して、そのまま在庫に追加できます${cond ? `（${cond}）` : ''}`;
+  // 絞り込みは上のメーカー・カテゴリ・シリーズに出ているので、補足は短くしてを1行に寄せる
+  // （「（マツダ）」を足していたころは、375px幅で折り返して「ダ）」が孤立していた）
+  $('dictTabNote').textContent = `内蔵辞書 ${mergedDict.length.toLocaleString('ja-JP')}件から、そのまま在庫に追加できます`;
   $('dictResCount').textContent = `${total.toLocaleString('ja-JP')}件`;
 
   const ownedFolder = scanFolderId(state, ui.folderId);
@@ -3734,25 +4016,45 @@ function renderSearchTab() {
     return out;
   };
 
-  // メーカー・シリーズの見出しは在庫・補充と同じ形（itemTreeHtml）。中身だけカタログの商品行にする。
+  // 開いたときに描く材料（メーカーの中のシリーズ、シリーズの中の行）。
+  // メーカーの中身も行も、画面に近づいたときにこの材料から描く（遅延描画）。
+  dictLazyRender = {
+    seriesCount: (maker) => seriesPlanOf(maker).series.length,
+    seriesBlocks: (maker, from = 0, to = Infinity) => {
+      const { series, at } = seriesPlanOf(maker);
+      return series.slice(from, to).map((s) => {
+        const p = at.get(s.name);
+        const open = Boolean(p?.open);
+        return seriesBlockHtml('catalog', maker, s, {
+          open,
+          inner: open
+            ? `<div class="lazybody" data-lazy-series="${esc(maker)}" data-sgroup="${esc(s.name)}" data-limit="${Number(p?.shown?.length || 0)}"></div>`
+            : '',
+        });
+      }).join('');
+    },
+    items: (maker, name) => (seriesPlanOf(maker).series.find((s) => s.name === name)?.items || []),
+    row: (d, seriesName) => rowOf(d, seriesName),
+    // その場で見出しを開け閉めしたあと、メーカーを開き直すときに数え直す
+    forget: (maker) => seriesPlans.delete(maker),
+  };
+
+  // メーカー・シリーズの見出しは在庫・補充と同じ形（itemTreeHtml）。
+  // 中身（シリーズ見出しと行）は入れ物だけ置き、画面に近づいたら observeCatalogLazy が描く。
   const treeGroups = plan.map((p) => ({ maker: p.maker, label: p.maker, total: p.total, open: p.open }));
   const tree = itemTreeBlockHtml(treeGroups, {
     surface: 'catalog',
-    seriesOf: (g) => seriesPlanOf(g.maker).series,
     openMaker: (g) => Boolean(planByMaker.get(g.maker)?.open),
-    openSeries: (g, s) => Boolean(seriesPlanOf(g.maker).at.get(s.name)?.open),
-    body: (items, name, g) => {
-      const p = seriesPlanOf(g.maker).at.get(name);
-      if (!p) return '';
-      const more = p.rest > 0
-        ? `<button type="button" class="dgroupmore" data-dict-smore="${esc(g.maker)}" data-sgroup="${esc(name)}">もっと見る（残り ${p.rest.toLocaleString('ja-JP')}件）</button>`
-        : '';
-      return `${p.shown.map((d) => rowOf(d, name)).join('')}${more}`;
-    },
+    lazyMaker: (g) => `<div class="lazybody" data-lazy-maker="${esc(g.maker)}"></div>`,
   });
+  const anchor = catalogScrollAnchor();
+  catalogLazyObserver?.disconnect();
   $('dictResults').innerHTML = tree
     || '<p class="hint" style="margin:12px">見つかりません。商品名・メーカー・JANの一部で探してみてください</p>';
-  // 見出し行の右端の「すべて開く／すべて閉じる」（件数が多いときは出さない）
+  observeCatalogLazy($('dictResults'));
+  // 描き直す前と同じ見出しが見える位置へ戻す（行を選んだときなどに飛ばない）
+  if (anchor) restoreCatalogAnchor(anchor);
+  // 見出し行の右端の「すべて開く／すべて閉じる」（件数では出し分けない）
   applyGroupToggle($('allToggleCatalog'), catalogGroupToggle(), !anyGroupClosed('catalog'));
 }
 
@@ -3791,14 +4093,19 @@ $('dictResults').addEventListener('click', (e) => {
   // ここはカタログだけの操作（続きを描く・在庫に追加・商品を選ぶ）を見る。
   // シリーズの「もっと見る」 → そのシリーズの続きを DICT_MAKER_PAGE 件ずつ描く
   const smore = e.target.closest('[data-dict-smore]');
-  if (smore) {
-    const key = groupKey(smore.dataset.dictSmore || '', smore.dataset.sgroup || '');
-    dictMoreSeries.set(key, (dictMoreSeries.get(key) || 0) + DICT_MAKER_PAGE);
-    renderSearchTab();
+  if (smore) { catalogShowMore(smore); return; }
+  const add = e.target.closest('[data-dict-add]');
+  if (add) {
+    const added = addDictToStock(mergedDict.find((d) => d.jan === add.dataset.dictAdd), { keepList: true });
+    // 一覧は描き直さず、押した行のボタンだけ「登録済み」に差し替える
+    if (added) {
+      const have = document.createElement('span');
+      have.className = 'dres-have';
+      have.textContent = '登録済み';
+      add.replaceWith(have);
+    }
     return;
   }
-  const add = e.target.closest('[data-dict-add]');
-  if (add) { addDictToStock(mergedDict.find((d) => d.jan === add.dataset.dictAdd)); return; }
   const pick = e.target.closest('[data-dict-pick]');
   if (!pick) return;
   const d = mergedDict.find((x) => x.jan === pick.dataset.dictPick);

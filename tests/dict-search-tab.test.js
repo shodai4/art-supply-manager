@@ -124,8 +124,8 @@ test('結果からそのまま在庫へ追加でき、追加済みは「登録�
   const app = read('app.js');
 
   // 無料枠を超えていたらPro案内へ（既存の登録と同じ扱い）
-  assert.match(app, /function addDictToStock\(d\) \{[\s\S]{0,400}canAddItem\(state, state\.settings\)\.ok\) \{ openProSheet\('item'\); return; \}/);
-  assert.match(app, /function addDictToStock\(d\) \{[\s\S]{0,900}state = upsertItem\(state, item\);/);
+  assert.match(app, /function addDictToStock\(d, \{ keepList = false \} = \{\}\) \{[\s\S]{0,400}canAddItem\(state, state\.settings\)\.ok\) \{ openProSheet\('item'\); return false; \}/);
+  assert.match(app, /function addDictToStock\(d, \{ keepList = false \} = \{\}\) \{[\s\S]{0,900}state = upsertItem\(state, item\);/);
   // 辞書の項目（名前・メーカー・カテゴリ・色名・品番・サイズ・JAN）をそのまま登録に使う
   assert.match(app, /function dictPreset\(d\) \{/);
   assert.match(app, /colorCode: d\.code \|\| ''/);

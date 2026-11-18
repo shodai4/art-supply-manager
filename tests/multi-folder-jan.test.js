@@ -142,7 +142,7 @@ test('登録の各入口が「JAN×フォルダ」で探す（スキャン・JAN
   assert.match(app, /const existing = findItemByJanInFolder\(state\.items, jan, targetFolder\);/);
   assert.equal(/const existing = state\.items\.find\(\(i\) => i\.jan === jan\);/.test(app), false, 'JANだけで探す古い入口が残っている');
   // 辞書から在庫へ追加
-  assert.match(app, /function addDictToStock\(d\) \{[\s\S]{0,400}const folderId = scanFolderId\(state, ui\.folderId\);/);
+  assert.match(app, /function addDictToStock\(d, \{ keepList = false \} = \{\}\) \{[\s\S]{0,400}const folderId = scanFolderId\(state, ui\.folderId\);/);
   // 検索タブの「登録済み」判定も、いまのフォルダの分だけ
   assert.match(app, /const ownedFolder = scanFolderId\(state, ui\.folderId\);/);
   assert.match(app, /String\(i\.folderId\) === ownedFolder/);

@@ -238,7 +238,7 @@ test('新しく追加した画材には、保存のあとで商品画像を自�
   // 編集（保存）のときは触らない（自分で外した画像を勝手に戻さない）
   assert.match(app, /const isNewItem = !ui\.editingId;/);
   // カタログの「在庫に追加」（フォームを開かずそのまま入る導線）
-  const dictAdd = app.slice(app.indexOf('function addDictToStock(d)'), app.indexOf('/** 検索タブ（カタログ）の描画'));
+  const dictAdd = app.slice(app.indexOf('function addDictToStock(d, { keepList = false } = {}) {'), app.indexOf('/** 検索タブ（カタログ）の描画'));
   assert.ok(dictAdd.length > 100, 'addDictToStock が見つかりません');
   assert.match(dictAdd, /autoFillItemImage\(item\)/);
   // JANを手入力したとき（13桁そろったら、少し待って取りに行く）

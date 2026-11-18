@@ -775,12 +775,43 @@ body[data-ad-banner="true"] .foot {
   background: var(--surface); display: grid; place-items: center; color: var(--ink-2);
 }
 .dict-search button .ic { width: 18px; height: 18px; }
-#dictMakerSel, #dictSeriesSel {
-  width: 100%; height: 42px; border: 1px solid var(--line); border-radius: 10px; padding: 0 10px;
-  font-size: 15px; background: var(--surface); color: var(--ink);
+/* カタログの絞り込みは1枚の枠にまとめる（メーカー・カテゴリ・シリーズ・検索）。
+   見出し行を重ねず、名前は左の小さなラベルにして縦幅を詰める（375×812で結果まで見える高さ）。 */
+.dict-filter {
+  display: flex; flex-direction: column; gap: 5px;
+  padding: 8px 10px; margin: 8px 12px;
 }
-/* メーカーを選ぶと出るカテゴリのチップ（カードと同じ左右余白にそろえる） */
-#dictCatChips { padding: 4px 12px 0; }
+.dict-filter [hidden] { display: none; }
+.dfrow { display: flex; align-items: center; gap: 6px; min-height: 32px; position: relative; }
+/* カテゴリの行の右端は、カードの色で少しぼかして「横に続きがある」ことを示す */
+#dictCatSec::after {
+  content: ''; position: absolute; right: 0; top: 0; bottom: 0; width: 22px;
+  background: linear-gradient(to right, rgba(0, 0, 0, 0), var(--card));
+  pointer-events: none;
+}
+.dflabel {
+  flex: 0 0 auto; width: 50px; font-size: 11px; font-weight: 800;
+  color: var(--soft-ink); letter-spacing: .02em;
+}
+.dict-filter select {
+  flex: 1 1 auto; min-width: 0; height: 34px; border: 1px solid var(--line); border-radius: 9px;
+  padding: 0 8px; font-size: 14px; background: var(--surface); color: var(--ink);
+}
+/* カテゴリのチップは1行だけ横に流す（カテゴリが14個あるメーカーでも縦幅が増えない）。
+   右端は少し薄くして「横に続きがある」ことを示す（カードの縁で不意に切れて見えないように）。 */
+.chiprow {
+  flex: 1 1 auto; flex-wrap: nowrap; overflow-x: auto; gap: 5px; padding: 1px 0;
+  scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+.chiprow::-webkit-scrollbar { display: none; }
+.chiprow .fchip { flex: 0 0 auto; padding: 5px 11px; font-size: 12px; }
+.dict-filter .dict-search input { height: 34px; font-size: 15px; border-radius: 9px; }
+.dict-filter .dict-search button { width: 34px; height: 34px; border-radius: 9px; }
+/* 補足は1行に保つ（広い画面でも折り返して孤立した行を作らない） */
+.dict-note { margin: 0; font-size: 10.5px; line-height: 1.45; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 遅延描画の入れ物（メーカーの中身・シリーズの行）。
+   行を足したときに、ほかの見出しの配置まで計算し直さないよう、中でレイアウトを閉じる。 */
+.lazybody { display: block; contain: layout; }
 /* 商品行（追加ボタンのある行）は、メーカー見出しと同じ細さのリズムで並ぶ（2025-11の要望） */
 /* 辞書の一覧はシート自身が左右の余白を持つので、まとまりの余白は重ねない */
 #dictList .makers { margin: 0; }

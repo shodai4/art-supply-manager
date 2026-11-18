@@ -143,8 +143,9 @@ test('見出しは在庫・補充・カタログ・辞書のどれも同じ形�
   assert.match(app, /return `<section class="mg\$\{mOpen \? ' open' : ''\}">/);
   assert.match(app, /class="mghead" data-g-surface="\$\{esc\(surface\)\}" data-g-maker="\$\{esc\(maker\)\}" aria-expanded="\$\{open \? 'true' : 'false'\}"/);
   assert.match(app, /<span class="mgname">\$\{esc\(label\)\}<\/span><b>\$\{countBadge\(total\)\}<\/b>/);
-  // 2段目（シリーズ）: sgroup > sgrouphead
-  assert.match(app, /<div class="sgroup\$\{sOpen \? ' open' : ''\}">/);
+  // 2段目（シリーズ）: sgroup > sgrouphead（見出しと中身は seriesBlockHtml の1か所）
+  assert.match(app, /function seriesBlockHtml\(surface, maker, s, \{ open, inner \}\) \{/);
+  assert.match(app, /<div class="sgroup\$\{open \? ' open' : ''\}">/);
   assert.match(app, /class="sgrouphead" data-g-surface="\$\{esc\(surface\)\}" data-g-maker="\$\{esc\(maker\)\}" data-g-series="\$\{esc\(name\)\}" aria-expanded="\$\{open \? 'true' : 'false'\}"/);
   assert.match(app, /<span>\$\{esc\(name \|\| 'その他'\)\}<\/span><b>\$\{countBadge\(total\)\}<\/b>/);
   // 件数バッジは右端の丸（CSSは1か所だけ）
