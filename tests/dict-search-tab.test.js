@@ -92,15 +92,19 @@ test('画面: 下タブの「カタログ」に内蔵辞書の検索・メーカ
 
 test('カタログの商品行はメーカー見出しと同じ細さ（追加ボタンも小さめ）', () => {
   const css = read('styles.css');
-  const head = /\.dgrouphead\s*\{([^}]*)\}/m.exec(css);
+  // 見出しは在庫・補充と共通の mghead（メーカー）と sgrouphead（シリーズ）
+  const head = /\.mghead\s*\{([^}]*)\}/m.exec(css);
+  const series = /\.sgrouphead\s*\{([^}]*)\}/m.exec(css);
   const row = /^\.dres\s*\{([^}]*)\}/m.exec(css);
   const add = /\.dres-add\s*\{([^}]*)\}/m.exec(css);
-  assert.ok(head && row && add, '見出し・行・追加ボタンのスタイルがありません');
+  assert.ok(head && series && row && add, '見出し・行・追加ボタンのスタイルがありません');
 
   // 見出しはほどよい高さのまま（タップしやすい）
-  assert.match(head[1], /min-height:\s*38px/);
+  assert.match(head[1], /padding:\s*13px 0/);
+  assert.match(series[1], /min-height:\s*34px/);
   // 商品行は上下の余白を詰めて、見出しと同じくらいの細さにする
-  assert.match(row[1], /padding:\s*5px 12px/);
+  // （横の余白は「メーカー ＞ シリーズ」のまとまり（.makers）が持つので、行は持たない）
+  assert.match(row[1], /padding:\s*5px 0/);
   assert.match(row[1], /align-items:\s*center/);
   // 追加ボタンも小さめ（行の高さを决めるのはボタンなので、ここも詰める）
   assert.match(add[1], /min-height:\s*30px/);

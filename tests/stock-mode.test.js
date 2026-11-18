@@ -84,14 +84,12 @@ test('在庫タブの中に「場所 / メーカー」の切り替えがあり�
 
 test('「メーカーごと」は持っている画材をメーカー別にまとめ、件数を出す（五十音順）', () => {
   const app = read('app.js');
-  // 見出しはメーカー名の五十音順で、無い画材は最後に「未設定」
-  assert.match(app, /function renderMakerView\(\) \{[\s\S]{0,400}listMakers\(items\)/);
-  assert.match(app, /items\.filter\(\(it\) => itemMaker\(it\) === m\)/);
-  assert.match(app, /<b>\$\{g\.items\.length\}<\/b>/);
-  assert.match(app, /label: '未設定'/);
+  // 見出しはメーカー名の五十音順で、無い画材は最後に「未設定」（共通のまとめ関数が決める）
+  assert.match(app, /function renderMakerView\(\) \{[\s\S]{0,600}groupItemsByMakerSeries\(items, \{ makerOf: itemMaker \}\)/);
+  assert.match(app, /itemTreeHtml\(groups, \{\n    surface: 'maker',/);
 
   // 中身（長押し・スワイプ・数量±・お気に入り）は在庫と同じカードを使う
-  assert.match(app, /itemsBodyHtml\(list, \{ showFolder: true \}\)/);
+  assert.match(app, /body: \(list, seriesName\) => itemsBodyHtml\(list, \{ showFolder: true, seriesName \}\)/);
   assert.match(app, /function itemsBodyHtml[\s\S]{0,600}itemRow\(row\.item, opts\) : itemTile\(row\.item, opts\)/);
 
   // 五十音順（カタカナ・ひらなが混ざっても）に並ぶ
@@ -223,5 +221,8 @@ test('削除などの確認は、補足を改行して2行で見せる', () => {
 test('画材が無いときは「メーカーごと」でも案内を出す（壊れない）', () => {
   const app = read('app.js');
   assert.equal(blankState().items.length, 0);
-  assert.match(app, /if \(!groups\.length\) \{[\s\S]{0,200}まだ画材がありません/);
+  assert.match(app, /function renderMakerView\(\) \{[\s\S]{0,400}if \(!items\.length\) \{[\s\S]{0,200}まだ画材がありません/);
+  // 場所ごと・補充も同じ案内（共通の emptyListHtml）を使う
+  assert.match(app, /function emptyListHtml\(emptyKey\) \{/);
+  assert.match(app, /if \(!items\.length\) \{ el\.innerHTML = emptyListHtml\(opts\.emptyKey\); return; \}/);
 });

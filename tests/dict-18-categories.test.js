@@ -232,14 +232,16 @@ test('在庫アイテムと編集シートに「シリーズ」欄があり、�
   assert.match(app, /CATEGORIES\.map\(\(c\) => `<option value="\$\{c\.id\}">\$\{c\.label\}<\/option>`\)/);
 });
 
-test('検索タブの行はシリーズ名を淡く出し、メーカー名の二重表示をしない', () => {
+test('検索タブの行はシリーズ名を繰り返さず、メーカー名も二重表示しない', () => {
   const app = read('app.js');
   const css = read('styles.css');
-  assert.match(app, /splitSeriesFromName\(full, d\.series\)/);
-  assert.match(app, /<span class="dres-series">\$\{esc\(parts\.head\)\}<\/span>/);
-  assert.match(css, /\.dres-series \{/);
-  // 行の名前は「シリーズ ＋ 色名」（どちらも無ければ商品名。メーカー名は見出しに出るので繰り返さない）
-  assert.match(app, /const nameOf = \(d\) => catalogItemLabel\(d\);/);
+  // 行の名前は「シリーズ見出しの下では、シリーズ名・メーカー名を省いた色名・号数・品名」
+  // （全画面共通の seriesItemLabel。在庫・補充の行・タイルも同じ関数を使う）
+  assert.match(app, /const nameOf = \(d, seriesName = ''\) => seriesItemLabel\(d, seriesName\) \|\| catalogItemLabel\(d\);/);
+  assert.equal(/dres-series/.test(app), false, 'シリーズ名を淡く出す古い表記が残っている');
+  assert.equal(/\.dres-series \{/.test(css), false, 'シリーズ名の淡い色のスタイルが残っている');
+  // 色名・号数は補足の行に回す（名前に入っていないものだけ）
+  assert.match(app, /const sub = dictionaryRowDetail\(\{ name, colorName: d\.colorName, size: d\.size \}\);/);
 });
 
 /* ---------------- 6) 同期 ---------------- */

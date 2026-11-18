@@ -194,16 +194,15 @@ test('一覧はメーカー別に見て、絞込・並替は右上の⋯にま�
   assert.equal(html.includes('id="view-maker"'), false, 'メーカーの画面（view-maker）が残っている');
   const stock = html.slice(html.indexOf('id="view-stock"'), html.indexOf('id="view-shopping"'));
   assert.ok(stock.includes('id="makerGroups"'), '在庫タブの中にメーカーの一覧がありません');
-  // 見出しをタップして開く（件数つき）
+  // 見出しをタップして開く（件数つき）。形は在庫の場所ごと・補充と同じ itemTreeHtml
   assert.match(app, /function renderMakerView\(\)/);
-  assert.match(app, /listMakers\(items\)/);
-  assert.match(app, /data-maker-group=/);
-  assert.match(app, /ui\.openMakers\.has\(g\.key\)/);
+  assert.match(app, /groupItemsByMakerSeries\(items, \{ makerOf: itemMaker \}\)/);
+  assert.match(app, /data-g-maker=/);
+  assert.match(app, /data-g-surface=/);
   assert.match(app, /aria-expanded=/);
-  // 見出しを押すと開け閉めできる
-  assert.match(app, /closest\('\[data-maker-group\]'\)[\s\S]{0,200}ui\.openMakers\.(add|delete)/);
+  // 見出しを押すと開け閉めできる（面ごとの共通処理）
+  assert.match(app, /closest\('\[data-g-maker\]'\)[\s\S]{0,700}toggleGroupOpen\(surface/);
   // 開いた中はグリッド／リストの設定に従う（中身は itemsBodyHtml が itemRow / itemTile を選ぶ）
-  assert.match(app, /ui\.layout === 'list'[\s\S]{0,160}itemsBodyHtml\(list/);
   assert.match(app, /function itemsBodyHtml[\s\S]{0,600}itemRow\(row\.item, opts\) : itemTile\(row\.item, opts\)/);
 
   // 絞込・並替・表示・複数選択・フォルダの並びは右上の⋯に集約
@@ -394,11 +393,10 @@ test('フォルダは長押しで「編集 / 移動 / 削除」のメニュー�
   assert.match(app, /pressTimer = setTimeout\(\(\) => \{[\s\S]{0,400}if \(folderId\) openFolderMenu\(folderId\)/);
   assert.match(app, /if \(dx > LONG_PRESS_MOVE_PX \|\| dy > LONG_PRESS_MOVE_PX\) endPress\(\)/);
   assert.match(app, /suppressClickUntil/);
-  // グリッド・子フォルダ・場所の一覧・フォルダ別見出しのどれでも開ける
+  // グリッド・子フォルダ・場所の一覧のどれでも開ける
   assert.match(app, /#folderGrid \[data-folder\]/);
   assert.match(app, /\[data-goto-folder\]/);
   assert.match(app, /#folderList \[data-fid\]/);
-  assert.match(app, /\[data-folder-head\]/);
   // 移動は最上位＋各フォルダから。自分と配下は選べない（循環防止）
   assert.match(app, /folderOptions\(state\.folders, \{ exclude, noneLabel: '最上位（トップ）' \}\)/);
   assert.match(app, /folderSubtreeIds\(state\.folders, id\)/);

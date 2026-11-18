@@ -14,13 +14,15 @@ const DAY = 24 * 60 * 60 * 1000;
 
 /**
  * サンプルの中身。
+ * series は内蔵辞書のシリーズ名（一覧は「メーカー ＞ シリーズ」で分かれるので、
+ * サンプルでも最初からシリーズ見出しが並ぶようにしている）。
  * purchases は [何日前, 個数] の購入履歴（単価 × 個数で金額を積む）。
  */
 export const SAMPLE_SEEDS = [
   {
     id: 'sample-01',
     name: 'ホルベイン 油絵具 ウルトラマリン ライト 6号(20ml)',
-    maker: 'ホルベイン', brand: 'HOLBEIN', category: 'oil',
+    maker: 'ホルベイン', brand: 'HOLBEIN', category: 'oil', series: '油絵具',
     colorName: 'ウルトラマリン ライト', colorCode: 'H107', size: '6号(20ml)',
     folderId: 'atelier', qty: 3, status: 'enough', jan: '4900669001072',
     shop: '世界堂', price: 1100, memo: '空の混色に',
@@ -30,7 +32,7 @@ export const SAMPLE_SEEDS = [
   {
     id: 'sample-02',
     name: 'ホルベイン 油絵具 カドミウムイエローライト 6号(20ml)',
-    maker: 'ホルベイン', brand: 'HOLBEIN', category: 'oil',
+    maker: 'ホルベイン', brand: 'HOLBEIN', category: 'oil', series: '油絵具',
     colorName: 'カドミウムイエローライト', colorCode: 'H051', size: '6号(20ml)',
     folderId: 'atelier', qty: 1, status: 'low', jan: '4900669000518',
     shop: '世界堂', price: 1450, memo: '残り少ない',
@@ -40,7 +42,7 @@ export const SAMPLE_SEEDS = [
   {
     id: 'sample-03',
     name: 'クサカベ 水彩絵具 ウルトラマリン 2号(5ml)',
-    maker: 'クサカベ', brand: 'KUSAKABE', category: 'watercolor',
+    maker: 'クサカベ', brand: 'KUSAKABE', category: 'watercolor', series: '水彩絵具',
     colorName: 'ウルトラマリン', colorCode: '021', size: '2号(5ml)',
     folderId: 'carry', qty: 0, status: 'empty', jan: '4933317000219',
     shop: '世界堂', price: 380, memo: 'スケッチ用。買い足す',
@@ -50,7 +52,7 @@ export const SAMPLE_SEEDS = [
   {
     id: 'sample-04',
     name: 'リキテックス ベーシックス ウルトラマリンブルー 118ml',
-    maker: 'リキテックス', brand: 'LIQUITEX', category: 'acrylic',
+    maker: 'リキテックス', brand: 'LIQUITEX', category: 'acrylic', series: 'ベーシックス 380(043)',
     colorName: 'ウルトラマリンブルー', colorCode: '380(043)', size: '118ml',
     folderId: 'stock', qty: 2, status: 'new', jan: '0887452049562',
     shop: '', price: 980, memo: '未開封の予備',
@@ -60,7 +62,7 @@ export const SAMPLE_SEEDS = [
   {
     id: 'sample-05',
     name: '名村大成堂 水彩筆 ラフィーネ LR 10号',
-    maker: '名村大成堂', brand: 'Raffine', category: 'brush',
+    maker: '名村大成堂', brand: 'Raffine', category: 'brush', series: '水彩筆 Raffine ラフィーネ ロングラウンド',
     colorName: '', colorCode: 'LR', size: '10号',
     folderId: 'carry', qty: 2, status: 'enough', jan: '4943668000325',
     shop: '世界堂', price: 1600, memo: '面相筆と併用',
@@ -70,7 +72,7 @@ export const SAMPLE_SEEDS = [
   {
     id: 'sample-06',
     name: 'ホルベイン ボールドキャンバス F6',
-    maker: 'ホルベイン', brand: 'HOLBEIN', category: 'canvas',
+    maker: 'ホルベイン', brand: 'HOLBEIN', category: 'canvas', series: 'ボールドキャンバス',
     colorName: '', colorCode: '', size: 'F6',
     folderId: 'atelier', qty: 0, status: 'empty', jan: '4938331139242',
     shop: '', price: 924, memo: '張り替え用に補充',
@@ -80,7 +82,7 @@ export const SAMPLE_SEEDS = [
   {
     id: 'sample-07',
     name: 'マルマン 図案スケッチブック A4（S131）',
-    maker: 'マルマン', brand: 'MARUMAN', category: 'paper',
+    maker: 'マルマン', brand: 'MARUMAN', category: 'paper', series: '図案スケッチブック',
     colorName: '', colorCode: 'S131', size: 'A4',
     folderId: 'home', qty: 1, status: 'enough', jan: '4979093000418',
     shop: 'ユザワヤ', price: 550, memo: 'デッサン用',
@@ -90,7 +92,7 @@ export const SAMPLE_SEEDS = [
   {
     id: 'sample-08',
     name: 'ターレンス 画用液 019べネシャンターペンタイン 75ml',
-    maker: 'ターレンス', brand: 'TALENS', category: 'medium',
+    maker: 'ターレンス', brand: 'TALENS', category: 'medium', series: '画用液 019べネシャンターペンタイン',
     colorName: '', colorCode: '019', size: '75ml',
     folderId: 'atelier', qty: 1, status: 'low', jan: '8712079016968',
     shop: '', price: 1200, memo: '換気して使う',
@@ -120,6 +122,7 @@ function buildSeedItem(seed, base) {
     maker: seed.maker,
     brand: seed.brand,
     category: seed.category,
+    series: seed.series || '',
     colorName: seed.colorName,
     colorCode: seed.colorCode,
     size: seed.size,

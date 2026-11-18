@@ -108,7 +108,7 @@ test('一覧のカードに星と −/＋ があり、カードのタップ（�
   assert.equal(/\.sw[\s\S]{0,120}\$\{star\}/.test(tpl), false, '星が画像の上に重なっている');
   assert.equal(/class="qbadge"[^`]*\$\{star\}/.test(tpl), false, '星が画像の上に重なっている');
   // リスト表示でも星を出し、右端の鉛筆（編集）は星に置き換える
-  const row = app.slice(app.indexOf('function itemRow('), app.indexOf('/**\n * 一覧の見出しのまとまり'));
+  const row = app.slice(app.indexOf('function itemRow('), app.indexOf('/**\n * 画材群の中身'));
   assert.match(row, /data-fav=/);
   assert.match(row, /class="icon-btn favbtn/);
   assert.equal(/<svg class="pencil"/.test(row), false, 'リストの鉛筆（編集）が残っている');

@@ -157,16 +157,19 @@ test('自動展開が何十社に広がるときは行数に上限を置く（�
 
 test('画面: 見出しをタップで開け閉めし、条件が変わったら開閉の記憶を捨てる', () => {
   const app = read('app.js');
-  // 見出しのタップで開閉（aria-expanded を見て切り替える）
-  assert.match(app, /const head = e\.target\.closest\('\[data-dict-group\]'\);/);
-  assert.match(app, /if \(head\.getAttribute\('aria-expanded'\) === 'true'\) \{\s*dictOpenMakers\.delete\(maker\);\s*dictClosedMakers\.add\(maker\);/);
-  assert.match(app, /dictClosedMakers\.delete\(maker\);\s*dictOpenMakers\.add\(maker\);/);
-  // 「もっと見る」で50件ずつ足す
-  assert.match(app, /const more = e\.target\.closest\('\[data-dict-more\]'\);/);
-  assert.match(app, /dictMoreShown\.set\(maker, \(dictMoreShown\.get\(maker\) \|\| 0\) \+ DICT_MAKER_PAGE\);/);
+  // 見出しのタップで開閉（aria-expanded を見て切り替える）。見出しは全画面共通の data-g-maker
+  assert.match(app, /const head = e\.target\.closest\('\[data-g-maker\]'\);/);
+  // いまの開閉（aria-expanded）を見て、次の状態を決める
+  assert.match(app, /const isSeries = head\.hasAttribute\('data-g-series'\);/);
+  // 開け閉めは全画面共通の1つの仕組み（カタログも同じ。面ごとに状態を覚える）
+  assert.match(app, /toggleGroupOpen\(surface, isSeries \? 'series' : 'maker', maker, name\);/);
+  assert.match(app, /if \(surface === 'catalog'\) \{ renderSearchTab\(\); return; \}/);
+  // シリーズの「もっと見る」で50件ずつ足す
+  assert.match(app, /const smore = e\.target\.closest\('\[data-dict-smore\]'\);/);
+  assert.match(app, /dictMoreSeries\.set\(key, \(dictMoreSeries\.get\(key\) \|\| 0\) \+ DICT_MAKER_PAGE\);/);
   // 検索条件が変わったら、手で開け閉めした状態は捨てて自動展開し直す
   assert.match(app, /const scope = `\$\{dictTabQuery\}\\u0000\$\{dictTabMaker\}\\u0000\$\{dictTabCategory\}\\u0000\$\{dictTabSeries\}`;/);
-  assert.match(app, /if \(scope !== dictOpenScope\) \{\s*dictOpenScope = scope;\s*dictOpenMakers\.clear\(\);\s*dictClosedMakers\.clear\(\);\s*dictMoreShown\.clear\(\);/);
+  assert.match(app, /if \(scope !== dictOpenScope\) \{\s*dictOpenScope = scope;\s*dictGroupState\.reset\(\);/);
   // メーカーのプルダウンも五十音順
   assert.match(app, /\.sort\(\(a, b\) => compareMakerName\(a\[0\], b\[0\]\)\)/);
   // 中身を描くのは開いているメーカーだけ（閉じている見出しは DOM に行を置かない）

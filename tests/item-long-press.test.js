@@ -47,7 +47,7 @@ test('フォルダの長押しと同じ 480ms・同じ打ち消しで画材メ�
   assert.match(app, /pressTimer = setTimeout\(\(\) => \{[\s\S]{0,600}if \(folderId\) openFolderMenu\(folderId\);\n    else openItemMenu\(itemId\);/);
   // 長押し直後のタップは1回だけ打ち消す（編集中シートや移動シートが続けて開かない）
   assert.match(app, /suppressClickUntil = Date\.now\(\) \+ 600;/);
-  assert.match(app, /pressEl = folderId\n    \? e\.target\.closest\('\[data-folder\], \[data-goto-folder\], \[data-fid\], \[data-folder-head\]'\)\n    : e\.target\.closest\('\.tilewrap, \.jg-row, \.item'\);/);
+  assert.match(app, /pressEl = folderId\n    \? e\.target\.closest\('\[data-folder\], \[data-goto-folder\], \[data-fid\]'\)\n    : e\.target\.closest\('\.tilewrap, \.jg-row, \.item'\);/);
   // iOS の文字選択・画像の長押しメニューは出さない
   assert.match(app, /if \(folderIdFromPress\(e\.target\) \|\| itemIdFromPress\(e\.target\)\) e\.preventDefault\(\);/);
 });

@@ -137,7 +137,7 @@ test('編集シートの中でもお気に入りを入/切できる（保存で�
 
 test('カードの右端の鉛筆（編集）は星に置き換わり、詳細テキストは出さない', () => {
   const app = read('app.js');
-  const row = app.slice(app.indexOf('function itemRow('), app.indexOf('/**\n * 一覧の見出しのまとまり'));
+  const row = app.slice(app.indexOf('function itemRow('), app.indexOf('/**\n * 画材群の中身'));
   assert.match(row, /class="icon-btn favbtn/, '右端が星になっていない');
   assert.match(row, /data-fav=/);
   assert.equal(/<svg class="pencil"/.test(row), false, '鉛筆（編集）が残っている');
@@ -151,7 +151,7 @@ test('カードの右端の鉛筆（編集）は星に置き換わり、詳細�
 
 test('リストの行もタップで編集が開く（フォルダ・通販のチップが先に効く）', () => {
   const app = read('app.js');
-  const row = app.slice(app.indexOf('function itemRow('), app.indexOf('/**\n * 一覧の見出しのまとまり'));
+  const row = app.slice(app.indexOf('function itemRow('), app.indexOf('/**\n * 画材群の中身'));
   // 指で押しやすいよう、商品名だけでなく行の本文（名前＋バッジ）をタップ範囲にする
   assert.match(row, /<div class="it-main" data-edit="\$\{esc\(it\.id\)\}">/);
   // チップ（移動・通販）の判定は、行のタップ（編集）より前に行う

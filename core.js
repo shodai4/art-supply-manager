@@ -850,50 +850,43 @@ export function dictionarySeriesList(dict = [], query = '', { hay, maker = '', c
 }
 
 /**
- * メーカーの中をシリーズごとにまとめる（カタログタブと在庫の「メーカーごと」で共通）。
- * - 名前のあるシリーズは五十音順。ただし件数が少ない（既定5件未満）シリーズは
- *   見出しを増やしても探しにくいので、名前の無い商品と一緒に末尾の「その他」にまとめる。
- * - まとまりの name が '' のものが「その他」（見出しはその他、中身は普通の商品行）。
+ * 画材の一覧を「メーカー ＞ シリーズ」の2段にまとめる（カタログ・在庫・補充・辞書の全一覧で共通）。
+ * どの画面もこの1つを通すので、区分けのルールはどこでも同じになる。
  *
- * @returns {Array<{name:string, total:number, items:Array<object>}>}
+ * - メーカーは五十音順（itemMaker。空のものは「未設定」として末尾）
+ * - シリーズは五十音順（compareSeriesName）。名前の無い商品は末尾の name: ''（見出しは「その他」）
+ * - シリーズの中の並びは、渡された順をそのまま保つ（呼び側で五十音順・お気に入り先頭などに整える）
+ * - 件数（total）はまとまりの全件。見出しの右端の丸いバッジに出す
+ *
+ * @returns {Array<{maker:string, label:string, total:number,
+ *   series:Array<{name:string, total:number, items:Array<object>}>}>}
  */
-export function groupDictionaryBySeries(items = [], { minSeriesItems = MIN_SERIES_ITEMS } = {}) {
-  const at = new Map();
-  for (const d of Array.isArray(items) ? items : []) {
-    const name = String(d?.series || '').trim();
-    if (!at.has(name)) at.set(name, []);
-    at.get(name).push(d);
+export function groupItemsByMakerSeries(items = [], { makerOf = itemMaker } = {}) {
+  const makers = new Map();
+  for (const it of Array.isArray(items) ? items : []) {
+    const maker = String(makerOf(it) || '').trim();
+    const series = String(it?.series || '').trim();
+    if (!makers.has(maker)) makers.set(maker, new Map());
+    const bySeries = makers.get(maker);
+    if (!bySeries.has(series)) bySeries.set(series, []);
+    bySeries.get(series).push(it);
   }
-  const min = Math.max(1, Math.trunc(Number(minSeriesItems) || 1));
-  const named = [];
-  const rest = [...(at.get('') || [])];
-  for (const [name, list] of at) {
-    if (!name) continue;
-    if (list.length >= min) named.push({ name, total: list.length, items: list });
-    else rest.push(...list);
+  const groups = [];
+  for (const [maker, bySeries] of makers) {
+    const series = [...bySeries.entries()].map(([name, list]) => ({ name, total: list.length, items: list }));
+    series.sort((a, b) => {
+      if (!a.name !== !b.name) return a.name ? -1 : 1; // 名前の無いまとまりは末尾
+      return compareSeriesName(a.name, b.name);
+    });
+    groups.push({
+      maker,
+      label: maker || '未設定',
+      total: series.reduce((n, s) => n + s.total, 0),
+      series,
+    });
   }
-  named.sort((a, b) => compareSeriesName(a.name, b.name));
-  // シリーズの中も五十音順（色名・号数は numeric で自然に並ぶ）
-  for (const g of named) g.items.sort(compareSeriesColor);
-  rest.sort(compareSeriesColor);
-  return [...named, ...(rest.length ? [{ name: '', total: rest.length, items: rest }] : [])];
-}
-
-/** シリーズ見出しを出す最小の件数（これ未満は「その他」にまとめる） */
-export const MIN_SERIES_ITEMS = 5;
-
-/**
- * シリーズ単位で分けるかどうかの共通ルール（カタログ・在庫の「メーカーごと」で同じ）。
- * 見出しを持つシリーズが2つ以上あり、どれもまとめるだけの件数（既定5件以上）があるときだけ分ける。
- * 小さすぎるシリーズは groupDictionaryBySeries が「その他」へ寄せるので、
- * ここに残るシリーズは十分な件数を持つものだけになる。
- */
-export function shouldGroupBySeries(seriesGroups = [], { minItems = MIN_SERIES_ITEMS } = {}) {
-  const named = (Array.isArray(seriesGroups) ? seriesGroups : [])
-    .filter((s) => String(s?.name || '').trim());
-  if (named.length < 2) return false;
-  const each = Math.max(1, Math.trunc(Number(minItems) || 1));
-  return named.every((s) => (Number(s?.total) || 0) >= each);
+  groups.sort((a, b) => compareMakerName(a.label, b.label));
+  return groups;
 }
 
 /**
@@ -912,6 +905,87 @@ export function compareSeriesColor(a = {}, b = {}) {
   const byLabel = la.localeCompare(lb, 'ja', { numeric: true, sensitivity: 'base' });
   if (byLabel) return byLabel;
   return String(a?.name || '').localeCompare(String(b?.name || ''), 'ja', { numeric: true });
+}
+
+/**
+ * 「メーカー ＞ シリーズ」の見出しの開閉を覚える小さな入れ物（画面ごとに1つ作る）。
+ * 手で開け閉めした見出しだけを記憶し、それ以外は defaultOpen に従う。
+ * 在庫・補充は開いた状態から（数量をすぐ動かせるように）、カタログは閉じた状態から始める。
+ *
+ * @param {{defaultOpen?: boolean}} options
+ * @returns {{isOpen:Function, toggle:Function, reset:Function,
+ *   openMakers:Set, closedMakers:Set, openSeries:Set, closedSeries:Set}}
+ */
+/** 「メーカー\0シリーズ」の開閉キーの区切り（画面には出ない文字） */
+export const GROUP_KEY_SEP = '\u0000';
+
+export function createGroupOpenState({ defaultOpen = true } = {}) {
+  const openMakers = new Set();
+  const closedMakers = new Set();
+  const openSeries = new Set();
+  const closedSeries = new Set();
+  const setsOf = (level) => (level === 'series'
+    ? { open: openSeries, closed: closedSeries }
+    : { open: openMakers, closed: closedMakers });
+  const keyOf = (level, maker, name = '') => (level === 'series' ? `${maker}${GROUP_KEY_SEP}${name}` : String(maker ?? ''));
+  const isOpen = (level, maker, name = '') => {
+    const { open, closed } = setsOf(level);
+    const key = keyOf(level, maker, name);
+    if (open.has(key)) return true;
+    if (closed.has(key)) return false;
+    return Boolean(defaultOpen);
+  };
+  const toggle = (level, maker, name = '') => {
+    const { open, closed } = setsOf(level);
+    const key = keyOf(level, maker, name);
+    const wasOpen = isOpen(level, maker, name);
+    open.delete(key);
+    closed.delete(key);
+    (wasOpen ? closed : open).add(key);
+    return !wasOpen;
+  };
+  const reset = () => {
+    openMakers.clear(); closedMakers.clear(); openSeries.clear(); closedSeries.clear();
+  };
+  return { isOpen, toggle, reset, openMakers, closedMakers, openSeries, closedSeries };
+}
+
+/**
+ * 「メーカー ＞ シリーズ」の見出しの下に出す商品名（全画面で同じ整形）。
+ * 見出しに出ているメーカー名・シリーズ名は繰り返さず、シリーズの中の色名・号数・品名だけを出す。
+ *
+ * - 商品名の先頭にあるメーカー名・シリーズ名を落とす（「パンパステル ウルトラマリン …」→「ウルトラマリン …」）
+ * - 色名があって、まだ名前に残っていなければ頭に足す（色名だけで並ぶ商品でも何の色か分かる）
+ * - 何も残らなければ商品名（空欄にしない）
+ */
+export function seriesItemLabel(entry = {}, series = '') {
+  const group = String(series || entry?.series || '').trim();
+  const maker = String(entry?.maker || entry?.brand || '').trim();
+  const color = String(entry?.colorName || '').trim();
+  const name = String(entry?.name || '').trim();
+  const squish = (value) => normalizeSearchText(value).replace(/[\s　・]+/g, '');
+  let rest = name;
+  const dropMaker = () => {
+    if (!maker || !rest.startsWith(maker)) return;
+    const next = rest.slice(maker.length).replace(/^[\s　・]+/, '').trim();
+    if (next) rest = next;
+  };
+  const dropSeries = () => {
+    if (!group) return;
+    const split = splitSeriesFromName(rest, group);
+    if (split && split.rest) rest = split.rest;
+  };
+  // シリーズ名とメーカー名は、どちらが先に来ることもある（「コピックスケッチ …」「ホルベイン 油絵具 …」）。
+  // 落とせなくなるまで両方を試す（メーカー名がシリーズ名の頭に重なる場合も取りこぼさない）
+  for (let i = 0; i < 3; i += 1) {
+    const before = rest;
+    dropSeries();
+    dropMaker();
+    if (rest === before) break;
+  }
+  if (color && !squish(rest).includes(squish(color))) rest = rest ? `${color} ${rest}` : color;
+  if (!rest) rest = name || color || group;
+  return rest;
 }
 
 /**

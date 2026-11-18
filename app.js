@@ -4,11 +4,11 @@ import {
   createItem, adjustStock, computeShoppingList, filterItems, moveItems, sortItems, countByFolder,
   addFolder, updateFolder, moveFolder, reorderFolders, deleteFolder, upsertItem, deleteItems,
   exportState, importState, summarize, blankState, isEmptyStock, toggleFavorite, favoritesFirst,
-  isValidJAN, normalizeJAN, detectMaker, lookupJAN, itemMaker, listMakers, groupByMaker,
+  isValidJAN, normalizeJAN, detectMaker, lookupJAN, itemMaker, listMakers,
   groupDictionarySearch, planDictGroups, compareMakerName, DICT_MAKER_PAGE,
-  groupDictionaryBySeries, planSeriesGroups, shouldGroupBySeries, catalogItemLabel, compareSeriesColor,
+  planSeriesGroups, catalogItemLabel, seriesItemLabel, groupItemsByMakerSeries,
+  createGroupOpenState, GROUP_KEY_SEP,
   dictionaryRowDetail, dictionarySeriesList,
-  splitSeriesFromName,
   normalizeImageUrl, recordPurchase, costSummary, costRows, buildItemsCsvText, mergeStates,
   folderParentId, folderChildren, folderChain, folderDepth, folderPathLabel, folderSubtreeIds,
   folderTree, folderOptions, countByFolderDeep,
@@ -16,7 +16,7 @@ import {
   ALL_FOLDER_ID, ALL_FOLDER, isAllFolder, unfiledItems,
   toggleSelection, isSelected, selectAllIds, pruneSelection, searchDictionary, dictionaryHaystack,
   isMakerGroupOn, withSortMode,
-  groupByFolder, findItemByJanInFolder, itemsByJanInOtherFolders,
+  findItemByJanInFolder, itemsByJanInOtherFolders,
   syncItemsWithDictionary, describeSyncItemsResult, SYNC_ITEMS_CONFIRM_TEXT,
   groupItemsAcrossFolders, otherPlaceSummary, countOtherPlaces,
   addItemToAnotherFolder, describeAddPlaceError,
@@ -87,7 +87,6 @@ let ui = {
   layout: state.settings.layout === 'list' ? 'list' : 'grid',
   searchOpen: false,
   favoriteOnly: false,   // 絞込：お気に入りだけを出す
-  openMakers: new Set(), // メーカー別タブで開いているまとまり
   editingId: null,
   moveIds: [],
   addPlaceId: null,      // 「別の場所に追加」で複製する元の画材
@@ -692,6 +691,101 @@ function renderFolderGrid() {
   $('folderGrid').innerHTML = tiles.join('');
 }
 
+/* ---------------- 画材一覧の「メーカー ＞ シリーズ」（アプリ内の全一覧で共通） ---------------- */
+// 在庫（場所ごと・メーカーごと・検索結果）・補充・カタログ・辞書の一覧は、どれも
+// 「メーカー ＞ シリーズ」の2段（五十音順・タップで開け閉め・右端に丸い件数）で並べる。
+// 見出しのDOMと開閉の記憶はこの1か所にまとめ、画面ごとに違うのは「シリーズの中身の描き方」だけ。
+
+/**
+ * 面（place / maker / shopping / catalog / dict）ごとの開閉の記憶。
+ * 開け閉めの仕組み自体は core.js の createGroupOpenState（全画面で同じ実装）。
+ * 在庫・補充は開いた状態から（数量をすぐ動かせるように）、カタログは閉じた状態から始める
+ * （検索語で当たったシリーズだけ自動で開く）。
+ */
+const groupStates = new Map();
+function groupStateOf(surface, { defaultOpen = true } = {}) {
+  const key = String(surface || 'items');
+  if (!groupStates.has(key)) groupStates.set(key, createGroupOpenState({ defaultOpen }));
+  return groupStates.get(key);
+}
+/** カタログの開閉（planDictGroups / planSeriesGroups に渡すため、先に作っておく） */
+const dictGroupState = groupStateOf('catalog', { defaultOpen: false });
+
+/** 見出しを開いているか（手で開け閉めした記憶 → 無ければ面の既定） */
+function isGroupOpen(surface, level, maker, name = '') {
+  return groupStateOf(surface).isOpen(level, maker, name);
+}
+
+/** 見出しをタップしたときの記憶（開→閉／閉→開） */
+function toggleGroupOpen(surface, level, maker, name = '') {
+  return groupStateOf(surface).toggle(level, maker, name);
+}
+
+/** 件数バッジの数字（3桁区切り） */
+const countBadge = (n) => Number(n || 0).toLocaleString('ja-JP');
+
+/**
+ * 1段目の「メーカー」見出し。見出し・開閉の印・右端の丸い件数バッジは全画面で同じ。
+ * data-g-surface / data-g-maker は、タップしたときにどの面のどの見出しかを伝える。
+ */
+function makerHeadHtml({ surface, maker, label, total, open }) {
+  return `<button type="button" class="mghead" data-g-surface="${esc(surface)}" data-g-maker="${esc(maker)}" aria-expanded="${open ? 'true' : 'false'}">
+        <svg class="ic chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+        <span class="mgname">${esc(label)}</span><b>${countBadge(total)}</b>
+      </button>`;
+}
+
+/** 2段目の「シリーズ」見出し（メーカーの見出しより一段軽い、同じ形） */
+function seriesHeadHtml({ surface, maker, name, total, open }) {
+  return `<button type="button" class="sgrouphead" data-g-surface="${esc(surface)}" data-g-maker="${esc(maker)}" data-g-series="${esc(name)}" aria-expanded="${open ? 'true' : 'false'}">
+          <svg class="ic chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+          <span>${esc(name || 'その他')}</span><b>${countBadge(total)}</b>
+        </button>`;
+}
+
+/**
+ * 画材の一覧を「メーカー ＞ シリーズ」の2段アコーディオンにする（全一覧で共通）。
+ *
+ * @param {Array} groups  groupItemsByMakerSeries() の戻り値
+ * @param {object} opts
+ *  - surface      … 開閉の記憶を分ける面の名前
+ *  - seriesOf     … メーカーの中のシリーズ (group) => series[]（カタログは開いたときだけ作る）
+ *  - openMaker    … メーカーを開いているか (group) => bool（カタログは計画に従う）
+ *  - openSeries   … シリーズを開いているか (group, series) => bool
+ *  - body         … シリーズの中身 (items, seriesName, group) => HTML
+ */
+function itemTreeHtml(groups, opts = {}) {
+  const {
+    surface = 'items',
+    body = () => '',
+    seriesOf = (g) => g.series || [],
+    openMaker = (g) => isGroupOpen(surface, 'maker', g.maker),
+    openSeries = (g, s) => isGroupOpen(surface, 'series', g.maker, s.name),
+  } = opts;
+  return (Array.isArray(groups) ? groups : []).map((g) => {
+    const mOpen = openMaker(g);
+    const inner = mOpen
+      ? seriesOf(g).map((s) => {
+        const sOpen = openSeries(g, s);
+        return `<div class="sgroup${sOpen ? ' open' : ''}">
+          ${seriesHeadHtml({ surface, maker: g.maker, name: s.name, total: s.total, open: sOpen })}
+          ${sOpen ? body(s.items, s.name, g) : ''}
+        </div>`;
+      }).join('')
+      : '';
+    return `<section class="mg${mOpen ? ' open' : ''}">
+      ${makerHeadHtml({ surface, maker: g.maker, label: g.label, total: g.total, open: mOpen })}
+      ${inner}
+    </section>`;
+  }).join('');
+}
+
+/** 「メーカー ＞ シリーズ」のまとまりを、一覧の左右余白つきで置く */
+function itemTreeBlockHtml(groups, opts = {}) {
+  const inner = itemTreeHtml(groups, opts);
+  return inner ? `<div class="makers">${inner}</div>` : '';
+}
+
 /** 画材一覧（今いる場所のすべて。検索中は全体から探す） */
 function renderItemSection() {
   // 「メーカーごと」を見ている間は場所の一覧を作らない（隠れているうえ、行数が多いと重い）
@@ -710,7 +804,8 @@ function renderItemSection() {
         : (root ? '未分類' : folderOf(ui.folderId).name));
   $('itemCount').textContent = String(list.length);
   // 「お気に入り」「すべての画材」はどのフォルダから来たかが分かるよう、フォルダの色の点を出す
-  renderTilesInto($('itemList'), list, {
+  renderItemTree($('itemList'), list, {
+    surface: 'place',
     emptyKey: fav ? 'favorites' : (unfiledOnly ? 'unfiled' : 'items'),
     // お気に入り・すべての画材・未分類は、どのフォルダのものか分かるようにする
     showFolder: all || fav || unfiledOnly,
@@ -719,62 +814,24 @@ function renderItemSection() {
   });
 }
 
-/** メーカー別: メーカーごとに開いて中を見る（見出しに件数。在庫タブの「メーカーごと」） */
-// 在庫タブ「メーカーごと」の中の「シリーズ」の開閉（キーは「メーカー\0シリーズ」）
-const makerOpenSeries = new Set();
-const makerClosedSeries = new Set();
-
+/**
+ * メーカー別: メーカーごとに開いて中を見る（在庫タブの「メーカーごと」）。
+ * 場所ごと・補充と同じ itemTreeHtml を使うので、メーカー ＞ シリーズの形・開け閉め・
+ * 右端の件数バッジはどの画面でも同じになる。
+ */
 function renderMakerView() {
   if (!$('makerGroups')) return;
-  const items = state.items;
-  const makers = listMakers(items);
-  const groups = makers.map((m) => ({ key: m, label: m, items: items.filter((it) => itemMaker(it) === m) }));
-  const unfiled = items.filter((it) => !itemMaker(it));
-  if (unfiled.length) groups.push({ key: MAKER_NONE, label: '未設定', items: unfiled });
-  if (!groups.length) {
+  const items = favoritesFirst(sortItems(state.items, state.settings.sort));
+  if (!items.length) {
     $('makerGroups').innerHTML = '<div class="empty"><b>まだ画材がありません</b>右下の＋ か 読取 から登録できます</div>';
     return;
   }
-  /** 中身の描画（リスト／グリッド）。同じJANは「計 N点 ＋ /└」にまとめる */
-  const bodyOf = (list) => (ui.layout === 'list'
-    ? `<div class="mlist">${itemsBodyHtml(list, { showFolder: true, forceList: true })}</div>`
-    : itemsBodyHtml(list, { showFolder: true }));
-  /**
-   * メーカーの中身。シリーズが複数あるメーカーは「シリーズ見出し → タップで画材」、
-   * シリーズ未設定・1シリーズ・極端に少ないメーカーは、これまでどおり画材をそのまま並べる
-   * （カタログタブと同じ整理ルール）。
-   */
-  const makerBody = (key, list) => {
-    const seriesGroups = groupDictionaryBySeries(list);
-    if (!shouldGroupBySeries(seriesGroups)) return bodyOf(list);
-    const planned = planSeriesGroups(seriesGroups, {
-      autoOpen: false,
-      open: scopedSet(makerOpenSeries, key),
-      closed: scopedSet(makerClosedSeries, key),
-      page: Number.MAX_SAFE_INTEGER, // 自分の在庫は全件出す（「もっと見る」は使わない）
-    });
-    return planned.map((s) => {
-      const head = `
-        <button type="button" class="sgrouphead" data-maker-sgroup="${esc(key)}" data-sgroup="${esc(s.name)}" aria-expanded="${s.open ? 'true' : 'false'}">
-          <svg class="ic chev" aria-hidden="true"><use href="#i-chevron"/></svg>
-          <span>${esc(s.name || 'その他')}</span><b>${s.total}</b>
-        </button>`;
-      return `<div class="sgroup${s.open ? ' open' : ''}">${head}${s.open ? bodyOf(s.shown) : ''}</div>`;
-    }).join('');
-  };
-  $('makerGroups').innerHTML = groups.map((g) => {
-    const open = ui.openMakers.has(g.key);
-    const sorted = favoritesFirst(sortItems(g.items, state.settings.sort));
-    const body = open ? makerBody(g.key, sorted) : '';
-    return `<section class="mg${open ? ' open' : ''}">
-      <button type="button" class="mghead" data-maker-group="${esc(g.key)}" aria-expanded="${open ? 'true' : 'false'}">
-        <svg class="ic chev" aria-hidden="true"><use href="#i-chevron"/></svg>
-        <span class="mgname">${esc(g.label)}</span>
-        <b>${g.items.length}</b>
-      </button>
-      ${body}
-    </section>`;
-  }).join('');
+  const groups = groupItemsByMakerSeries(items, { makerOf: itemMaker });
+  // #makerGroups 自体が .makers（左右余白つき）なので、まとまりだけを入れる
+  $('makerGroups').innerHTML = itemTreeHtml(groups, {
+    surface: 'maker',
+    body: (list, seriesName) => itemsBodyHtml(list, { showFolder: true, seriesName }),
+  });
 }
 
 /** アイテムの実物画像（手元写真 → 画像URL の順。無ければ空文字でアイコン表示） */
@@ -833,7 +890,7 @@ function itemTile(it, opts = {}) {
   const dot = showFolder ? `<span class="fdot" style="background:${esc(f.color)}"></span>` : '';
   const qty = Number(it.qty) || 0;
   const fav = it.favorite === true;
-  const label = `${displayName(it)} ${qty}点${out ? ' 要補充' : low ? ' 少なめ' : ''}${fav ? ' お気に入り' : ''}`;
+  const label = `${rowName(it, opts)} ${qty}点${out ? ' 要補充' : low ? ' 少なめ' : ''}${fav ? ' お気に入り' : ''}`;
   // フォルダを1つだけ開いているときの添え書き（タイルは幅が狭いので「他1か所」だけ）
   const otherPlaces = opts.otherPlaces ? countOtherPlaces(state.items, it) : 0;
   const otherNote = otherPlaces ? `他${otherPlaces}か所` : '';
@@ -859,16 +916,20 @@ function itemTile(it, opts = {}) {
         ${otherNote ? `<span class="tother" title="${esc(otherPlaceSummary(state.items, it, state.folders))}">${esc(otherNote)}</span>` : ''}
         ${ui.selectMode ? '<span class="selmark" aria-hidden="true"></span>' : ''}
       </span>
-      <span class="tname">${esc(displayName(it))}</span>
+      <span class="tname">${esc(rowName(it, opts))}</span>
     </button>
     ${ui.selectMode ? '' : `<span class="tilefoot">${star}${stepper}</span>`}
     </div>
   </div>`;
 }
 
-/** 行に出す名前。補充タブは「シリーズ ＋ 色名」（無ければ商品名）で揃える */
+/**
+ * 一覧の行・タイルに出す名前（全画面共通）。
+ * 「メーカー ＞ シリーズ」の見出しに出ている名前は繰り返さず、シリーズの中の色名・号数・品名だけを出す。
+ * 見出しの外（シリーズ名の無いまとまり）でも、メーカー名だけは省いて長くしない。
+ */
 function rowName(it, opts = {}) {
-  return opts.seriesLabel ? (catalogItemLabel(it) || displayName(it)) : displayName(it);
+  return seriesItemLabel(it, opts.seriesName ?? '') || displayName(it);
 }
 
 /** 1件＝2行の高密度リスト行（ステッパー付き） */
@@ -918,22 +979,6 @@ function itemRow(it, opts = {}) {
 }
 
 /**
- * 一覧の見出しのまとまり（すべて / フォルダ別 / メーカー別）。
- * 見出しの右の数字は、そのまとまりの点数。
- */
-function viewBlocks(items, group) {
-  if (group === 'maker') {
-    return [...groupByMaker(items)].sort((a, b) => compareMakerName(a.maker || '未設定', b.maker || '未設定'))
-      .map((g) => ({ label: g.maker || '未設定', items: g.items }));
-  }
-  if (group === 'folder') {
-    // 見出しのフォルダでも長押しメニューを開けるよう、フォルダIDを持たせる
-    return groupByFolder(items, state.folders).map((g) => ({ label: g.name || '未分類', items: g.items, folderId: g.folderId }));
-  }
-  return [{ label: '', items }];
-}
-
-/**
  * 同じ画材が複数のフォルダにあるときの親カード。
  * 見出しに画材名・画像・合計数（計 4点）・星（どれかお気に入りなら点灯）を出し、
  * 中に各フォルダの行を ┣ / └ のツリーで並べる。行からは、そのまま数量の増減・
@@ -967,7 +1012,7 @@ function janGroupCard(g, opts = {}) {
         </div>
       </div>`;
   }).join('');
-  const name = displayName({ ...it, name: g.name || it.name });
+  const name = rowName({ ...it, name: g.name || it.name }, opts);
   return `
   <article class="jg${isEmpty ? ' item-card--empty' : ''}" data-jan="${esc(g.jan)}" style="--c:${esc(thumbColor)}">
     <div class="jg-head">
@@ -991,6 +1036,7 @@ function janGroupCard(g, opts = {}) {
  * 同じJANが2つ以上のフォルダに分かれている画材だけを「計 N点 ＋ ┣/└」にまとめる
  * （画面で複数のフォルダが混ざって並んでいる一覧でのみ意味がある。
  * 選択中・買い物リストではまとめない）。
+ * opts.seriesName は、いま描いているシリーズ見出しの名前（行の名前からシリーズ名を省くのに使う）。
  */
 function itemsBodyHtml(items, opts = {}) {
   const plain = opts.noJanGroup || ui.selectMode;
@@ -1001,37 +1047,36 @@ function itemsBodyHtml(items, opts = {}) {
   const body = rows.map((row) => (row.type === 'group'
     ? janGroupCard(row, opts)
     : (list ? itemRow(row.item, opts) : itemTile(row.item, opts)))).join('');
-  return list ? body : `<div class="tgrid">${body}</div>`;
+  return list ? `<div class="mlist">${body}</div>` : `<div class="tgrid">${body}</div>`;
 }
 
-/** アイテム群をグリッド／リストで描画（見出しつきのグループ対応） */
-function renderTilesInto(el, items, opts = {}) {
-  if (!items.length) {
-    el.innerHTML = opts.emptyKey === 'shopping'
-      ? '<div class="empty"><b>補充はありません</b>残りわずか・使い切りがここに集まります</div>'
-      : opts.emptyKey === 'favorites'
-        ? '<div class="empty"><b>お気に入りはまだありません</b>カードの星を押すと、ここに集まります（元のフォルダにも残ります）</div>'
-        : opts.emptyKey === 'unfiled'
-          ? '<div class="empty"><b>未分類の画材はありません</b>フォルダに入れた画材は、各フォルダから見られます</div>'
-        : (state.items.length
-          ? '<div class="empty"><b>見つかりません</b>検索や絞込を変えてみてください</div>'
-          : '<div class="empty"><b>まだ画材がありません</b>右下の＋ か 読取 から登録できます<button class="btn mini wide" data-add-samples>サンプルを入れる</button></div>');
-    return;
-  }
-  const blocks = viewBlocks(items, opts.group);
-  el.innerHTML = blocks.map((g) => {
-    const head = g.label
-      ? `<div class="mhead"${g.folderId ? ` data-folder-head="${esc(g.folderId)}"` : ''}><span>${esc(g.label)}</span><b>${g.items.length}</b></div>`
-      : '';
-    return head + itemsBodyHtml(g.items, opts);
-  }).join('');
+/** 一覧の空表示（画面ごとに言い回しを変える） */
+function emptyListHtml(emptyKey) {
+  if (emptyKey === 'shopping') return '<div class="empty"><b>補充はありません</b>残りわずか・使い切りがここに集まります</div>';
+  if (emptyKey === 'favorites') return '<div class="empty"><b>お気に入りはまだありません</b>カードの星を押すと、ここに集まります（元のフォルダにも残ります）</div>';
+  if (emptyKey === 'unfiled') return '<div class="empty"><b>未分類の画材はありません</b>フォルダに入れた画材は、各フォルダから見られます</div>';
+  if (state.items.length) return '<div class="empty"><b>見つかりません</b>検索や絞込を変えてみてください</div>';
+  return '<div class="empty"><b>まだ画材がありません</b>右下の＋ か 読取 から登録できます<button class="btn mini wide" data-add-samples>サンプルを入れる</button></div>';
+}
+
+/**
+ * 画材を「メーカー ＞ シリーズ」で描く（在庫の場所ごと・メーカーごと・補充で共通）。
+ * 中身はグリッド／リストの設定に従う（itemsBodyHtml）。
+ */
+function renderItemTree(el, items, opts = {}) {
+  if (!items.length) { el.innerHTML = emptyListHtml(opts.emptyKey); return; }
+  const groups = groupItemsByMakerSeries(items, { makerOf: itemMaker });
+  el.innerHTML = itemTreeBlockHtml(groups, {
+    surface: opts.surface || 'place',
+    body: (list, seriesName) => itemsBodyHtml(list, { ...opts, seriesName }),
+  });
 }
 
 function renderShopping() {
-  // 補充タブも「シリーズ ＋ 色名」の五十音順に揃える（シリーズ・色名が無いものは商品名）
-  const list = [...computeShoppingList(state.items)].sort(compareSeriesColor);
-  renderTilesInto($('shoppingList'), list, {
-    group: false, emptyKey: 'shopping', shopChip: true, forceList: true, noJanGroup: true, seriesLabel: true,
+  // 補充タブも在庫と同じ「メーカー ＞ シリーズ」（シリーズの中は並び設定・お気に入りが先頭）
+  const list = favoritesFirst(sortItems([...computeShoppingList(state.items)], state.settings.sort));
+  renderItemTree($('shoppingList'), list, {
+    surface: 'shopping', emptyKey: 'shopping', shopChip: true, forceList: true, noJanGroup: true,
   });
 }
 
@@ -1461,20 +1506,22 @@ function setLayout(layout) {
   render();
 }
 
-/** メーカー別タブ: 見出しをタップして開け閉める（中はシリーズ単位でも開け閉めできる） */
+/**
+ * 「メーカー ＞ シリーズ」の見出しをタップしたときの開け閉め（在庫の場所ごと・メーカーごと・補充・
+ * カタログ・辞書の一覧で共通）。どの面の見出しかは data-g-surface で分かり、状態は面ごとに覚える。
+ * カタログと辞書は、その一覧だけを描き直す（数万件の集計をやり直さない）。
+ */
 document.addEventListener('click', (e) => {
-  const seriesHead = e.target.closest('[data-maker-sgroup]');
-  if (seriesHead) {
-    const key = groupKey(seriesHead.dataset.makerSgroup || '', seriesHead.dataset.sgroup || '');
-    toggleOpenKey(makerOpenSeries, makerClosedSeries, key, seriesHead.getAttribute('aria-expanded') === 'true');
-    render();
-    return;
-  }
-  const head = e.target.closest('[data-maker-group]');
+  const head = e.target.closest('[data-g-maker]');
   if (!head) return;
-  const key = head.dataset.makerGroup;
-  if (ui.openMakers.has(key)) ui.openMakers.delete(key);
-  else ui.openMakers.add(key);
+  const surface = head.dataset.gSurface || 'place';
+  const maker = head.dataset.gMaker || '';
+  const isSeries = head.hasAttribute('data-g-series');
+  const name = isSeries ? (head.dataset.gSeries || '') : '';
+  // 見出しの開け閉めは、どの面でも同じ1つの仕組み（面ごとに状態を覚える）
+  toggleGroupOpen(surface, isSeries ? 'series' : 'maker', maker, name);
+  if (surface === 'catalog') { renderSearchTab(); return; }
+  if (surface === 'dict') { renderDictList($('dictQ').value); return; }
   render();
 });
 
@@ -2215,7 +2262,7 @@ let pressEl = null;
 let suppressClickUntil = 0;      // 長押し直後の「タップ」を1回だけ打ち消す
 let suppressClickEl = null;      // 打ち消す相手（長押しした要素。別のフォルダのタップは通す）
 
-/** 長押し対象の要素からフォルダIDを読む（グリッド・子フォルダ・場所一覧・フォルダ別見出し） */
+/** 長押し対象の要素からフォルダIDを読む（グリッド・子フォルダ・場所一覧） */
 function folderIdFromPress(el) {
   if (!el || !el.closest) return '';
   const tile = el.closest('#folderGrid [data-folder]');
@@ -2224,8 +2271,6 @@ function folderIdFromPress(el) {
   if (chip) return chip.dataset.gotoFolder;
   const row = el.closest('#folderList [data-fid]');
   if (row) return row.dataset.fid;
-  const head = el.closest('[data-folder-head]');
-  if (head) return head.dataset.folderHead;
   return '';
 }
 
@@ -2270,7 +2315,7 @@ function startPress(e) {
   endPress();
   pressStart = { x: e.clientX, y: e.clientY };
   pressEl = folderId
-    ? e.target.closest('[data-folder], [data-goto-folder], [data-fid], [data-folder-head]')
+    ? e.target.closest('[data-folder], [data-goto-folder], [data-fid]')
     : e.target.closest('.tilewrap, .jg-row, .item');
   pressEl?.classList?.add('pressing');
   pressTimer = setTimeout(() => {
@@ -3313,15 +3358,20 @@ function renderDictList(query) {
   const { items: hit, total } = searchDictionary(mergedDict, query, {
     limit: DICT_RENDER_LIMIT, hay: dictionaryHaystack(mergedDict),
   });
-  $('dictList').innerHTML = hit.map((d) => `
+  // 辞書の一覧も「メーカー ＞ シリーズ」（在庫・カタログと同じ形）。行の名前も同じ整形を使う
+  const groups = groupItemsByMakerSeries(hit, { makerOf: (d) => String(d?.maker || 'メーカー不明') });
+  const rows = (list, seriesName) => list.map((d) => `
     <div style="padding:8px 0;border-bottom:1px solid var(--line)">
-      <b>${esc(d.name || d.colorName)}</b> <span class="dic-meta">${esc([d.maker, d.code].filter(Boolean).join(' '))}</span>
+      <b>${esc(seriesItemLabel(d, seriesName) || d.name || d.colorName)}</b>
+      ${d.code ? `<span class="dic-meta">${esc(d.code)}</span>` : ''}
       ${extraJanSet.has(d.jan) ? '<span class="dict-badge">追加</span>' : ''}<br>
       <span class="dic-jan">${esc(d.jan)}</span>
       <a href="${esc(d.source)}" target="_blank" rel="noopener noreferrer" class="dic-src">出典</a>
-    </div>`).join('') + (total > hit.length
-    ? `<p class="hint" style="margin:10px 0 0">ほか ${total - hit.length}件</p>`
-    : '');
+    </div>`).join('');
+  $('dictList').innerHTML = itemTreeBlockHtml(groups, { surface: 'dict', body: rows })
+    + (total > hit.length
+      ? `<p class="hint" style="margin:10px 0 0">ほか ${total - hit.length}件</p>`
+      : '');
 }
 $('dictQ').addEventListener('input', (e) => renderDictList(e.target.value));
 
@@ -3338,13 +3388,9 @@ let dictTabSeries = '';
 let dictTabTimer = 0;
 let dictTabBuiltFor = null; // メーカーの選択肢を作った辞書（辞書が変わったら作り直す）
 let dictOpenScope = ''; // 手で開け閉めした状態を覚えている検索条件（条件が変わったら捨てる）
-const dictOpenMakers = new Set(); // タップで開いたメーカー
-const dictClosedMakers = new Set(); // タップで閉じたメーカー（自動展開より優先する）
-const dictMoreShown = new Map(); // 「もっと見る」で足した件数（メーカーごと）
-// 開いたメーカーの中の「シリーズ」の開閉（キーは「メーカー\0シリーズ」）
-const dictOpenSeries = new Set();
-const dictClosedSeries = new Set();
-const dictMoreSeries = new Map();
+const dictMoreSeries = new Map(); // シリーズの「もっと見る」で足した件数（キーは「メーカー\0シリーズ」）
+// メーカー・シリーズの開閉は、全画面共通の dictGroupState（カタログは既定で閉じる）
+// タップで開いた／閉じた見出しは、検索語での自動展開より優先する
 // 同じ条件の描き直し（見出しの開閉・もっと見る）で数万件を数え直さないよう、直前の集計を使い回す
 let dictGroups = { groups: [], total: 0 };
 let dictGroupsKey = null;
@@ -3355,7 +3401,6 @@ let dictSeriesKey = null;
 let dictSeriesDict = null;
 
 /** メーカーごとの開閉キー（「メーカー\0シリーズ」）の前置き */
-const GROUP_KEY_SEP = '\u0000';
 const groupKey = (maker, name) => `${maker}${GROUP_KEY_SEP}${name}`;
 
 /** 全体の集合から、そのメーカーぶんだけを取り出す（シリーズ見出しの開閉計画に渡す） */
@@ -3372,16 +3417,6 @@ function scopedMap(map, maker) {
   return out;
 }
 
-/** 見出しの開閉を「手で開いた／手で閉じた」に記録する */
-function toggleOpenKey(openSet, closedSet, key, isOpen) {
-  if (isOpen) {
-    openSet.delete(key);
-    closedSet.add(key);
-  } else {
-    closedSet.delete(key);
-    openSet.add(key);
-  }
-}
 function dictMakerList() {
   const counts = new Map();
   for (const d of mergedDict) {
@@ -3505,11 +3540,7 @@ function renderSearchTab() {
   const scope = `${dictTabQuery}\u0000${dictTabMaker}\u0000${dictTabCategory}\u0000${dictTabSeries}`;
   if (scope !== dictOpenScope) {
     dictOpenScope = scope;
-    dictOpenMakers.clear();
-    dictClosedMakers.clear();
-    dictMoreShown.clear();
-    dictOpenSeries.clear();
-    dictClosedSeries.clear();
+    dictGroupState.reset();
     dictMoreSeries.clear();
   }
 
@@ -3533,25 +3564,20 @@ function renderSearchTab() {
   // 同じJANが別のフォルダにあるか（このフォルダにも足せることを軽く伝えるためだけに使う）
   const elsewhere = new Set(state.items.filter((i) => ownedJan(i) && String(i.folderId) !== ownedFolder).map((i) => i.jan));
   // 1件の行は「商品名＋色・容量」だけ。メーカーは見出しに出すので繰り返さず、JANも出さない。
-  // シリーズ名があるものは淡く（シリーズ名＋色名＋号数の順に読めるように）し、商品名の残りを濃く出す
-  // 行の名前は「シリーズ ＋ 色名」（どちらも無ければ商品名）。号数などは補足の行に回す
-  const nameOf = (d) => catalogItemLabel(d);
-  const nameHtml = (d) => {
-    const full = nameOf(d);
-    const parts = splitSeriesFromName(full, d.series);
-    if (!parts) return esc(full);
-    return `<span class="dres-series">${esc(parts.head)}</span>${parts.rest ? ` ${esc(parts.rest)}` : ''}`;
-  };
-  const rowOf = (d) => {
+  // 行の名前は、いま開いているシリーズ見出しの名前を繰り返さない（在庫・補充と同じ seriesItemLabel）。
+  // 号数・色番号・容量は補足の行に回す。
+  const nameOf = (d, seriesName = '') => seriesItemLabel(d, seriesName) || catalogItemLabel(d);
+  const rowOf = (d, seriesName = '') => {
+    const name = nameOf(d, seriesName);
     // 補足は、いま出している名前に含まれないものだけ（色名を2度書かない）
-    const sub = dictionaryRowDetail({ name: nameOf(d), colorName: d.colorName, size: d.size });
+    const sub = dictionaryRowDetail({ name, colorName: d.colorName, size: d.size });
     const btn = owned.has(d.jan)
       ? '<span class="dres-have">登録済み</span>'
-      : `<button class="dres-add" data-dict-add="${esc(d.jan)}" aria-label="${esc(nameOf(d) || 'この商品')}を在庫に追加${elsewhere.has(d.jan) ? '（ほかのフォルダにあり）' : ''}">追加</button>`;
+      : `<button class="dres-add" data-dict-add="${esc(d.jan)}" aria-label="${esc(name || 'この商品')}を在庫に追加${elsewhere.has(d.jan) ? '（ほかのフォルダにあり）' : ''}">追加</button>`;
     return `
     <div class="dres">
       <button class="dres-main" data-dict-pick="${esc(d.jan)}">
-        <span class="dres-name">${nameHtml(d)}</span>
+        <span class="dres-name">${esc(name)}</span>
         ${sub ? `<span class="dres-sub">${esc(sub)}</span>` : ''}
       </button>
       ${btn}
@@ -3560,52 +3586,53 @@ function renderSearchTab() {
   // メーカー見出しごとに、開いているメーカーだけ中身を描く（閉じている見出しは行をDOMに置かない）
   const plan = planDictGroups(groups, {
     query: dictTabQuery, maker: dictTabMaker, category: dictTabCategory,
-    open: dictOpenMakers, closed: dictClosedMakers, more: dictMoreShown,
+    open: dictGroupState.openMakers, closed: dictGroupState.closedMakers,
     page: DICT_MAKER_PAGE, budget: DICT_AUTO_OPEN_ROWS,
   });
   const itemsOfMaker = new Map(groups.map((g) => [g.maker, g.items]));
+  const planByMaker = new Map(plan.map((p) => [p.maker, p]));
 
   /**
-   * 開いたメーカーの中身。シリーズが複数あるメーカーは「シリーズ見出し → タップで商品行」、
-   * シリーズ未設定や1シリーズ・極端に少ないメーカーは、これまでどおり商品行をそのまま並べる。
+   * メーカーの中の「シリーズ」と、その開閉・ページ分け（開いたメーカーだけ、初回に1回だけ作る）。
+   * 在庫・補充と同じ groupItemsByMakerSeries でまとめるので、区分けも五十音順も同じになる。
    */
-  const bodyOf = (g) => {
-    const seriesGroups = groupDictionaryBySeries(itemsOfMaker.get(g.maker) || []);
-    if (shouldGroupBySeries(seriesGroups)) {
-      const planned = planSeriesGroups(seriesGroups, {
-        autoOpen: Boolean(dictTabQuery), // 検索語で絞ったときは当たったシリーズを自動で開く
-        open: scopedSet(dictOpenSeries, g.maker),
-        closed: scopedSet(dictClosedSeries, g.maker),
-        more: scopedMap(dictMoreSeries, g.maker),
-      });
-      return planned.map((s) => {
-        const head = `
-          <button type="button" class="sgrouphead" data-dict-sgroup="${esc(g.maker)}" data-sgroup="${esc(s.name)}" aria-expanded="${s.open ? 'true' : 'false'}">
-            <svg class="ic chev" aria-hidden="true"><use href="#i-chevron"/></svg>
-            <span>${esc(s.name || 'その他')}</span><b>${s.total.toLocaleString('ja-JP')}</b>
-          </button>`;
-        const rowsHtml = s.open ? s.shown.map(rowOf).join('') : '';
-        const moreHtml = s.open && s.rest > 0
-          ? `<button type="button" class="dgroupmore" data-dict-smore="${esc(g.maker)}" data-sgroup="${esc(s.name)}">もっと見る（残り ${s.rest.toLocaleString('ja-JP')}件）</button>`
-          : '';
-        return `<div class="sgroup${s.open ? ' open' : ''}">${head}${rowsHtml}${moreHtml}</div>`;
-      }).join('');
-    }
-    return `${g.shown.map(rowOf).join('')}${g.rest > 0
-      ? `<button type="button" class="dgroupmore" data-dict-more="${esc(g.maker)}">もっと見る（残り ${g.rest.toLocaleString('ja-JP')}件）</button>`
-      : ''}`;
+  const seriesPlans = new Map();
+  const seriesPlanOf = (maker) => {
+    if (seriesPlans.has(maker)) return seriesPlans.get(maker);
+    const groupsOfMaker = groupItemsByMakerSeries(itemsOfMaker.get(maker) || [], {
+      makerOf: (d) => String(d?.maker || 'メーカー不明'),
+    });
+    const series = groupsOfMaker[0]?.series || [];
+    const planned = planSeriesGroups(series, {
+      // 検索語・メーカー・カテゴリ・シリーズで絞っているときは、当たったシリーズを自動で開く
+      autoOpen: Boolean(dictTabQuery || dictTabMaker || dictTabCategory || dictTabSeries),
+      open: scopedSet(dictGroupState.openSeries, maker),
+      closed: scopedSet(dictGroupState.closedSeries, maker),
+      more: scopedMap(dictMoreSeries, maker),
+    });
+    const out = { series, planned, at: new Map(planned.map((s) => [s.name, s])) };
+    seriesPlans.set(maker, out);
+    return out;
   };
-  const rows = plan.map((g) => `
-      <section class="dgroup${g.open ? ' open' : ''}">
-        <button type="button" class="dgrouphead" data-dict-group="${esc(g.maker)}" aria-expanded="${g.open ? 'true' : 'false'}">
-          <svg class="ic chev" aria-hidden="true"><use href="#i-chevron"/></svg>
-          <span>${esc(g.maker)}</span><b>${g.total.toLocaleString('ja-JP')}</b>
-        </button>
-        ${g.open ? bodyOf(g) : ''}
-      </section>`).join('');
-  $('dictResults').innerHTML = rows
-    ? rows
-    : '<p class="hint" style="margin:12px">見つかりません。商品名・メーカー・JANの一部で探してみてください</p>';
+
+  // メーカー・シリーズの見出しは在庫・補充と同じ形（itemTreeHtml）。中身だけカタログの商品行にする。
+  const treeGroups = plan.map((p) => ({ maker: p.maker, label: p.maker, total: p.total, open: p.open }));
+  const tree = itemTreeBlockHtml(treeGroups, {
+    surface: 'catalog',
+    seriesOf: (g) => seriesPlanOf(g.maker).series,
+    openMaker: (g) => Boolean(planByMaker.get(g.maker)?.open),
+    openSeries: (g, s) => Boolean(seriesPlanOf(g.maker).at.get(s.name)?.open),
+    body: (items, name, g) => {
+      const p = seriesPlanOf(g.maker).at.get(name);
+      if (!p) return '';
+      const more = p.rest > 0
+        ? `<button type="button" class="dgroupmore" data-dict-smore="${esc(g.maker)}" data-sgroup="${esc(name)}">もっと見る（残り ${p.rest.toLocaleString('ja-JP')}件）</button>`
+        : '';
+      return `${p.shown.map((d) => rowOf(d, name)).join('')}${more}`;
+    },
+  });
+  $('dictResults').innerHTML = tree
+    || '<p class="hint" style="margin:12px">見つかりません。商品名・メーカー・JANの一部で探してみてください</p>';
 }
 
 $('dictQTab').addEventListener('input', (e) => {
@@ -3639,41 +3666,13 @@ $('dictSeriesSel').addEventListener('change', (e) => {
   renderSearchTab();
 });
 $('dictResults').addEventListener('click', (e) => {
-  // 開いたメーカーの中のシリーズ見出し → そのシリーズの商品行を開け閉め
-  const sgroup = e.target.closest('[data-dict-sgroup]');
-  if (sgroup) {
-    const key = groupKey(sgroup.dataset.dictSgroup || '', sgroup.dataset.sgroup || '');
-    toggleOpenKey(dictOpenSeries, dictClosedSeries, key, sgroup.getAttribute('aria-expanded') === 'true');
-    renderSearchTab();
-    return;
-  }
+  // 見出し（メーカー／シリーズ）の開け閉めは、在庫・補充と共通の処理（document の [data-g-maker]）が行う。
+  // ここはカタログだけの操作（続きを描く・在庫に追加・商品を選ぶ）を見る。
   // シリーズの「もっと見る」 → そのシリーズの続きを DICT_MAKER_PAGE 件ずつ描く
   const smore = e.target.closest('[data-dict-smore]');
   if (smore) {
     const key = groupKey(smore.dataset.dictSmore || '', smore.dataset.sgroup || '');
     dictMoreSeries.set(key, (dictMoreSeries.get(key) || 0) + DICT_MAKER_PAGE);
-    renderSearchTab();
-    return;
-  }
-  // メーカー見出しをタップ → そのメーカーの中身を開け閉め（自動展開より手で閉じたほうを優先）
-  const head = e.target.closest('[data-dict-group]');
-  if (head) {
-    const maker = head.dataset.dictGroup || '';
-    if (head.getAttribute('aria-expanded') === 'true') {
-      dictOpenMakers.delete(maker);
-      dictClosedMakers.add(maker);
-    } else {
-      dictClosedMakers.delete(maker);
-      dictOpenMakers.add(maker);
-    }
-    renderSearchTab();
-    return;
-  }
-  // 「もっと見る」 → そのメーカーの続きを DICT_MAKER_PAGE 件ずつ描く
-  const more = e.target.closest('[data-dict-more]');
-  if (more) {
-    const maker = more.dataset.dictMore || '';
-    dictMoreShown.set(maker, (dictMoreShown.get(maker) || 0) + DICT_MAKER_PAGE);
     renderSearchTab();
     return;
   }
