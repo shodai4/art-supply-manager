@@ -451,6 +451,37 @@ const INTERNAL_GROUP_422 = [
   },
 ];
 
+test('assignBuildToGroup: VALID直後の404は少し待って再試行し、通れば追加成功', async () => {
+  const NOT_FOUND = [404, { errors: [{ status: '404', code: 'NOT_FOUND', title: 'The specified resource does not exist', detail: "There is no resource of type 'builds' with id 'B-9'" }] }];
+  const { fetchImpl, calls } = makeFetch([
+    // 1回目は 404、2回目は 204（同じURLなので、呼ばれた回数で返り値を変える）
+    { match: 'POST /v1/betaGroups/G1/relationships/builds', respond: ({ calls: sofar }) => (sofar.length <= 1 ? NOT_FOUND : 204) },
+  ]);
+  const client = createAscClient({ jwtFactory: 'token', fetchImpl, sleep: async () => {}, maxRetries: 0 });
+  const waits = [];
+  const result = await assignBuildToGroup(client, {
+    groupId: 'G1', buildId: 'B-9', wait: async (ms) => { waits.push(ms); },
+  });
+  assert.deepEqual(result, { ok: true, mode: 'added' });
+  assert.equal(calls.length, 2);
+  assert.deepEqual(waits, [10000]);
+});
+
+test('assignBuildToGroup: 404が続くときは待ち時間を伸ばし、最後は失敗として返す', async () => {
+  const NOT_FOUND = [404, { errors: [{ status: '404', code: 'NOT_FOUND', detail: 'does not exist' }] }];
+  const { fetchImpl, calls } = makeFetch([
+    { match: 'POST /v1/betaGroups/G1/relationships/builds', respond: () => NOT_FOUND },
+  ]);
+  const client = createAscClient({ jwtFactory: 'token', fetchImpl, sleep: async () => {}, maxRetries: 0 });
+  const waits = [];
+  await assert.rejects(
+    () => assignBuildToGroup(client, { groupId: 'G1', buildId: 'B-9', wait: async (ms) => { waits.push(ms); } }),
+    /グループへのビルド追加に失敗/,
+  );
+  assert.equal(calls.length, 3);
+  assert.deepEqual(waits, [10000, 20000]);
+});
+
 test('assignBuildToGroup: 内部グループの 422 では逆向きの関連付けを試す', async () => {
   const { fetchImpl, calls } = makeFetch([
     { match: 'POST /v1/betaGroups/G1/relationships/builds', respond: INTERNAL_GROUP_422 },

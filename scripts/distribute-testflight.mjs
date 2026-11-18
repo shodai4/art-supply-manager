@@ -400,12 +400,30 @@ export async function fetchBetaGroups(client, appId) {
  * それも弾かれたら「自動配信に任せる（追加不要）」として成功扱いにする。
  * （内部グループは VALID になった時点で内部テスターへ配信される）
  */
-export async function assignBuildToGroup(client, { groupId, buildId, log = () => {} }) {
-  const result = await client.request('POST', `/betaGroups/${encodeURIComponent(groupId)}/relationships/builds`, {
-    body: { data: [{ type: 'builds', id: buildId }] },
-  });
-  if (result.status === 409) return { ok: true, mode: 'already_present' };
-  if (result.ok) return { ok: true, mode: 'added' };
+export async function assignBuildToGroup(client, {
+  groupId, buildId, log = () => {}, attempts = 3, wait,
+} = {}) {
+  const sleep = typeof wait === 'function'
+    ? wait
+    : (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  // VALID になった直後は、まだ /builds/{id} を引けないことがある（404 NOT_FOUND）。
+  // 少し待って同じ追加をもう一度だけ試す（何度も叩かず、待ち時間を伸ばす）。
+  let result = null;
+  for (let i = 0; i < Math.max(1, attempts); i += 1) {
+    result = await client.request('POST', `/betaGroups/${encodeURIComponent(groupId)}/relationships/builds`, {
+      body: { data: [{ type: 'builds', id: buildId }] },
+    });
+    if (result.status === 409) return { ok: true, mode: 'already_present' };
+    if (result.ok) return { ok: true, mode: 'added' };
+    const notFound = result.status === 404
+      && /not[_ ]?found|does not exist/i.test(String(JSON.stringify(result.data ?? result.text ?? '')));
+    if (!notFound) break;
+    if (i < attempts - 1) {
+      const delay = 10000 * (i + 1);
+      log(`[ASC] ビルド ${buildId} はまだ関連付けできる状態ではありません（404）— ${delay / 1000}秒待って再試行します`);
+      await sleep(delay);
+    }
+  }
 
   const reason = describeApiError(result);
   const internalGroupRefusal =
