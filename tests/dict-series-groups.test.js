@@ -159,7 +159,7 @@ test('見出しは在庫・補充・カタログ・辞書のどれも同じ形�
 
 test('辞書の一覧（シート）も同じまとめ・同じ行の名前を使う', () => {
   assert.match(app, /const groups = groupItemsByMakerSeries\(hit, \{ makerOf: \(d\) => String\(d\?\.maker \|\| 'メーカー不明'\) \}\);/);
-  assert.match(app, /\$\('dictList'\)\.innerHTML = itemTreeBlockHtml\(groups, \{ surface: 'dict', body: rows \}\)/);
+  assert.match(app, /\$\('dictList'\)\.innerHTML = itemTreeBlockHtml\(groups, \{ surface: 'dict', autoOpen: Boolean\(String\(query \|\| ''\)\.trim\(\)\), body: rows \}\)/);
   assert.match(app, /esc\(seriesItemLabel\(d, seriesName\) \|\| d\.name \|\| d\.colorName\)/);
   assert.ok(html.includes('id="dictList"'));
   assert.ok(html.includes('id="dictResults"'));

@@ -115,8 +115,8 @@ test('app.js は「画面が出た合図」で時間切れを解除し、読み�
   // 時間切れのときだけアプリ内カメラへ倒す
   assert.match(app, /const timedOut = e\?\.code === 'open-timeout';/);
   assert.match(app, /if \(timedOut\) \{[\s\S]{0,300}startInlineScanner\(token, 'カメラ画面を開けませんでした。アプリ内カメラで読み取ります'\)/);
-  // 閉じるボタンで閉じたときはエラーにせず、手入力を案内する
-  assert.match(app, /if \(cancelled\) \{[\s\S]{0,160}showScanMsg\('読み取りをやめました。下の手入力をどうぞ'\)/);
+  // 閉じるボタンで閉じたときはエラーにせず、裏のシートも閉じる（2回押させない）
+  assert.match(app, /if \(cancelled\) \{[\s\S]{0,220}closeSheet\('sheetScan'\)/);
   // シートを閉じたら関門も閉じる（閉じたあとに時間切れで切り替わらない）
   assert.match(app, /function stopScanner\(\) \{[\s\S]{0,200}scanOpenGate\?\.cancel\(\);/);
 });

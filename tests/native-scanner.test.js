@@ -72,7 +72,8 @@ test('iOS ではネイティブ読取を開き、開けないときはアプリ�
   assert.match(app, /if \(scanContinuous\) continue;[\s\S]{0,120}if \(scannerLive\) continue;/);
   // 閉じるボタンで閉じた（キャンセル）ときはエラー表示にしない
   assert.match(app, /const cancelled = e\?\.code === 'cancelled' \|\| e\?\.code === 'stopped';/);
-  assert.match(app, /if \(cancelled\) \{[\s\S]{0,160}return;/);
+  // カメラ画面の「×」でやめたら、裏の「バーコード読取」シートも一緒に閉じる
+  assert.match(app, /if \(cancelled\) \{[\s\S]{0,220}closeSheet\('sheetScan'\)[\s\S]{0,80}return;/);
   // カメラ画面を開けないときは、黙って固まらずにアプリ内カメラ（html5-qrcode）へ切り替える
   assert.match(app, /await startInlineScanner\(token, 'カメラ画面を開けませんでした。アプリ内カメラで読み取ります'\);/);
   assert.match(app, /async function startInlineScanner\(token, note = ''\)/);
@@ -225,4 +226,19 @@ test('CI 用のテンプレートは plugins/ の変更でもビルドし、Pod 
   assert.match(configure, /if \(scanners !== 1\) return \[`ArtBarcodeScanner/);
   assert.match(configure, /list\.includes\(className\) \? \[\] : \[`capacitor\.config\.json の packageClassList に/);
   assert.match(configure, /if \(failed\) process\.exitCode = 1;/);
+});
+
+test('ネイティブカメラの「×」でやめたら、裏のバーコード読取シートも閉じて元の画面に戻る', () => {
+  const app = read('app.js');
+  // キャンセルの分岐で、読み取りシートを閉じる（2回「×」を押させない）
+  const cancelBranch = app.match(/if \(cancelled\) \{([\s\S]{0,300}?)\n\s*\}/);
+  assert.ok(cancelBranch, 'キャンセルの分岐が見つからない');
+  assert.match(cancelBranch[1], /closeSheet\('sheetScan'\)/, 'キャンセル時にシートを閉じていない');
+  // 閉じるのは同じ起動のときだけ（カメラ切り替えの途中で古い起動が閉じない）
+  assert.match(cancelBranch[1], /token === scanStartToken/);
+  // シートの「閉じる」は stopScanner を通る（カメラも一緒に止まる）
+  assert.match(app, /function closeSheet\(id\) \{[\s\S]{0,220}if \(id === 'sheetScan'\) stopScanner\(\);/);
+  // カメラ画面側に手入力の切り替えは無い（×は「やめる」なので、案内を残さず閉じる）
+  const swift = read('plugins/art-barcode-scanner/ios/Sources/ArtBarcodeScannerPlugin.swift');
+  assert.equal(/手入力/.test(swift.split('func presentScanner')[0] || ''), false);
 });

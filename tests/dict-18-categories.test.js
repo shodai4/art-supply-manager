@@ -205,8 +205,8 @@ test('色名・号数の区切り（シリーズ名＋色名＋号数）で商�
   // シリーズ名で始まらないときは null（呼び出し側は商品名をそのまま出す）
   assert.equal(splitSeriesFromName('平筆 12号', 'ホルベイン油彩筆'), null);
   assert.equal(splitSeriesFromName('', 'x'), null);
-  // 行の補足は商品名に入っている語を繰り返さない
-  assert.equal(dictionaryRowDetail(d), '');
+  // 行の補足は商品名に入っている語を繰り返さない（色番号だけは、名前に無ければ補足に出す）
+  assert.equal(dictionaryRowDetail(d), d.code);
   assert.equal(dictionaryRowDetail({ name: '平筆 12号', colorName: '丸' }), '丸');
 });
 
@@ -241,7 +241,7 @@ test('検索タブの行はシリーズ名を繰り返さず、メーカー名�
   assert.equal(/dres-series/.test(app), false, 'シリーズ名を淡く出す古い表記が残っている');
   assert.equal(/\.dres-series \{/.test(css), false, 'シリーズ名の淡い色のスタイルが残っている');
   // 色名・号数は補足の行に回す（名前に入っていないものだけ）
-  assert.match(app, /const sub = dictionaryRowDetail\(\{ name, colorName: d\.colorName, size: d\.size \}\);/);
+  assert.match(app, /const sub = dictionaryRowDetail\(\{ name, colorName: d\.colorName, size: d\.size, colorCode: d\.code \}\);/);
 });
 
 /* ---------------- 6) 同期 ---------------- */

@@ -94,7 +94,7 @@ test('画面: 結果の各行からメーカー名とJANのグレー表示を消
   assert.equal(/\.dres-jan/.test(css), false, 'JANのスタイルが残っている');
   // 行の中身は「商品名＋色・容量」だけ（メーカーは見出しに出す）
   // 補足の行は、いま出している名前に含まれないものだけ（色名を2度書かない）
-  assert.match(app, /const sub = dictionaryRowDetail\(\{ name, colorName: d\.colorName, size: d\.size \}\);/);
+  assert.match(app, /const sub = dictionaryRowDetail\(\{ name, colorName: d\.colorName, size: d\.size, colorCode: d\.code \}\);/);
   // 名前は「シリーズ ＋ 色名」（どちらも無ければ商品名）にする＝メーカー名も二重にならない
   assert.match(app, /const nameOf = \(d, seriesName = ''\) => seriesItemLabel\(d, seriesName\) \|\| catalogItemLabel\(d\);/);
   // シリーズ名は淡く、色名・号数は濃く出す（「シリーズ名＋色名＋号数」で読める）

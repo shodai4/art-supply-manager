@@ -699,11 +699,11 @@ function renderFolderGrid() {
 /**
  * 面（place / maker / shopping / catalog / dict）ごとの開閉の記憶。
  * 開け閉めの仕組み自体は core.js の createGroupOpenState（全画面で同じ実装）。
- * 在庫・補充は開いた状態から（数量をすぐ動かせるように）、カタログは閉じた状態から始める
- * （検索語で当たったシリーズだけ自動で開く）。
+ * どの一覧も「メーカー」「シリーズ」とも閉じた状態から始め、検索語を入れたときだけ
+ * 当たった見出しを自動で開く（見出しだけでスクロールが短く済む）。
  */
 const groupStates = new Map();
-function groupStateOf(surface, { defaultOpen = true } = {}) {
+function groupStateOf(surface, { defaultOpen = false } = {}) {
   const key = String(surface || 'items');
   if (!groupStates.has(key)) groupStates.set(key, createGroupOpenState({ defaultOpen }));
   return groupStates.get(key);
@@ -711,9 +711,14 @@ function groupStateOf(surface, { defaultOpen = true } = {}) {
 /** カタログの開閉（planDictGroups / planSeriesGroups に渡すため、先に作っておく） */
 const dictGroupState = groupStateOf('catalog', { defaultOpen: false });
 
-/** 見出しを開いているか（手で開け閉めした記憶 → 無ければ面の既定） */
+/** 見出しを開いているか（手で開け閉めした記憶 → 無ければ既定） */
 function isGroupOpen(surface, level, maker, name = '') {
   return groupStateOf(surface).isOpen(level, maker, name);
+}
+
+/** 検索中は当たった見出しを開く（手で閉じたものは閉じたまま） */
+function isGroupOpenWhen(surface, level, maker, name = '', autoOpen = false) {
+  return groupStateOf(surface).isOpenWhen(level, maker, name, autoOpen);
 }
 
 /** 見出しをタップしたときの記憶（開→閉／閉→開） */
@@ -757,10 +762,11 @@ function seriesHeadHtml({ surface, maker, name, total, open }) {
 function itemTreeHtml(groups, opts = {}) {
   const {
     surface = 'items',
+    autoOpen = false,
     body = () => '',
     seriesOf = (g) => g.series || [],
-    openMaker = (g) => isGroupOpen(surface, 'maker', g.maker),
-    openSeries = (g, s) => isGroupOpen(surface, 'series', g.maker, s.name),
+    openMaker = (g) => isGroupOpenWhen(surface, 'maker', g.maker, '', autoOpen),
+    openSeries = (g, s) => isGroupOpenWhen(surface, 'series', g.maker, s.name, autoOpen),
   } = opts;
   return (Array.isArray(groups) ? groups : []).map((g) => {
     const mOpen = openMaker(g);
@@ -1068,6 +1074,8 @@ function renderItemTree(el, items, opts = {}) {
   const groups = groupItemsByMakerSeries(items, { makerOf: itemMaker });
   el.innerHTML = itemTreeBlockHtml(groups, {
     surface: opts.surface || 'place',
+    // 検索語が入っているときは当たった見出しを自動で開く（空のときは全部閉じる）
+    autoOpen: Boolean(ui.query),
     body: (list, seriesName) => itemsBodyHtml(list, { ...opts, seriesName }),
   });
 }
@@ -2941,9 +2949,13 @@ async function startScanner() {
           const timedOut = e?.code === 'open-timeout';
           console.warn('ネイティブスキャナ終了', e);
           scannerLive = false;
-          // 自分で閉じるボタンを押した（キャンセル）ときは、エラー扱いにしない
+          // 自分で閉じるボタンを押した（キャンセル）ときは、エラー扱いにしない。
+          // カメラ画面の「×」でやめたら、裏の「バーコード読取」シートも一緒に閉じて元の画面に戻る
+          // （2回「×」を押させない）。
           if (cancelled) {
-            if (token === scanStartToken) showScanMsg('読み取りをやめました。下の手入力をどうぞ');
+            if (token === scanStartToken) {
+              closeSheet('sheetScan'); // 中の stopScanner でカメラも止まる
+            }
             return;
           }
           // カメラ画面が開いた合図が来ないまま時間切れ → アプリ内カメラ（html5-qrcode）へ
@@ -3368,7 +3380,7 @@ function renderDictList(query) {
       <span class="dic-jan">${esc(d.jan)}</span>
       <a href="${esc(d.source)}" target="_blank" rel="noopener noreferrer" class="dic-src">出典</a>
     </div>`).join('');
-  $('dictList').innerHTML = itemTreeBlockHtml(groups, { surface: 'dict', body: rows })
+  $('dictList').innerHTML = itemTreeBlockHtml(groups, { surface: 'dict', autoOpen: Boolean(String(query || '').trim()), body: rows })
     + (total > hit.length
       ? `<p class="hint" style="margin:10px 0 0">ほか ${total - hit.length}件</p>`
       : '');
@@ -3570,7 +3582,7 @@ function renderSearchTab() {
   const rowOf = (d, seriesName = '') => {
     const name = nameOf(d, seriesName);
     // 補足は、いま出している名前に含まれないものだけ（色名を2度書かない）
-    const sub = dictionaryRowDetail({ name, colorName: d.colorName, size: d.size });
+    const sub = dictionaryRowDetail({ name, colorName: d.colorName, size: d.size, colorCode: d.code });
     const btn = owned.has(d.jan)
       ? '<span class="dres-have">登録済み</span>'
       : `<button class="dres-add" data-dict-add="${esc(d.jan)}" aria-label="${esc(name || 'この商品')}を在庫に追加${elsewhere.has(d.jan) ? '（ほかのフォルダにあり）' : ''}">追加</button>`;

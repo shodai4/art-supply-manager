@@ -106,13 +106,13 @@ test('一覧の行・タイル・まとめカードは、どれも同じ名前�
 
 /* ---------------- 3) 開け閉め ---------------- */
 
-test('開け閉めの状態: 既定の開閉・タップでの反転・面ごとの記憶を1つの型で持つ', () => {
-  const stock = createGroupOpenState(); // 在庫・補充は開いた状態から
-  assert.equal(stock.isOpen('maker', 'ホルベイン'), true);
-  assert.equal(stock.toggle('maker', 'ホルベイン'), false, '開いていたら閉じる');
+test('開け閉めの状態: 既定は閉じる・タップでの反転・面ごとの記憶を1つの型で持つ', () => {
+  const stock = createGroupOpenState(); // 在庫・補充も閉じた状態から
   assert.equal(stock.isOpen('maker', 'ホルベイン'), false);
   assert.equal(stock.toggle('maker', 'ホルベイン'), true, '閉じていたら開く');
-  assert.equal(stock.openMakers.has('ホルベイン'), true);
+  assert.equal(stock.isOpen('maker', 'ホルベイン'), true);
+  assert.equal(stock.toggle('maker', 'ホルベイン'), false, '開いていたら閉じる');
+  assert.equal(stock.closedMakers.has('ホルベイン'), true);
 
   const catalog = createGroupOpenState({ defaultOpen: false });
   assert.equal(catalog.isOpen('maker', 'ホルベイン'), false, 'カタログは閉じた状態から');
@@ -122,17 +122,17 @@ test('開け閉めの状態: 既定の開閉・タップでの反転・面ごと
   // シリーズは「メーカー＋シリーズ」で別々に覚える
   const st = createGroupOpenState();
   st.toggle('series', 'コピック', 'スケッチ');
-  assert.equal(st.isOpen('series', 'コピック', 'スケッチ'), false);
-  assert.equal(st.isOpen('series', 'コピック', 'チャオ'), true);
-  assert.equal(st.isOpen('series', 'ホルベイン', 'スケッチ'), true);
+  assert.equal(st.isOpen('series', 'コピック', 'スケッチ'), true);
+  assert.equal(st.isOpen('series', 'コピック', 'チャオ'), false);
+  assert.equal(st.isOpen('series', 'ホルベイン', 'スケッチ'), false);
 
   // 条件が変わったら捨てる
   st.reset();
-  assert.equal(st.isOpen('series', 'コピック', 'スケッチ'), true);
+  assert.equal(st.isOpen('series', 'コピック', 'スケッチ'), false);
   assert.equal(st.openSeries.size + st.closedSeries.size, 0);
 });
 
-test('アプリ側も面ごとに1つだけ持つ（在庫・補充は開く／カタログは閉じる）', () => {
+test('アプリ側も面ごとに1つだけ持つ（どの一覧も閉じた状態から）', () => {
   assert.match(app, /const groupStates = new Map\(\);/);
   assert.match(app, /groupStates\.set\(key, createGroupOpenState\(\{ defaultOpen \}\)\);/);
   assert.match(app, /const dictGroupState = groupStateOf\('catalog', \{ defaultOpen: false \}\);/);
@@ -179,7 +179,7 @@ test('4つの一覧はどれも itemTreeHtml / renderItemTree を通る（フラ
   // カタログ
   assert.match(app, /itemTreeBlockHtml\(treeGroups, \{\n    surface: 'catalog',/);
   // 辞書の一覧（シート）
-  assert.match(app, /itemTreeBlockHtml\(groups, \{ surface: 'dict', body: rows \}\)/);
+  assert.match(app, /itemTreeBlockHtml\(groups, \{ surface: 'dict', autoOpen: Boolean\(String\(query \|\| ''\)\.trim\(\)\), body: rows \}\)/);
   // 古いフラット一覧の描画は残っていない
   for (const name of ['viewBlocks', 'renderTilesInto', 'data-maker-group', 'data-dict-group', "group: 'maker'"]) {
     assert.equal(app.includes(name), false, `${name} が残っている`);

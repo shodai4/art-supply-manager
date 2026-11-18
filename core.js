@@ -909,17 +909,18 @@ export function compareSeriesColor(a = {}, b = {}) {
 
 /**
  * 「メーカー ＞ シリーズ」の見出しの開閉を覚える小さな入れ物（画面ごとに1つ作る）。
- * 手で開け閉めした見出しだけを記憶し、それ以外は defaultOpen に従う。
- * 在庫・補充は開いた状態から（数量をすぐ動かせるように）、カタログは閉じた状態から始める。
+ * 手で開け閉めした見出しだけを記憶し、それ以外は既定に従う。
+ * どの一覧も閉じた状態から始め（見出しだけを並べてスクロールを短くする）、
+ * 検索語を入れたときは当たった見出しを自動で開く（isOpenWhen）。
  *
  * @param {{defaultOpen?: boolean}} options
- * @returns {{isOpen:Function, toggle:Function, reset:Function,
- *   openMakers:Set, closedMakers:Set, openSeries:Set, closedSeries:Set}}
+ * @returns {{isOpen:Function, isOpenWhen:Function, isClosedManually:Function, toggle:Function,
+ *   reset:Function, openMakers:Set, closedMakers:Set, openSeries:Set, closedSeries:Set}}
  */
 /** 「メーカー\0シリーズ」の開閉キーの区切り（画面には出ない文字） */
 export const GROUP_KEY_SEP = '\u0000';
 
-export function createGroupOpenState({ defaultOpen = true } = {}) {
+export function createGroupOpenState({ defaultOpen = false } = {}) {
   const openMakers = new Set();
   const closedMakers = new Set();
   const openSeries = new Set();
@@ -935,6 +936,14 @@ export function createGroupOpenState({ defaultOpen = true } = {}) {
     if (closed.has(key)) return false;
     return Boolean(defaultOpen);
   };
+  /** 手で閉じた見出しか（検索中でも勝手に開かないため） */
+  const isClosedManually = (level, maker, name = '') => setsOf(level).closed.has(keyOf(level, maker, name));
+  /**
+   * 検索中（autoOpen）は、当たった見出しを自動で開く。
+   * ただし手で閉じた見出しは閉じたまま（ユーザーの操作を上書きしない）。
+   */
+  const isOpenWhen = (level, maker, name = '', autoOpen = false) =>
+    isOpen(level, maker, name) || (Boolean(autoOpen) && !isClosedManually(level, maker, name));
   const toggle = (level, maker, name = '') => {
     const { open, closed } = setsOf(level);
     const key = keyOf(level, maker, name);
@@ -947,7 +956,7 @@ export function createGroupOpenState({ defaultOpen = true } = {}) {
   const reset = () => {
     openMakers.clear(); closedMakers.clear(); openSeries.clear(); closedSeries.clear();
   };
-  return { isOpen, toggle, reset, openMakers, closedMakers, openSeries, closedSeries };
+  return { isOpen, isOpenWhen, isClosedManually, toggle, reset, openMakers, closedMakers, openSeries, closedSeries };
 }
 
 /**
@@ -998,6 +1007,12 @@ export function seriesItemLabel(entry = {}, series = '') {
   }
   if (color && !squish(rest).includes(squish(color))) rest = rest ? `${color} ${rest}` : color;
   if (!rest) rest = name || color || group;
+  // シリーズ名しか残らなかった（色名も号数も持たない商品）ときは、シリーズ名を繰り返さず
+  // 色番号（S005・SE-0・GM-F0 など）を出す。色番号も無ければ商品名のまま。
+  if (rest === group) {
+    const id = String(entry?.code || entry?.colorCode || '').trim();
+    if (id && id !== group) rest = id;
+  }
   return rest;
 }
 
@@ -1075,10 +1090,19 @@ export function dictionaryRowDetail(entry = {}) {
   // 空白の有無でも同じ色名と見なす（「ウルトラマリン ブルー」と「ウルトラマリンブルー」）
   const key = (value) => normalizeSearchText(value).replace(/\s+/g, '');
   const name = key(entry?.name || '');
-  const parts = [entry?.colorName, entry?.size].filter(Boolean)
+  // 名前に入っている語は繰り返さない。ただし1〜2文字の色番（「2」）は、
+  // 「24色セット」の数字の一部に当たっただけのことがあるので、区切りの位置で照合する。
+  const inName = (k) => {
+    if (!k || !name.includes(k)) return false;
+    if (k.length > 2) return true;
+    const escaped = k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(^|[^0-9a-z])${escaped}(?=$|[^0-9a-z])`, 'i').test(name);
+  };
+  // 色番号（S005・SE-0 など）も、名前に出ていなければ補足に出す（同じ名前の行を見分けるため）
+  const parts = [entry?.colorName, entry?.colorCode || entry?.code, entry?.size].filter(Boolean)
     .filter((value) => {
       const k = key(value);
-      return k !== '' && !name.includes(k);
+      return k !== '' && !inName(k);
     })
     .map((value) => String(value).trim());
   return [...new Set(parts)].join(' ・ ');
