@@ -10,7 +10,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildCapacityMap, buildSeriesMap, makerKey, normalizeEntry } from './lib/normalize-jan.mjs';
+import { buildCapacityMap, buildEnglishNameMap, buildSeriesMap, makerKey, normalizeEntry } from './lib/normalize-jan.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DATA_DIR = path.join(ROOT, 'data');
@@ -69,12 +69,13 @@ for (const row of rows) row.brand = brandByJan.get(row.jan) ?? brandByMaker.get(
 
 const capacityMap = buildCapacityMap(rows);
 const seriesMap = buildSeriesMap(rows);
+const englishName = buildEnglishNameMap(rows);
 
 const beforeJan = new Set(rows.map((r) => r.jan));
 const changes = [];
 const makerRename = new Map();
 const normalized = rows.map((row) => {
-  const { entry, changes: diff } = normalizeEntry(row, { capacityMap, seriesMap });
+  const { entry, changes: diff } = normalizeEntry(row, { capacityMap, seriesMap, englishName });
   for (const c of diff) changes.push({ jan: row.jan, ...c });
   if (row.maker !== entry.maker) makerRename.set(row.maker, entry.maker);
   return entry;

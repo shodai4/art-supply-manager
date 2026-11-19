@@ -173,6 +173,39 @@ export function buildSeriesMap(dict) {
 const LATIN_RUN = /^([A-Za-z][A-Za-z .&'’\-]*?)\s+(?=[^\x00-\x7F])/;
 
 /**
+ * メーカーの英語名（「ぺんてる｜Pentel」の Pentel）。
+ * 一度「｜」を落とすと辞書からは分からなくなるので、代表的なものはここに残す
+ * （2026-11-19 の Drive CSV の「メーカー｜英語名」から作った）。
+ */
+const ENGLISH_MAKER_NAMES = {
+  'ぺんてる': 'Pentel',
+  'ウィンザー＆ニュートン': 'WINSOR & NEWTON',
+  'カラン・ダッシュ': "Caran d'Ache",
+  'クサカベ': 'KUSAKABE',
+  'コクヨ': 'KOKUYO',
+  'コピック': 'Copic',
+  'サクラクレパス': 'SAKURA COLOR PRODUCT',
+  'ステッドラー': 'STAEDTLER',
+  'ゼブラ': 'ZEBRA',
+  'ダニエルスミス': 'DANIEL SMITH',
+  'デリーター': 'DELETER',
+  'トンボ': 'Tombow',
+  'ニッカー絵具': 'NICKER COLOUR',
+  'パイロット': 'PILOT',
+  'ファーバーカステル': 'Faber-Castell',
+  'ホルベイン': 'HOLBEIN',
+  'ペベオ': 'Pebeo',
+  'マルマン': 'maruman',
+  '三菱鉛筆': 'MITSUBISHI PENCIL',
+  '墨運堂': 'Boku-Undo',
+  'ルフラン＆ブルジョア': 'LEFRANC & BOURGEOIS',
+  '呉竹': 'Kuretake',
+};
+
+/** 英語名の比較用（大文字小文字・アポストロフィの形をそろえる） */
+const latinKey = (value) => String(value ?? '').normalize('NFKC').toLowerCase().replace(/[’‘`]/g, "'").replace(/\s+/g, ' ').trim();
+
+/**
  * 「メーカー｜英語名」の英語名を、メーカーごとに一番多い形から覚える。
  * 「ぺんてる｜Pentel FITLINE イエロー」の FITLINE のような商品名を巻き込まないため。
  */
@@ -193,9 +226,14 @@ export function buildEnglishNameMap(dict) {
     counts.set(run, (counts.get(run) || 0) + 1);
   }
   const map = new Map();
+  // 先に辞書の「｜」から覚えたもの、無ければ固定の表
   for (const [mk, counts] of runs) {
     const [run] = [...counts.entries()].sort((a, b) => (b[1] - a[1]) || (b[0].length - a[0].length))[0];
     map.set(mk, run);
+  }
+  for (const [maker, run] of Object.entries(ENGLISH_MAKER_NAMES)) {
+    const mk = makerKey(maker);
+    if (!map.has(mk)) map.set(mk, run);
   }
   return map;
 }
@@ -251,6 +289,21 @@ function stripPrefixes(name, entry, ctx) {
         out = tailParts.slice(1).join(' ');
       }
     }
+  }
+
+  // 「KOKUYO ノート」「MITSUBISHI PENCIL ユニカラー」のような英語のメーカー名・ブランドの重複。
+  // うしろが日本語（または数字）で始まるときだけ落とす（「Pentel Milky パステル」の Milky は残す）。
+  const candidates = [ctx.englishName?.get(mk), brand]
+    .filter((w) => w && String(w).trim().length >= 3)
+    .map((w) => String(w).trim())
+    .sort((a, b) => b.length - a.length);
+  for (const word of candidates) {
+    if (latinKey(out).startsWith(`${latinKey(word)} `) === false) continue;
+    const rest = out.slice(word.length + 1).trim();
+    if (!/^([^\x00-\x7F]|\d)/.test(rest)) continue;
+    dropped.push(word);
+    out = rest;
+    break;
   }
   return { name: out, dropped };
 }
