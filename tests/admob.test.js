@@ -1,8 +1,7 @@
 /**
  * 最下部の AdMob バナーと、バナー分の余白。
  *
- *   1) いまは TestFlight 確認のため Google 公式のテスト広告（USE_TEST_ADS = true。
- *      審査提出の直前に false へ戻すと本番IDで配信する）
+ *   1) いまは本番の広告を出す（USE_TEST_ADS = false。テスト広告で確かめるときだけ true に戻す）
  *   2) iOSアプリのネイティブ起動時だけ出す（Webブラウザ／GitHub Pagesでは何もしない）
  *   3) 読み込めた実測の高さを CSS 変数 --ad-h に入れ、タブバー・FAB・一覧の下端を押し上げる
  *   4) Info.plist の GADApplicationIdentifier と admob.js のアプリIDが一致する
@@ -33,23 +32,24 @@ const EMOJI = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/u;
 
 /* ---------------- 本番IDの設定 ---------------- */
 
-test('TestFlight 確認のため、いまは Google 公式のテスト広告を出している', () => {
-  assert.equal(USE_TEST_ADS, true);
+test('App Store 申請用のビルドから、本番の広告を出している', () => {
+  assert.equal(USE_TEST_ADS, false, '本番広告に切り替わっている');
+  assert.equal(ADMOB_APP_ID, ADMOB_PROD_APP_ID);
+  assert.equal(ADMOB_BANNER_ID, ADMOB_PROD_BANNER_ID);
+  assert.equal(ADMOB_APP_ID, 'ca-app-pub-5739782559889389~2686704558');
+  assert.equal(ADMOB_BANNER_ID, 'ca-app-pub-5739782559889389/1132135646');
+  // テストIDは消さない（もう一度テスト広告で確かめるときは USE_TEST_ADS を true に戻すだけ）
   assert.equal(ADMOB_TEST_APP_ID, 'ca-app-pub-3940256099942544~1458002511');
   assert.equal(ADMOB_TEST_BANNER_ID, 'ca-app-pub-3940256099942544/2934735716');
-  assert.equal(ADMOB_APP_ID, ADMOB_TEST_APP_ID);
-  assert.equal(ADMOB_BANNER_ID, ADMOB_TEST_BANNER_ID);
-  // 本番IDは消さない（USE_TEST_ADS を false に戻すだけで審査提出用になる）
-  assert.equal(ADMOB_PROD_APP_ID, 'ca-app-pub-5739782559889389~2686704558');
-  assert.equal(ADMOB_PROD_BANNER_ID, 'ca-app-pub-5739782559889389/1132135646');
-  // テスト広告のあいだは isTesting を添える（自分の広告を誤って押しても無効トラフィックにしない）
+  // 本番広告なのでテスト扱いにしない（isTesting / initializeForTesting は false）
   const show = bannerShowOptions();
-  assert.equal(show.isTesting, true);
-  assert.equal(show.adId, ADMOB_TEST_BANNER_ID);
+  assert.equal(show.isTesting, false);
+  assert.equal(show.adId, ADMOB_PROD_BANNER_ID);
+  assert.equal(show.adId.startsWith('ca-app-pub-3940256099942544'), false, 'Google公式のテストIDが残っている');
   assert.equal(show.position, 'BOTTOM_CENTER');
   assert.equal(show.margin, 0);
   assert.equal(show.adSize, 'ADAPTIVE_BANNER');
-  assert.equal(bannerInitializeOptions().initializeForTesting, true);
+  assert.equal(bannerInitializeOptions().initializeForTesting, false);
 });
 
 test('出すのはiOSアプリのネイティブ起動時だけ（Webでは広告枠も余白も出さない）', () => {
@@ -122,10 +122,10 @@ test('ネイティブでは初期化→バナー表示。読み込めた大き�
   assert.equal(banner.enabled, true);
   assert.equal(await banner.init(), true);
   assert.equal(env.calls.initialize.length, 1);
-  assert.equal(env.calls.initialize[0].initializeForTesting, true);
+  assert.equal(env.calls.initialize[0].initializeForTesting, false);
   assert.equal(env.calls.showBanner.length, 1);
-  assert.equal(env.calls.showBanner[0].isTesting, true);
-  assert.equal(env.calls.showBanner[0].adId, ADMOB_TEST_BANNER_ID);
+  assert.equal(env.calls.showBanner[0].isTesting, false);
+  assert.equal(env.calls.showBanner[0].adId, ADMOB_PROD_BANNER_ID);
 
   // 読み込めたら予備の高さで先に余白を確保し、実測が来たら合わせる
   env.listeners.get('bannerAdLoaded')();
@@ -191,10 +191,11 @@ test('アプリは起動時にバナーを用意し、CSSはバナー分だけ�
 /* ---------------- Info.plist・配布物 ---------------- */
 
 test('Info.plist に AdMob のアプリID・SKAdNetwork・ATT の説明を入れる', () => {
-  // テスト広告のあいだも、Info.plist のアプリIDは本番のもの（テスト広告ユニットは自分のアプリIDでもテスト広告を返す）
+  // 本番広告・テスト広告のどちらでも、Info.plist のアプリIDは本番のもの
+  //（テスト広告ユニットは自分のアプリIDでもテスト広告を返す）
   assert.equal(PLIST_APP_ID, ADMOB_PROD_APP_ID, 'configure-ios と admob.js のアプリIDが揃っている');
-  assert.equal(USE_TEST_ADS, true, 'TestFlight 中はテスト広告');
-  assert.equal(ADMOB_APP_ID, ADMOB_TEST_APP_ID);
+  assert.equal(USE_TEST_ADS, false, 'いまは本番広告');
+  assert.equal(ADMOB_APP_ID, ADMOB_PROD_APP_ID);
   const keys = CONFIG_ENTRIES.map((e) => e.key);
   for (const key of ['GADApplicationIdentifier', 'SKAdNetworkItems', 'NSUserTrackingUsageDescription']) {
     assert.ok(keys.includes(key), `${key} がありません`);
@@ -217,8 +218,8 @@ test('admob.js は配布物（www/・Service Worker）に入り、絵文字を�
   assert.match(pkg.dependencies['@capacitor-community/admob'], /^\^6\./);
   assert.equal(EMOJI.test(read('admob.js')), false, 'admob.js に絵文字があります');
   // バージョン（キャッシュの更新）
-  assert.match(sw, /art-supply-manager-v66/);
-  assert.equal(pkg.version, '1.42.1');
+  assert.match(sw, /art-supply-manager-v67/);
+  assert.equal(pkg.version, '1.42.2');
 });
 
 test('Podfile で UMP を 2.x に固定する（プラグインのSwiftが新しいSDKの改名で壊れるため）', () => {

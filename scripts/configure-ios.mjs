@@ -36,8 +36,8 @@ export const MINIMUM_IOS_VERSION = '15.0';
 
 // AdMob のアプリID（Info.plist の GADApplicationIdentifier）。
 // 本番のアプリIDで固定（admob.js の ADMOB_PROD_APP_ID と同じ値。tests/admob.test.js が一致を検査）。
-// TestFlight 中は admob.js の USE_TEST_ADS = true で Google 公式のテスト**広告ユニット**を出すが、
-// テスト広告はどのアプリIDでも返るので、Info.plist のアプリIDは本番のままでよい。
+// 広告ユニットは admob.js の USE_TEST_ADS で切り替える（本番広告は false。テストで確かめるときだけ true）が、
+// テスト広告はどのアプリIDでも返るので、Info.plist のアプリIDはどちらのときも本番のままでよい。
 export const ADMOB_APP_ID = 'ca-app-pub-5739782559889389~2686704558';
 
 const CAMERA_USAGE = 'バーコード（JANコード）を読み取るためにカメラを使用します。映像は端末内だけで処理し、外部へ送信しません。';
