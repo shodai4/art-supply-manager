@@ -70,6 +70,7 @@ python3 -m http.server 8080      # または任意の静的サーバー
 | `index.html` | 画面（モバイルファースト・375px基準） |
 | `styles.css` | スタイル（横はみ出しゼロ設計） |
 | `app.js` | UI・localStorage保存・バーコード読取（ネイティブ→BarcodeDetector→同梱html5-qrcode→手入力の順に選択） |
+| `motion.js` | 手触りの動き（GSAP を同梱して使う。シートの開閉・＋−/星の反応・トースト・確定バー。`prefers-reduced-motion` と GSAP 未読込では何もしない） |
 | `core.js` | DOM非依存のロジック（JAN検証・在庫増減・絞り込み・フォルダ操作・JSON入出力・在庫切れ判定・画材費の集計とCSV・バックアップのマージ） |
 | `samples.js` | お試し用サンプル画材（8点）と、初回起動・重複防止・サンプルだけを消す判定 |
 | `theme.js` | 表示テーマ（自動／ライト／ダーク）の判定・保存・theme-color（DOM非依存） |
@@ -81,6 +82,7 @@ python3 -m http.server 8080      # または任意の静的サーバー
 | `scan-flow.js` | 連続スキャンの判定（同一JANのクールダウン・同じJAN×フォルダの＋1／別フォルダなら新規登録・辞書ヒット自動登録・未収録の仮登録・無料上限） |
 | `plugins/art-barcode-scanner/` | iOS用のバーコード読取プラグイン（AVFoundation・外部Pod依存なし。`scripts/configure-ios.mjs` が Podfile と `packageClassList` に組み込む） |
 | `vendor/html5-qrcode.min.js` | 同梱スキャナ（Apache-2.0・`vendor/README.md` 参照） |
+| `vendor/gsap.min.js` | 同梱のアニメーションライブラリ GSAP 3.15.1（73KB・gzip 28KB。GSAP Standard License＝商用無償。`vendor/gsap.LICENSE.txt` 参照） |
 | `privacy.html` / `support.html` | プライバシーポリシー（カメラ用途・アフィリエイト明記）とサポート |
 | `capacitor.config.json` | iPhoneアプリ（Capacitor）の設定。`appId: com.shodai4.artsupplymanager` |
 | `scripts/build.mjs` | Capacitor 用 `www/` の生成 |
@@ -100,6 +102,7 @@ python3 -m http.server 8080      # または任意の静的サーバー
 | `tests/jan-extra.test.js` | 追加辞書の検証・合成・キャッシュ・同期・提案文面のテスト |
 | `tests/shops.test.js` | 通販検索URL（JAN優先・商品名フォールバック・アフィリエイトの有無）のテスト |
 | `tests/ui.test.js` | 在庫切れのグレー表示・HTMLの導線・絵文字なし・www/のファイル一覧・読取方式の選択 |
+| `tests/motion.test.js` | 手触りの動き（GSAPの同梱・CDN不使用・ライセンス記録・配布物・`prefers-reduced-motion`・GSAP未読込時の安全なフォールバック・実ブラウザでの実動とコンソールエラー0件）のテスト |
 | `tests/folders.test.js` | フォルダ階層（子・経路・深さ・子孫・循環防止・削除時の逃がし・件数の集計・後方互換）のテスト |
 | `tests/select.test.js` | 複数選択（切り替え・全選択・掃除・一括移動）と選択UIのテスト |
 | `tests/dict-find.test.js` | 辞書の手動検索（各項目・JAN部分一致・描画上限・索引キャッシュ・34,365件の速度）のテスト |
@@ -131,6 +134,32 @@ python3 -m http.server 8080      # または任意の静的サーバー
 cd art-supply-manager
 node --test tests/
 ```
+
+## 手触りの動き（GSAP）
+
+落ち着いたアイボリー基調のシンプルさは変えずに、**触った手応えだけ**を足している。
+ライブラリは **GSAP 3.15.1 を同梱**（`vendor/gsap.min.js`・73KB／gzip 28KB）し、
+`index.html` が `app.js` より先に読む（CDNから読まないので、オフライン・アプリ内でも同じ手触り）。
+ライセンスは **GSAP Standard "No Charge" License**（商用利用も無償。禁止は「ビジュアルでアニメーションを作るツール」への組み込みだけ）で、
+全文と要旨は `vendor/gsap.LICENSE.txt`、サイズ・出典は `vendor/README.md` に記録してある。
+
+| 場所 | 動き | 長さ |
+|---|---|---|
+| ボトムシート・モーダルを開く | 下から26px上がってくる（`power3.out`） | 0.34秒 |
+| シートを閉じる | 下へ18px抜けてから隠す（`power2.in`）。隠す処理はアニメーションのあとに1回だけ | 0.17秒 |
+| 背景の暗幕 | 濃くなる／薄くなる | 0.24秒 |
+| 「＋」「−」（一覧・補充タブ） | 押したボタンが縮んで戻る（`back.out`）／数の「ポンッ」 | 0.09+0.34秒 |
+| お気に入りの星（カード・まとめ・長押しメニュー・メーカー） | 星がふくらんで戻る（`back.out(2.2)`） | 0.43秒 |
+| 画材を追加・編集したあと | その行がふわっと落ち着く | 0.32秒 |
+| 「補充を確定」したあと | 補充リストがふわっと切り替わる | 0.32秒 |
+| 「補充を確定」バーが出たとき | 下から出てくる（出た瞬間だけ） | 0.28秒 |
+| トースト | 中央寄せ（`translateX(-50%)`）を保ったまま、下からふわっと | 0.26秒 |
+
+- **やりすぎない**: どれも0.4秒以下・跳ねは `back.out(2.4)` まで・終わらないループは無し（`tests/motion.test.js` が見ている）。
+- **OSの「視差効果を減らす」**: `prefers-reduced-motion: reduce` が有効なら、アニメーションをせずに終わりの状態へ即座に切り替える（CSSのトランジションも止める）。
+- **GSAPが無い・テスト環境（Node）**: `motion.js` の関数は何もせずに `false` を返すだけで、例外も投げない（画面は今までどおり動く）。
+- 画面（`app.js`）は `motion.js` の関数だけを呼び、GSAP を直接触らない。
+- 動きを足す／変えるときは `motion.js` の `MOTION_TIMING` と、上の表を合わせて直す（テストは0.4秒以下を見ている）。
 
 - JANチェックディジット（モジュラス10/ウェイト3）、13桁判定、全角・ハイフン正規化
 - 楽天画像の中継サーバー（13桁検証・キャッシュキー・CORS・秘密を応答に出さないこと・7日キャッシュ）

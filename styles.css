@@ -1283,3 +1283,15 @@ body.catalog-mode { overflow: hidden; }
 .shop-stock.none { color: var(--ink-3); }
 .shop-stock.unknown { color: var(--warn); }
 .shop-stock .shop-stock-note { display: block; margin-top: 2px; font-size: 10.5px; font-weight: 400; color: var(--muted-ink); }
+
+/* ---------- 動き（motion.js / GSAP） ---------- */
+/* 視差効果を減らす設定のときは、CSSのトランジションも止める。
+   JS（motion.js）はアニメーションをせずに終わりの状態へ切り替えるので、ここも瞬時にする */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

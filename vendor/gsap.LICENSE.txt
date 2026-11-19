@@ -1,0 +1,25 @@
+GSAP 3.15.1
+https://gsap.com
+
+同梱しているファイル: vendor/gsap.min.js
+  出典: npm パッケージ gsap@3.15.1 の dist/gsap.min.js をそのまま保存
+  sha256: 3d1bea374ab1b703cc5c4105358eec63c4465efdc573931dc116e34a0a190c1b
+  サイズ: 73,357 バイト（gzip 28,435 バイト）
+
+ライセンス: GSAP Standard "No Charge" License
+  https://gsap.com/standard-license
+
+  Copyright 2026, GreenSock. All rights reserved.
+  Subject to the terms at https://gsap.com/standard-license.
+  Author: Jack Doyle, jack@greensock.com
+
+  （要旨。正文は上記URLが正）
+  - 商用利用を含め、ウェブサイト・ウェブアプリ・デジタルインターフェースでの利用は無償
+    （Webflow が GSAP を取得した 2025年4月30日 以降の規約。旧来の有償プラグインも無償）。
+  - 禁止されるのは、コードを書かずにアニメーションを作れるツール（Webflow の
+    ビジュアルアニメーションビルダーと競合する製品）に組み込む用途のみ。
+  - 著作権表示などの proprietary notice を外したり改変したりしないこと
+    （そのため gsap.min.js の先頭コメントはそのまま残している）。
+
+アトリコでの利用: 画材の在庫管理アプリのUI（シートの開閉・＋−の反応・トーストなど）の
+動きに使っているだけで、アニメーション作成ツールではないため、上記の許可範囲内。

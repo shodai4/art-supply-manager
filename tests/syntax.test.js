@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const FILES = [
-  'app.js', 'core.js', 'pro.js', 'iap.js', 'samples.js', 'theme.js', 'jan-extra.js', 'images.js',
+  'app.js', 'core.js', 'motion.js', 'pro.js', 'iap.js', 'samples.js', 'theme.js', 'jan-extra.js', 'images.js',
   'auto-image.js', 'scanner.js', 'scan-flow.js', 'shops.js', 'links.js', 'admob.js',
   'workers/rakuten-image-proxy/src/index.js',
 ];
@@ -28,10 +28,14 @@ test('配信する JS は構文エラーが無い（node --check）', () => {
   }
 });
 
-test('index.html の script は app.js だけ（書き換えで壊れていない）', () => {
+test('index.html の script は、同梱の動きのライブラリ（vendor/gsap.min.js）と app.js だけ', () => {
   const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   const srcs = [...html.matchAll(/<script[^>]*src="([^"]+)"/g)].map((m) => m[1]);
-  assert.deepEqual(srcs.map((s) => s.split('?')[0]), ['app.js']);
+  assert.deepEqual(srcs.map((s) => s.split('?')[0]), ['vendor/gsap.min.js', 'app.js']);
+  // GSAP は app.js（module = 後から実行）より先に読む（window.gsap が間に合っていること）
+  assert.ok(html.indexOf('vendor/gsap.min.js') < html.indexOf('src="app.js'), 'GSAP が app.js より後に読み込まれている');
+  // CDN からは読まない（オフライン・アプリ内でも同じ手触りにする）
+  assert.equal(/<script[^>]*src="https?:/.test(html), false, 'CDN から script を読んでいる');
   // 画面の骨（在庫・カタログ・編集シート）が残っている
   for (const id of ['view-stock', 'view-catalog', 'folderGrid', 'itemList', 'dictResults', 'fFav']) {
     assert.ok(html.includes(`id="${id}"`), `#${id} がありません`);

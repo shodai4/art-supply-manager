@@ -81,6 +81,7 @@ import {
   ICLOUD_KEY, SYNC_DEBOUNCE_MS, cloudBackupText, parseCloudBackup, decideStartup,
   cloudStatusText, icloudPlugin, cloudStatus, readCloud, writeCloud,
 } from './icloud.js';
+import { motion } from './motion.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -552,6 +553,7 @@ function toast(msg) {
   const el = $('toast');
   el.textContent = msg;
   el.classList.add('show');
+  motion.toast(el);
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
 }
@@ -1364,6 +1366,7 @@ function stepRestock(it, delta) {
     const next = adjustStock(it, -1);
     state = upsertItem(state, next);
     save(); render();
+    animateStepFeedback(it.id, delta);
     if (next.qty === 0) toast('使い切りました。補充リストに入れています');
     return;
   }
@@ -1378,6 +1381,8 @@ function stepRestock(it, delta) {
     restockPending: bumpRestockPending(pending, it.id, delta),
   };
   save(); render();
+  // 押した ＋/− の反応（その場では一覧から消さないので、押した行がそのまま残る）
+  animateStepFeedback(it.id, delta);
 }
 
 /** 画面下の「補充を確定」バー（確定待ちがあるときだけ出す） */
@@ -1386,7 +1391,10 @@ function renderRestockBar(pending = normalizeRestockPending(state.restockPending
   if (!bar) return;
   const sum = restockSummary(pending);
   const show = ui.tab === 'shopping' && sum.items > 0;
+  const wasHidden = bar.hidden;
   bar.hidden = !show;
+  // バーが出た瞬間だけ、下からふわっと上げる（毎回の描き直しでは動かさない）
+  if (show && wasHidden) motion.bar(bar);
   // 確定バーが出ている間は、右下の＋／読取をバーの上へ逃がす（CSSがこの目印を見る）
   const flag = String(show);
   if (document.body.dataset.restockBar !== flag) document.body.dataset.restockBar = flag;
@@ -1411,6 +1419,8 @@ function confirmRestockAction() {
   save(); render();
   if (confirmed) toast(`${confirmed}件を「十分」にしました`);
   if (kept) toast(`${kept}件は在庫が0のままなので、補充リストに残しています`);
+  // 確定で空になった補充リストを、ふわっと見せる（行が一気に入れ替わるため）
+  motion.enter($('shoppingList'));
 }
 
 /* ---------------- 補充リストのコピー・共有（Pro） ---------------- */
@@ -2059,6 +2069,45 @@ $('themeChips').addEventListener('click', (e) => {
 });
 
 /* ---------------- アイテム操作 ---------------- */
+/**
+ * 描き直したあとの一覧から、その画材の行・タイルを探す（IDは dataset で比べる）。
+ * セレクタに ID を埋めないので、記号を含む ID でも壊れない。
+ */
+function renderedRow(id) {
+  return [...document.querySelectorAll('[data-swipe-id]')]
+    .find((el) => el.dataset.swipeId === id) || null;
+}
+
+/**
+ * 「＋」「−」を押した反応（render() のあとに呼ぶ）。
+ * 押したボタンがきゅっと縮んで戻り、その行の数（補充タブは「＋N」）がポンッとふくらむ。
+ * 動かせない環境（GSAP が無い・視差効果を減らす設定）では何も起きない。
+ */
+function animateStepFeedback(id, delta) {
+  const dir = delta > 0 ? '1' : '-1';
+  const btn = [...document.querySelectorAll('[data-step]')]
+    .find((b) => b.dataset.id === id && b.dataset.step === dir);
+  motion.press(btn);
+  const row = renderedRow(id);
+  const num = row ? (row.querySelector('.badge.bump') || row.querySelector('.n, .qty')) : null;
+  motion.bump(num);
+}
+
+/** 星を押した反応（描き直したあとの星を、ぽんとふくらませる） */
+function animateStarFeedback(value, { group = false } = {}) {
+  const attr = group ? '[data-fav-group]' : '[data-fav]';
+  const btn = [...document.querySelectorAll(attr)]
+    .find((b) => (group ? b.dataset.favGroup : b.dataset.fav) === value);
+  motion.press(btn, { scale: 0.84, overshoot: 2.2 });
+}
+
+/** 追加・編集した画材の行を、ふわっと落ち着かせる（render() のあとに呼ぶ） */
+function animateSavedItemFeedback(id) {
+  const row = renderedRow(id);
+  if (!row) return;
+  // タイルは .tilewrap、行は article そのもの（.swipe-inner を動かすと削除ボタンとズレる）
+  motion.enter(row.querySelector('.swipe-inner') || row);
+}
 document.addEventListener('click', (e) => {
   // 子フォルダのチップ（タップで中へ）
   const goto = e.target.closest('[data-goto-folder]');
@@ -2078,6 +2127,7 @@ document.addEventListener('click', (e) => {
     state = { ...state, items: state.items.map((i) => (normalizeJAN(i.jan) === jan ? toggleFavorite(i, next) : i)) };
     save();
     render();
+    animateStarFeedback(jan, { group: true });
     toast(next ? 'お気に入りにしました（お気に入りフォルダに入ります）' : 'お気に入りをはずしました');
     return;
   }
@@ -2092,6 +2142,7 @@ document.addEventListener('click', (e) => {
     state = upsertItem(state, next);
     save();
     render();
+    animateStarFeedback(target.id);
     toast(next.favorite ? 'お気に入りにしました（お気に入りフォルダに入ります）' : 'お気に入りをはずしました');
     return;
   }
@@ -2118,6 +2169,7 @@ document.addEventListener('click', (e) => {
     const next = adjustStock(delta > 0 ? recordPurchase(it, delta) : it, delta);
     state = upsertItem(state, next);
     save(); render();
+    animateStepFeedback(it.id, delta);
     if (next.qty === 0) toast('使い切りました。補充リストに入れています');
     return;
   }
@@ -2626,6 +2678,7 @@ $('itemForm').addEventListener('submit', async (e) => {
   // （JANを手で入れた・「もっと詳しく」を閉じたまま保存した、など取得が間に合わなかった場合。
   //   通信できない・見つからないときは何もしないので、登録は止まらない）
   const savedItem = state.items.find((i) => i.id === targetId);
+  animateSavedItemFeedback(targetId);
   if (isNewItem && savedItem) autoFillItemImage(savedItem);
 });
 
@@ -2686,12 +2739,19 @@ function openSheet(id) {
   openSheets.add(id);
   $('mask').classList.add('open');
   $(id).classList.add('open');
+  // 下から少し上がって出る（動かせない環境・視差効果を減らす設定では何もしない）
+  motion.sheetIn($(id), $('mask'));
 }
 function closeSheet(id) {
   openSheets.delete(id);
-  $(id).classList.remove('open');
-  if (!openSheets.size) $('mask').classList.remove('open');
   if (id === 'sheetScan') stopScanner();
+  // 少し下へ抜けてから隠す。動かせないときは、その場で隠す（状態は今までどおり即座に変わる）
+  const hide = () => {
+    $(id).classList.remove('open');
+    if (!openSheets.size) $('mask').classList.remove('open');
+  };
+  const lastOne = openSheets.size === 0;
+  if (!motion.sheetOut($(id), hide, lastOne ? $('mask') : null)) hide();
   // 閉じたあとに、入力待ちの画像取得が走らないようにする
   if (id === 'sheetItem') clearTimeout(janFetchTimer);
 }
@@ -3138,6 +3198,7 @@ $('btnItemFav').addEventListener('click', () => {
   state = upsertItem(state, next);
   save();
   render();
+  animateStarFeedback(it.id);
   setItemMenuFav(next.favorite === true);
   toast(next.favorite ? 'お気に入りにしました（お気に入りフォルダに入ります）' : 'お気に入りをはずしました');
 });
@@ -4305,6 +4366,8 @@ function toggleFavoriteMaker(maker, star) {
   }
   renderFavMakers();
   const count = favoriteMakers(state.settings).length;
+  // 星はここで描き直していないので、その場でふくらませる（登録した手応え）
+  motion.press(star, { scale: 0.84, overshoot: 2.2 });
   toast(after ? `お気に入りメーカーに登録しました（${count}件）` : 'お気に入りメーカーから外しました');
 }
 
