@@ -193,7 +193,7 @@ test('Service Worker と www/（iOSバンドル）にも画像と tutorial.js �
   }
   // Service Worker（オフラインでも写真が出る）
   const sw = read('sw.js');
-  assert.match(sw, /art-supply-manager-v65/);
+  assert.match(sw, /art-supply-manager-v66/);
   assert.ok(sw.includes("'./tutorial.js'"), 'sw.js に tutorial.js がない');
   for (const image of tutorialImages()) {
     assert.ok(sw.includes(`'./${image}'`), `sw.js に ${image} がない`);
