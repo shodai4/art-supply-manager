@@ -78,11 +78,15 @@ test('検索タブ: ヒットした全メーカーの見出しを返す（50件�
   assert.ok(groups.some((g) => g.items.length > 200));
   // 見出しは五十音順（カタカナ・ひらがなが混ざっても）
   assert.deepEqual(groups.map((g) => g.maker), [...groups.map((g) => g.maker)].sort(compareMakerName));
-  // 検索語で絞っても、同じ条件の searchDictionary と同じ件数
+  // 検索語で絞っても、同じ条件の searchDictionary と同じ件数（件数は辞書に合わせて数える）
+  const pentel = JAN_DICTIONARY.filter((d) => d.maker === 'ぺんてる').length;
   const hit = groupDictionarySearch(JAN_DICTIONARY, 'ぺんてる');
-  assert.equal(hit.total, 532);
-  assert.deepEqual(hit.groups.map((g) => g.maker), ['ぺんてる']);
-  assert.equal(hit.groups[0].items.length, 532);
+  assert.ok(pentel > 500, `ぺんてるの件数: ${pentel}`);
+  // 名前のどこかに「ぺんてる」を含む商品（他社の商品名に混ざる分）もあるので、件数はそれ以上
+  assert.ok(hit.total >= pentel, `検索の件数: ${hit.total} < ${pentel}`);
+  assert.ok(hit.groups.some((g) => g.maker === 'ぺんてる'));
+  const pentelGroup = hit.groups.find((g) => g.maker === 'ぺんてる');
+  assert.equal(pentelGroup.items.length, pentel);
   // メーカー選択でも同じ（1社ぶんの見出し）
   const one = groupDictionarySearch(JAN_DICTIONARY, '', { maker: 'ニチバン' });
   assert.deepEqual(one.groups.map((g) => g.maker), ['ニチバン']);

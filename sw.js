@@ -1,8 +1,8 @@
 // アトリコ Service Worker（オフライン用キャッシュ）
-const CACHE = 'art-supply-manager-v61';
+const CACHE = 'art-supply-manager-v62';
 const ASSETS = [
   './', './index.html', './privacy.html', './terms.html', './support.html',
-  './styles.css', './app.js', './core.js', './motion.js', './icloud.js', './links.js', './images.js', './pro.js', './iap.js', './samples.js', './theme.js', './tutorial.js', './jan-database.js', './jan-extra.js',
+  './styles.css', './app.js', './core.js', './motion.js', './icloud.js', './links.js', './images.js', './pro.js', './iap.js', './samples.js', './theme.js', './tutorial.js', './jan-database.js', './data/jan-part-1.js', './data/jan-part-2.js', './data/jan-part-3.js', './data/jan-part-4.js', './jan-extra.js',
   './jan-extra.json', './shops.js', './scanner.js', './scan-guard.js', './scan-open-gate.js', './scan-flow.js', './auto-image.js', './admob.js', './export-file.js',
   './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png', './apple-touch-icon.png',
   './assets/tutorial/stock-1.webp', './assets/tutorial/stock-2.webp', './assets/tutorial/stock-3.webp',

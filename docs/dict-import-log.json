@@ -1,0 +1,129 @@
+[
+  {
+    "importedAt": "2026-11-19",
+    "source": "Google Drive「AI秘書 / 05_副業・開発」の JAN_<メーカー>網羅_統合.csv（15ファイル）",
+    "dir": "../work/drive-jan-20261119",
+    "files": [
+      {
+        "file": "JAN_ぺんてる網羅_統合.csv",
+        "rows": 4899,
+        "added": 4367,
+        "skippedExisting": 532,
+        "invalid": 0
+      },
+      {
+        "file": "JAN_ウィンザー＆ニュートン網羅_統合.csv",
+        "rows": 809,
+        "added": 238,
+        "skippedExisting": 571,
+        "invalid": 0
+      },
+      {
+        "file": "JAN_クサカベ網羅_統合.csv",
+        "rows": 1634,
+        "added": 71,
+        "skippedExisting": 1563,
+        "invalid": 0
+      },
+      {
+        "file": "JAN_コクヨ網羅_統合.csv",
+        "rows": 15641,
+        "added": 14153,
+        "skippedExisting": 1488,
+        "invalid": 0
+      },
+      {
+        "file": "JAN_コピック網羅_統合.csv",
+        "rows": 1788,
+        "added": 728,
+        "skippedExisting": 1060,
+        "invalid": 0
+      },
+      {
+        "file": "JAN_サクラクレパス網羅_統合.csv",
+        "rows": 4326,
+        "added": 3611,
+        "skippedExisting": 715,
+        "invalid": 0
+      },
+      {
+        "file": "JAN_シュミンケ網羅_統合.csv",
+        "rows": 992,
+        "added": 305,
+        "skippedExisting": 687,
+        "invalid": 0
+      },
+      {
+        "file": "JAN_ステッドラー網羅_統合.csv",
+        "rows": 1873,
+        "added": 1035,
+        "skippedExisting": 838,
+        "invalid": 0
+      },
+      {
+        "file": "JAN_ターナー網羅_統合.csv",
+        "rows": 3114,
+        "added": 1995,
+        "skippedExisting": 1119,
+        "invalid": 0
+      },
+      {
+        "file": "JAN_ターレンス網羅_統合.csv",
+        "rows": 2228,
+        "added": 132,
+        "skippedExisting": 2096,
+        "invalid": 0
+      },
+      {
+        "file": "JAN_トンボ網羅_統合.csv",
+        "rows": 2872,
+        "added": 2528,
+        "skippedExisting": 344,
+        "invalid": 0
+      },
+      {
+        "file": "JAN_パイロット網羅_統合.csv",
+        "rows": 8576,
+        "added": 8166,
+        "skippedExisting": 410,
+        "invalid": 0
+      },
+      {
+        "file": "JAN_ホルベイン網羅_統合.csv",
+        "rows": 7961,
+        "added": 3685,
+        "skippedExisting": 4276,
+        "invalid": 0
+      },
+      {
+        "file": "JAN_リキテックス網羅_統合.csv",
+        "rows": 925,
+        "added": 2,
+        "skippedExisting": 923,
+        "invalid": 0
+      },
+      {
+        "file": "JAN_三菱鉛筆網羅_統合.csv",
+        "rows": 6287,
+        "added": 5717,
+        "skippedExisting": 570,
+        "invalid": 0
+      }
+    ],
+    "skippedExisting": 17192,
+    "duplicatesInBatch": 0,
+    "invalid": [],
+    "seriesDropped": {
+      "equalsName": 4826,
+      "single": 9267
+    },
+    "before": 38140,
+    "added": 46733,
+    "after": 84873,
+    "parts": [
+      "data/jan-part-2.js",
+      "data/jan-part-3.js",
+      "data/jan-part-4.js"
+    ]
+  }
+]

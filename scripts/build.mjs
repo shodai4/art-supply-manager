@@ -60,7 +60,12 @@ export function buildWebDir({ root = ROOT, outDir = WWW_DIR, assets = WEB_ASSETS
   const copied = [];
   const missing = [];
   fs.mkdirSync(outDir, { recursive: true });
-  for (const rel of assets) {
+  // 内蔵辞書のデータ（data/jan-part-*.js）は数が増えるので、ディレクトリを読んで全部コピーする
+  const dataDir = path.join(root, 'data');
+  const dataAssets = fs.existsSync(dataDir)
+    ? fs.readdirSync(dataDir).filter((f) => f.endsWith('.js')).map((f) => `data/${f}`)
+    : [];
+  for (const rel of [...assets, ...dataAssets]) {
     const src = path.join(root, rel);
     if (!fs.existsSync(src)) {
       missing.push(rel);

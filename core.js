@@ -831,7 +831,7 @@ const DICT_HAY_CACHE = new WeakMap();
  * 検索用の文字列（商品名・色名・メーカー・ブランド・サイズ・品番・JAN）。
  * 辞書の配列が変わったときだけ入れ物を作り直す（毎打鍵で数万件を連結・正規化しない）。
  *
- * 3.7万件ぶんを起動時にまとめて正規化すると、初回の検索やタブ切り替えで引っかかる
+ * 8.5万件ぶんを起動時にまとめて正規化すると、初回の検索やタブ切り替えで引っかかる
  * （文字列が数MBになり、メモリも食う）。ここでは「入れた場所だけ」を埋める疎な配列を返し、
  * 実際の正規化は dictionaryHayAt がその1件を初めて見るときに行う。
  * 何も打たずにメーカーを切り替えるだけなら1件も作らない。
@@ -889,7 +889,7 @@ const IDX_SEP = '\u0000';
 /**
  * 辞書を「メーカー」「メーカー＋カテゴリ」「メーカー＋シリーズ」「カテゴリ」で引ける索引。
  * 起動後に1回だけ作り（呼んだときにまとめて1回）、メーカー・カテゴリ・シリーズを
- * 切り替えるたびに3.7万件を走査するのをやめる。
+ * 切り替えるたびに8.5万件を走査するのをやめる。
  *
  * @returns {{makers:Map<string,number[]>, makerCategory:Map<string,number[]>, makerSeries:Map<string,number[]>, categories:Map<string,number[]>}}
  */
@@ -1082,7 +1082,7 @@ export function dictionarySeriesList(dict = [], query = '', { hay, maker = '', c
 }
 
 /**
- * メーカーごとの件数（索引から数える。3.7万件を毎回数え直さない）。
+ * メーカーごとの件数（索引から数える。8.5万件を毎回数え直さない）。
  * @returns {Array<{name:string,count:number}>}
  */
 export function dictionaryMakerCounts(dict = []) {
@@ -1240,7 +1240,7 @@ export function createGroupOpenState({ defaultOpen = false } = {}) {
 /**
  * 一覧の見出しをまとめて開け閉めするときの材料（表示用）。
  *
- * 件数では出し分けない（未絞り込みの38,140件・8,854シリーズでも「すべて開く」を出す）。
+ * 件数では出し分けない（未絞り込みの84,873件・9,302シリーズでも「すべて開く」を出す）。
  * 大量に開いたときに固まらないのは、カタログ側が画面の近くだけを遅延して描くから
  * （app.js の catalogLazyObserver）。ここは「一覧にメーカー見出しがあるか」だけを見る。
  *

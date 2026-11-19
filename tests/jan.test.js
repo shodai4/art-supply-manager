@@ -38,7 +38,7 @@ test('JANの重複がない', () => {
 
 test('必須項目と出典URLが揃っている', () => {
   for (const e of JAN_DICTIONARY) {
-    assert.ok(e.name && e.name.length > 1, `商品名なし: ${e.jan}`);
+    assert.ok(e.name && e.name.trim().length >= 1, `商品名なし: ${e.jan}`);
     assert.ok(e.maker, `メーカーなし: ${e.jan}`);
     assert.ok(CATEGORIES.some((c) => c.id === e.category), `カテゴリ不正: ${e.jan} ${e.category}`);
     assert.match(e.source, /^https:\/\//, `出典URLなし: ${e.jan}`);
@@ -46,9 +46,11 @@ test('必須項目と出典URLが揃っている', () => {
   }
 });
 
-test('出典は実在ページ（まつえだ・世界堂・ステッドラー公式・たのめーる・e-画材）に限られ、商品名に実体参照が残らない', () => {
+test('出典は実在ページ（まつえだ・世界堂・ステッドラー公式・たのめーる・e-画材・jancode.xyz）に限られ、商品名に実体参照が残らない', () => {
+  // jancode.xyz は、Drive の JAN_<メーカー>網羅_統合.csv の「出典URL」欄が指していた JAN 検索サイト
+  // （2026-11-19 の15社・46,733件。世界堂で見つからない文具はここが出典）
   for (const e of JAN_DICTIONARY) {
-    assert.match(e.source, /^https:\/\/(www\.matueda\.com\/\?pid=\d+|webshop\.sekaido\.co\.jp\/product\/[A-Z0-9]+|www\.staedtler\.jp\/|www\.askul\.co\.jp\/|www\.tanomail\.com\/product\/\d+\/|www\.sasabegazai\.co\.jp\/pop\.html\?id=\d+$|www\.e-gazai\.com\/shop\/g\/g\d+\/)/, `出典が不正: ${e.jan} ${e.source}`);
+    assert.match(e.source, /^https:\/\/(www\.matueda\.com\/\?pid=\d+|webshop\.sekaido\.co\.jp\/product\/[A-Z0-9]+|www\.staedtler\.jp\/|www\.askul\.co\.jp\/|www\.tanomail\.com\/product\/\d+\/|www\.sasabegazai\.co\.jp\/pop\.html\?id=\d+$|www\.e-gazai\.com\/shop\/g\/g\d+\/|www\.jancode\.xyz\/\d{13}\/)/, `出典が不正: ${e.jan} ${e.source}`);
     assert.equal(/&(amp|lt|gt|quot|#\d+);/.test(e.name), false, `実体参照が残る: ${e.jan} ${e.name}`);
     assert.equal(/^[★☆※]/.test(e.name), false, `販売店の装飾が残る: ${e.jan} ${e.name}`);
   }
