@@ -217,8 +217,8 @@ test('admob.js は配布物（www/・Service Worker）に入り、絵文字を�
   assert.match(pkg.dependencies['@capacitor-community/admob'], /^\^6\./);
   assert.equal(EMOJI.test(read('admob.js')), false, 'admob.js に絵文字があります');
   // バージョン（キャッシュの更新）
-  assert.match(sw, /art-supply-manager-v60/);
-  assert.equal(pkg.version, '1.38.0');
+  assert.match(sw, /art-supply-manager-v61/);
+  assert.equal(pkg.version, '1.39.0');
 });
 
 test('Podfile で UMP を 2.x に固定する（プラグインのSwiftが新しいSDKの改名で壊れるため）', () => {

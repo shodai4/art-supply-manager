@@ -21,7 +21,7 @@ export const TUTORIAL_LEAD = 'タブを開くと、画面の写真で使い方�
 export const GUIDE_SEEN_KEY = 'art-supply-manager/guideSeen';
 
 /** 画像の既定サイズ（幅720px。縦は端末の画面比） */
-const SHOT = { w: 720, h: 1291 };
+const SHOT = { w: 720, h: 1394 };
 
 /**
  * 正方形の枠に入れるときの縦の寄せ（0=上端, 0.5=中央, 1=下端）。
@@ -71,9 +71,9 @@ export const TUTORIAL_TABS = [
     slides: [
       {
         image: `${TUTORIAL_ASSET_DIR}/restock-1.webp`,
-        alt: '補充タブ。少なくなった画材と使い切った画材が、メーカーとシリーズごとにまとまる',
-        caption: '少なくなった画材と使い切った画材が、自動でここにまとまります。通販ボタンから探せます。',
-        focus: FOCUS.top,
+        alt: '補充タブ。＋で買い足した画材に＋1が付き、画面下に「補充を確定（2件）」のバーが出ている',
+        caption: '少なくなった画材が自動でまとまります。＋で買い足した分は「補充を確定」でまとめて十分に。',
+        focus: 1,
         ...SHOT,
       },
     ],
@@ -85,16 +85,16 @@ export const TUTORIAL_TABS = [
     slides: [
       {
         image: `${TUTORIAL_ASSET_DIR}/catalog-1.webp`,
-        alt: 'カタログタブ。メーカー・カテゴリ・シリーズ・キーワードで絞り込む画面',
-        caption: 'メーカー・カテゴリ・シリーズで、内蔵辞書38,140件から絞り込めます。名前でも探せます。',
-        focus: 0.24,
+        alt: 'カタログタブ。メーカー選択とキーワード検索、お気に入りメーカーのチップが並ぶ',
+        caption: '内蔵辞書38,140件から、メーカー・カテゴリで絞り込めます。お気に入りメーカーも使えます。',
+        focus: 0.1,
         ...SHOT,
       },
       {
         image: `${TUTORIAL_ASSET_DIR}/catalog-2.webp`,
-        alt: 'シリーズを開いた検索結果。商品ごとに「追加」ボタンが並ぶ',
-        caption: 'シリーズを開いて「追加」を押すだけで、その画材が在庫に入ります。',
-        focus: 0.9,
+        alt: 'メーカーとカテゴリで絞った検索結果。商品ごとに「追加」ボタンが並ぶ',
+        caption: 'メーカーやカテゴリで絞った結果から、「追加」を押すだけで在庫に入ります。',
+        focus: 0.3,
         ...SHOT,
       },
     ],
@@ -106,9 +106,9 @@ export const TUTORIAL_TABS = [
     slides: [
       {
         image: `${TUTORIAL_ASSET_DIR}/settings-1.webp`,
-        alt: '設定タブ。表示の切り替え、サンプル、画材名を最新にする、使い方、プランの並び',
-        caption: '表示の切り替え、サンプル、画材名を最新にする、この使い方、プランはここから。',
-        focus: 0.25,
+        alt: '設定タブ。表示・サンプル・対応画材数38,140件・画材名の更新・使い方・プラン・画材費の並び',
+        caption: '表示・サンプル・画材名の更新・使い方・プランはここから。画材費やiCloudバックアップも続きます。',
+        focus: 0.05,
         ...SHOT,
       },
     ],

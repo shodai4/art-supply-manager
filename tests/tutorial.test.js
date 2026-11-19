@@ -193,7 +193,7 @@ test('Service Worker と www/（iOSバンドル）にも画像と tutorial.js �
   }
   // Service Worker（オフラインでも写真が出る）
   const sw = read('sw.js');
-  assert.match(sw, /art-supply-manager-v60/);
+  assert.match(sw, /art-supply-manager-v61/);
   assert.ok(sw.includes("'./tutorial.js'"), 'sw.js に tutorial.js がない');
   for (const image of tutorialImages()) {
     assert.ok(sw.includes(`'./${image}'`), `sw.js に ${image} がない`);
@@ -244,4 +244,34 @@ test('画面写真の枠は、白い画面の写真でも背景に溶けない�
   // 高さと切り取り方は変えない（説明文とページャーが広告帯に隠れないため）
   assert.match(css, /\.gslide img \{[^}]*height:\s*min\(320px,\s*42vh\)/);
   assert.match(css, /\.gslide img \{[^}]*object-fit:\s*cover/);
+});
+
+test('写真の実寸（幅・高さ）が tutorial.js の w・h と一致する（差し替え後の取り違えを防ぐ）', () => {
+  // WebP（非可逆・VP8）のヘッダーから、実際の幅と高さを読む
+  const webpSize = (file) => {
+    const b = fs.readFileSync(file);
+    assert.equal(b.toString('latin1', 12, 16), 'VP8 ', `${file} が VP8 の WebP ではない`);
+    assert.equal(b.readUInt8(23), 0x9d, `${file} のフレームヘッダーが想定外`);
+    assert.equal(b.readUInt8(24), 0x01, `${file} のフレームヘッダーが想定外`);
+    assert.equal(b.readUInt8(25), 0x2a, `${file} のフレームヘッダーが想定外`);
+    return { w: b.readUInt16LE(26) & 0x3fff, h: b.readUInt16LE(28) & 0x3fff };
+  };
+  for (const tab of TUTORIAL_TABS) {
+    for (const slide of tab.slides) {
+      const actual = webpSize(path.join(ROOT, slide.image));
+      assert.deepEqual(actual, { w: slide.w, h: slide.h }, `${slide.image} の実寸が w/h と違う`);
+    }
+  }
+});
+
+test('説明文が今の画面に合っている（38,140件・＋のあとの「補充を確定」・設定の画材費）', () => {
+  const all = TUTORIAL_TABS.flatMap((tab) => tab.slides);
+  const captionOf = (image) => all.find((slide) => slide.image.endsWith(image)).caption;
+  // 内蔵辞書の件数は、いまの設定・カタログの表示と合わせる
+  assert.match(captionOf('catalog-1.webp'), /38,140件/);
+  // 補充タブは「＋で買い足した分を、補充を確定でまとめて十分にする」動きになっている
+  assert.match(captionOf('restock-1.webp'), /補充を確定/);
+  // 設定は、いま並んでいる項目（画材費まで）を案内する
+  assert.match(captionOf('settings-1.webp'), /画材費/);
+  assert.match(captionOf('settings-1.webp'), /38|画材名/);
 });
