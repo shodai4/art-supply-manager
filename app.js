@@ -698,6 +698,45 @@ function render({ keepCatalogList = false } = {}) {
 }
 
 /**
+ * いま見ているカタログ一覧のスクロール位置を覚える（カタログを見ていなければ null）。
+ *
+ * カタログの一覧は行を遅延描画しているので、作り直すと行の高さが変わり、
+ * iOS（-webkit-overflow-scrolling: touch）ではスクロール位置がシリーズの先頭まで飛ぶ。
+ * 作り直す必要のない場面では、この位置のまま置いておくために使う。
+ */
+function captureCatalogScroll() {
+  if (ui.tab !== 'catalog') return null;
+  const root = $('dictResults');
+  if (!root) return null;
+  return { root, top: root.scrollTop, winY: Number(window.scrollY) || 0 };
+}
+
+/** 覚えたカタログのスクロール位置へ戻す（ずれていなければ何もしない） */
+function restoreCapturedCatalogScroll(saved) {
+  if (!saved) return;
+  const pin = () => {
+    const { root, top, winY } = saved;
+    if (!root || !root.isConnected) return;
+    if (Math.abs(root.scrollTop - top) >= 1) root.scrollTop = top;
+    if (Math.abs((Number(window.scrollY) || 0) - winY) >= 1) window.scrollTo(0, winY);
+  };
+  pin();
+  // 描き直しの直後にもう一度高さが変わる環境（iOS）に備えて、次のフレームでも合わせる
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(pin);
+}
+
+/**
+ * 裏の処理（商品画像の後入れなど）から画面を作り直す。
+ * カタログを見ているときは一覧を作り直さず、スクロール位置も動かさない
+ * （押した行以外は何も変わらないので、作り直す理由がない）。
+ */
+function redrawKeepingPlace() {
+  const saved = captureCatalogScroll();
+  render({ keepCatalogList: Boolean(saved) });
+  restoreCapturedCatalogScroll(saved);
+}
+
+/**
  * 下部UI（タブバー・FAB）の高さを実測してCSS変数に入れる。
  * AdMob バナーは --ad-h（ネイティブで出ている間だけJSが入れる）で、FABはその上に乗る。
  * ドックは無くなったので --dock-h は常に0（既定値のまま）。
@@ -2491,7 +2530,9 @@ async function autoFillItemImage(item) {
   if (!out.changed) return; // 削除・別画像・写真の設定があったら上書きしない
   state = out.state;
   save();
-  render();
+  // カタログを見ているときは、その一覧とスクロール位置をそのまま残す
+  // （ここで全部を作り直すと、追加した直後に一覧がシリーズの先頭まで飛ぶ）
+  redrawKeepingPlace();
 }
 
 /** すでに入っているサンプルに、定義の画像を静かに補う（自分で設定した画像・写真は残す） */
@@ -2550,7 +2591,7 @@ async function fillMissingImages() {
     }
     if (filled) {
       save();
-      render();
+      redrawKeepingPlace(); // カタログを見ているときは、その一覧とスクロール位置を動かさない
       toast(`画像のなかった画材${filled}点に商品画像を入れました`);
     }
   } finally {
@@ -4176,7 +4217,11 @@ function restoreCatalogAnchor(anchor) {
   }
   const target = (anchor.series && findSeries())
     || [...root.querySelectorAll('[data-g-maker]')].find((h) => (h.dataset.gMaker || '') === anchor.maker);
-  if (target) target.scrollIntoView({ block: 'start' });
+  // 一覧の scrollTop だけで合わせる（scrollIntoView は iOS でページごと動かすことがある）
+  if (target) {
+    const delta = target.getBoundingClientRect().top - root.getBoundingClientRect().top;
+    root.scrollTop = Math.max(0, root.scrollTop + delta - 4);
+  }
 }
 
 /** シリーズの中身（商品行）を置く。残りは「もっと見る」に回す */
@@ -4480,8 +4525,12 @@ function addDictToStock(d, { keepList = false } = {}) {
     qty: 1,
   });
   state = upsertItem(state, item);
+  // カタログから足したときは、一覧もスクロール位置もそのまま残す
+  // （押した行のボタンは呼び出し側が「登録済み」に差し替える）
+  const savedScroll = keepList ? captureCatalogScroll() : null;
   save();
   render({ keepCatalogList: keepList });
+  restoreCapturedCatalogScroll(savedScroll);
   toast(`「${item.name}」を在庫に追加しました${others ? '（別のフォルダにもあり）' : ''}`);
   // カタログからそのまま在庫に入れたときも、商品画像を静かに取りに行く
   autoFillItemImage(item);

@@ -880,7 +880,12 @@ body[data-ad-banner="true"] .foot {
   border: 1px solid var(--accent-line); background: var(--accent-soft); color: var(--on-accent-soft);
   font-size: 12px; font-weight: 800;
 }
-.dres-have { flex: 0 0 auto; font-size: 11px; font-weight: 700; color: var(--ink-3); }
+/* 「登録済み」は「追加」ボタンと同じ高さにそろえる（押した瞬間に行の高さが変わると、
+   一覧が1px でもずれて、iOS ではスクロール位置が飛ぶきっかけになる）。 */
+.dres-have {
+  flex: 0 0 auto; display: inline-flex; align-items: center; min-height: 30px;
+  padding: 0 10px; font-size: 11px; font-weight: 700; color: var(--ink-3);
+}
 
 /* カメラ映像とガイド枠を同じ箱に収める。
    箱の高さは「映像の縦横比」で決まる（幅は枠いっぱい・高さはauto）ので、
