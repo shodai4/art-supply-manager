@@ -255,7 +255,7 @@ test('export-file.js は配布物とService Workerのキャッシュに入って
   assert.ok(fs.existsSync(path.join(ROOT, 'export-file.js')));
   assert.match(read('sw.js'), /'\.\/export-file\.js'/);
   // 新しいJSを確実に届けるためキャッシュ名も上げる
-  assert.match(read('sw.js'), /art-supply-manager-v64/);
+  assert.match(read('sw.js'), /art-supply-manager-v65/);
   // Falls back to 404 を避ける: index.html が読む版と package.json が一致
   const pkg = JSON.parse(read('package.json'));
   assert.match(read('index.html'), new RegExp(`app\\.js\\?v=${pkg.version.replace(/\./g, '\\.')}`));

@@ -125,5 +125,102 @@
       "data/jan-part-3.js",
       "data/jan-part-4.js"
     ]
+  },
+  {
+    "importedAt": "2026-11-19",
+    "source": "Google Drive「AI秘書 / 05_副業・開発」の JAN_<メーカー>網羅_統合.csv（11ファイル）",
+    "dir": "../work/drive-jan-20261119-new",
+    "files": [
+      {
+        "file": "JAN_カラン・ダッシュ網羅_統合.csv",
+        "rows": 1577,
+        "added": 1047,
+        "skippedExisting": 530,
+        "invalid": 0
+      },
+      {
+        "file": "JAN_ゼブラ網羅_統合.csv",
+        "rows": 4808,
+        "added": 4524,
+        "skippedExisting": 284,
+        "invalid": 0
+      },
+      {
+        "file": "JAN_ダニエルスミス網羅_統合.csv",
+        "rows": 381,
+        "added": 2,
+        "skippedExisting": 379,
+        "invalid": 0
+      },
+      {
+        "file": "JAN_デリーター網羅_統合.csv",
+        "rows": 1095,
+        "added": 628,
+        "skippedExisting": 467,
+        "invalid": 0
+      },
+      {
+        "file": "JAN_ニッカー絵具網羅_統合.csv",
+        "rows": 453,
+        "added": 100,
+        "skippedExisting": 353,
+        "invalid": 0
+      },
+      {
+        "file": "JAN_ファーバーカステル網羅_統合.csv",
+        "rows": 1022,
+        "added": 737,
+        "skippedExisting": 285,
+        "invalid": 0
+      },
+      {
+        "file": "JAN_ペベオ網羅_統合.csv",
+        "rows": 1269,
+        "added": 924,
+        "skippedExisting": 345,
+        "invalid": 0
+      },
+      {
+        "file": "JAN_マルマン網羅_統合.csv",
+        "rows": 1957,
+        "added": 1792,
+        "skippedExisting": 165,
+        "invalid": 0
+      },
+      {
+        "file": "JAN_ルフラン＆ブルジョア網羅_統合.csv",
+        "rows": 360,
+        "added": 4,
+        "skippedExisting": 356,
+        "invalid": 0
+      },
+      {
+        "file": "JAN_呉竹網羅_統合.csv",
+        "rows": 3909,
+        "added": 3452,
+        "skippedExisting": 457,
+        "invalid": 0
+      },
+      {
+        "file": "JAN_墨運堂網羅_統合.csv",
+        "rows": 1389,
+        "added": 1123,
+        "skippedExisting": 266,
+        "invalid": 0
+      }
+    ],
+    "skippedExisting": 3887,
+    "duplicatesInBatch": 0,
+    "invalid": [],
+    "seriesDropped": {
+      "equalsName": 6,
+      "single": 76
+    },
+    "before": 84873,
+    "added": 14333,
+    "after": 99206,
+    "parts": [
+      "data/jan-part-5.js"
+    ]
   }
 ]

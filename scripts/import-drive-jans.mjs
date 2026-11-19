@@ -42,6 +42,7 @@ if (!DIR || !fs.existsSync(DIR)) {
 }
 
 const { JAN_DICTIONARY, JAN_PREFIXES } = await import('../jan-database.js');
+const { buildCapacityMap, buildEnglishNameMap, buildSeriesMap, normalizeEntry } = await import('./lib/normalize-jan.mjs');
 const { isValidJAN, normalizeJAN, CATEGORIES } = await import('../core.js');
 const CATEGORY_IDS = new Set(CATEGORIES.map((c) => c.id));
 
@@ -147,6 +148,7 @@ for (const file of files) {
       size,
       code: clean(row[index.code]),
       keywords: clean(row[index.keywords]),
+      brand: clean(row[index.brand]),
       source: sourceOf(row[index.source]),
       file,
     });
@@ -157,6 +159,29 @@ for (const file of files) {
 }
 
 console.log(`読み込み ${files.length} ファイル / 新規 ${accepted.length} 件 / 既存と重複 ${report.skippedExisting} 件 / 不正 ${report.invalid.length} 件`);
+
+/* ---------------- 表記の正規化（scripts/normalize-jan-dict.mjs と同じルール） ---------------- */
+
+// 既存辞書と今回の分を合わせて対応表を作り、1件ずつそろえる
+// （半角カナ→全角カナ・全角英数→半角英数・英語＋日本語の色名・カタカナ色名の空白・号数と容量・前置き）
+const capacityMap = buildCapacityMap([...JAN_DICTIONARY, ...accepted]);
+const seriesMap = buildSeriesMap([...JAN_DICTIONARY, ...accepted]);
+const englishName = buildEnglishNameMap([...JAN_DICTIONARY, ...accepted]);
+const normalized = { halfKana: 0, fullAlnum: 0, kanaSpace: 0, sizeCapacity: 0, prefix: 0, englishColor: 0, series: 0 };
+for (let i = 0; i < accepted.length; i += 1) {
+  const { entry, changes } = normalizeEntry(accepted[i], { capacityMap, seriesMap, englishName });
+  for (const rule of new Set(changes.map((c) => c.rule))) {
+    if (rule === 'half-kana') normalized.halfKana += 1;
+    else if (rule === 'full-alnum' || rule.includes('hyphen') || rule === 'full-punct') normalized.fullAlnum += 1;
+    else if (rule === 'kana-space') normalized.kanaSpace += 1;
+    else if (rule === 'size-capacity' || rule === 'size-unit') normalized.sizeCapacity += 1;
+    else if (rule === 'prefix') normalized.prefix += 1;
+    else if (rule === 'english-color') normalized.englishColor += 1;
+    else if (rule === 'series-merge') normalized.series += 1;
+  }
+  accepted[i] = entry;
+}
+console.log(`表記の正規化: 半角カナ ${normalized.halfKana} / 全角英数 ${normalized.fullAlnum} / カタカナ空白 ${normalized.kanaSpace} / 号数容量 ${normalized.sizeCapacity} / 前置き ${normalized.prefix} / 英語色名 ${normalized.englishColor} / シリーズ ${normalized.series}`);
 
 /* ---------------- シリーズ名の整理 ---------------- */
 

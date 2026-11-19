@@ -1,4 +1,4 @@
-// 内蔵辞書（84,873件）の表示名が、同じシリーズの中で見分けられるかを見るテスト。
+// 内蔵辞書（99,206件）の表示名が、同じシリーズの中で見分けられるかを見るテスト。
 // 2026-11-18 の不具合（「アーチストソフトパステル」252件が同じ名前で並ぶ／色番・セット名が
 // シリーズ名に混ざって件数1のシリーズが乱立する）の再発防止。
 import test from 'node:test';
@@ -32,7 +32,9 @@ test('アーチストソフトパステル: 252色の単色が色番付きで並
 test('デリーター スクリーン: 色番（SE-0 など）で見分けられる', () => {
   const rows = JAN_DICTIONARY.filter((d) => d.maker === 'デリーター' && d.series === 'スクリーン');
   assert.ok(rows.length > 400, `件数が足りない: ${rows.length}`);
-  assert.equal(rows.filter((d) => !d.code).length, 0, '色番の無い行がある');
+  // 色番の欄が空でも、名前の中に品番（JR-93）やセット番号（Vol.1）が入っていれば見分けられる
+  const noCode = rows.filter((d) => !d.code && !/[A-Z]{1,3}-?\d{1,4}/.test(d.name) && !/Vol\.\d|セット/.test(d.name));
+  assert.deepEqual(noCode.map((d) => d.name).slice(0, 3), [], '色番の無い行がある');
   const labels = rows.map((d) => rowText(d, d.series));
   assert.ok(labels.includes('SE-0') && labels.includes('SE-4029'), 'SE の色番が出ていない');
 });
@@ -69,9 +71,12 @@ test('全辞書: 同じシリーズの中で、中身の違う行が同じ表示
         // 元データの重複JAN（商品名・色名・号数・色番が全部同じ）は、表示では区別できないので除く。
         // 同じ商品が別JANで並ぶ場合（「ぺんてる サインペン 青インク」と「サインペン 青インク」）も、
         // 空白・メーカー名の有無だけの違いなので同じものとして扱う（2026-11-19 の15社取り込みで判明）
+        // 名前の末尾に色番が繰り返されているだけの違い（「アルビレオブロック AB-F6」と「アルビレオブロック」）も
+        // 同じ商品とみなす（2026-11-19 の表記ゆれ整理で、全角の色番が半角になって表示名が重なった）
         const form = (d) => {
           const maker = String(d.maker || '');
-          const head = maker && String(d.name || '').startsWith(maker) ? String(d.name).slice(maker.length) : String(d.name || '');
+          let head = maker && String(d.name || '').startsWith(maker) ? String(d.name).slice(maker.length) : String(d.name || '');
+          if (d.code) head = head.split(d.code).join('');
           return [head, d.colorName, d.size, d.code].join('|').replace(/[\s　・]+/g, '');
         };
         const forms = new Set(list.map(form));

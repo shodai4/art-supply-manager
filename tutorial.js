@@ -86,7 +86,7 @@ export const TUTORIAL_TABS = [
       {
         image: `${TUTORIAL_ASSET_DIR}/catalog-1.webp`,
         alt: 'カタログタブ。メーカー選択とキーワード検索、お気に入りメーカーのチップが並ぶ',
-        caption: '内蔵辞書84,873件から、メーカー・カテゴリで絞り込めます。お気に入りメーカーも使えます。',
+        caption: '内蔵辞書99,206件から、メーカー・カテゴリで絞り込めます。お気に入りメーカーも使えます。',
         focus: 0.1,
         ...SHOT,
       },
@@ -106,7 +106,7 @@ export const TUTORIAL_TABS = [
     slides: [
       {
         image: `${TUTORIAL_ASSET_DIR}/settings-1.webp`,
-        alt: '設定タブ。表示・サンプル・対応画材数84,873件・画材名の更新・使い方・プラン・画材費の並び',
+        alt: '設定タブ。表示・サンプル・対応画材数99,206件・画材名の更新・使い方・プラン・画材費の並び',
         caption: '表示・サンプル・画材名の更新・使い方・プランはここから。画材費やiCloudバックアップも続きます。',
         focus: 0.05,
         ...SHOT,

@@ -309,6 +309,6 @@ test('版（package.json・index.html・sw.js）がそろっている', () => {
   }
 });
 
-test('内蔵辞書の件数は減っていない（84,873件 = Drive 15社 46,733件を取り込み後）', () => {
-  assert.equal(JAN_DICTIONARY.length, 84873);
+test('内蔵辞書の件数は減っていない（99,206件 = Drive 15社＋新規11社 61,066件を取り込み後）', () => {
+  assert.equal(JAN_DICTIONARY.length, 99206);
 });
