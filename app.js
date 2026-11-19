@@ -4335,19 +4335,40 @@ function renderFavMakers() {
   const toggle = $('favMakersToggle');
   if (!box || !body || !toggle) return;
   const list = favoriteMakers(state.settings);
+  // 開閉の状態は、0件で行ごと隠すときも含めて先に合わせておく（次の登録で古い状態が残らない）
+  box.dataset.open = String(favMakersOpen);
+  toggle.setAttribute('aria-expanded', favMakersOpen ? 'true' : 'false');
   // 0件のときは行ごと出さない（縦幅を取らず、星を押せば登録できることはメーカー行で分かる）
   box.hidden = list.length === 0;
   if (!list.length) return;
   $('favMakersLabel').textContent = `お気に入りメーカー（${list.length}件）`;
-  box.dataset.open = String(favMakersOpen);
-  toggle.setAttribute('aria-expanded', favMakersOpen ? 'true' : 'false');
   body.hidden = !favMakersOpen;
-  body.innerHTML = list.map((name) => `<button type="button" class="favmake-chip" data-favmaker-pick="${esc(name)}" aria-pressed="${dictTabMaker === name}">${esc(name)}</button>`).join('');
+  // 1つの丸の中に「名前（タップでそのメーカーに切り替え）」と「星（タップでお気に入り解除）」を並べる。
+  // どちらも別のボタンにする（button を入れ子にしない）ので、押した方を取り違えない。
+  body.innerHTML = list.map((name) => {
+    const on = dictTabMaker === name;
+    return `<span class="favmake-pill${on ? ' on' : ''}">`
+      + `<button type="button" class="favmake-chip" data-favmaker-pick="${esc(name)}" aria-pressed="${on ? 'true' : 'false'}">${esc(name)}</button>`
+      + `<button type="button" class="favmake-off" data-favmaker-off="${esc(name)}" aria-pressed="true" aria-label="${esc(name)}をお気に入りメーカーから外す" title="お気に入りから外す"><svg class="ic" aria-hidden="true"><use href="#i-star-solid"/></svg></button>`
+      + '</span>';
+  }).join('');
 }
 
 function setFavMakersOpen(on) {
   favMakersOpen = Boolean(on);
   renderFavMakers();
+}
+
+/** メーカー一覧の星を、保存した設定に合わせる（一覧は描き直さず、星だけを合わせる） */
+function syncMakerStar(name, on) {
+  document.querySelectorAll('[data-fav-maker]').forEach((star) => {
+    if (star.dataset.favMaker !== name) return;
+    star.classList.toggle('on', on);
+    star.setAttribute('aria-pressed', String(on));
+    star.setAttribute('aria-label', `${name}をお気に入りメーカーに${on ? '登録しない' : '登録'}`);
+    const use = star.querySelector('use');
+    if (use) use.setAttribute('href', on ? '#i-star-solid' : '#i-star');
+  });
 }
 
 /** 星を押したときの登録／解除（一覧は描き直さず、押した星と上部のタブだけを合わせる） */
@@ -4357,18 +4378,39 @@ function toggleFavoriteMaker(maker, star) {
   state = { ...state, settings: toggleMakerFavorite(state.settings, name) };
   save();
   const after = isMakerFavorite(state.settings, name);
-  if (star) {
-    star.classList.toggle('on', after);
-    star.setAttribute('aria-pressed', String(after));
-    star.setAttribute('aria-label', `${name}をお気に入りメーカーに${after ? '登録しない' : '登録'}`);
-    const use = star.querySelector('use');
-    if (use) use.setAttribute('href', after ? '#i-star-solid' : '#i-star');
-  }
+  syncMakerStar(name, after);
   renderFavMakers();
   const count = favoriteMakers(state.settings).length;
   // 星はここで描き直していないので、その場でふくらませる（登録した手応え）
   motion.press(star, { scale: 0.84, overshoot: 2.2 });
   toast(after ? `お気に入りメーカーに登録しました（${count}件）` : 'お気に入りメーカーから外しました');
+}
+
+/**
+ * お気に入りタブの星を押したときの解除。
+ * チップがその場で消えるので、件数・メーカー一覧の星・開閉・フォーカスを一緒に合わせる。
+ */
+function removeFavoriteMaker(maker, btn) {
+  const name = String(maker || '').trim();
+  if (!name || !isMakerFavorite(state.settings, name)) return;
+  const index = favoriteMakers(state.settings).indexOf(name);
+  const hadFocus = Boolean(btn && document.activeElement === btn);
+  state = { ...state, settings: toggleMakerFavorite(state.settings, name) };
+  save();
+  const list = favoriteMakers(state.settings);
+  // 最後の1件を外したら閉じておく（次に登録したときに、開いたまま出てこないように）
+  if (!list.length) favMakersOpen = false;
+  syncMakerStar(name, false);
+  renderFavMakers();
+  // 件数の数字をポンッと（消えたチップの代わりに、外せた手応えを残す）
+  motion.bump($('favMakersLabel'));
+  toast(`お気に入りメーカーから外しました（${list.length}件）`);
+  // キーボード・読み上げで操作しているときは、外した位置の次の星へ focus を移す
+  if (hadFocus) {
+    const stars = document.querySelectorAll('[data-favmaker-off]');
+    const next = stars[Math.min(index, stars.length - 1)];
+    if (next) next.focus();
+  }
 }
 
 document.addEventListener('click', (e) => {
@@ -4377,6 +4419,13 @@ document.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
     toggleFavoriteMaker(star.dataset.favMaker, star);
+    return;
+  }
+  const off = e.target.closest('[data-favmaker-off]');
+  if (off) {
+    e.preventDefault();
+    e.stopPropagation();
+    removeFavoriteMaker(off.dataset.favmakerOff, off);
     return;
   }
   const pick = e.target.closest('[data-favmaker-pick]');

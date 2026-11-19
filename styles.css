@@ -1236,12 +1236,26 @@ body.catalog-mode { overflow: hidden; }
 .favmake[data-open="true"] .favmake-head .chev { transform: rotate(90deg); }
 .favmake-body { display: flex; flex-wrap: wrap; gap: 5px; padding: 0 10px 9px; max-height: 118px; overflow-y: auto; }
 .favmake-body[hidden] { display: none; }
-.favmake-chip {
-  flex: 0 0 auto; max-width: 100%; padding: 5px 10px; border-radius: 999px;
-  border: 1px solid var(--line); background: var(--surface-2); color: var(--chip-ink);
-  font-size: 12px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+/* チップは「名前（タップで切り替え）＋星（タップでお気に入り解除）」の2つのボタンを
+   1つの丸にまとめる。button を入れ子にしないので、押した方を取り違えない。 */
+.favmake-pill {
+  flex: 0 0 auto; max-width: 100%; display: flex; align-items: center;
+  border: 1px solid var(--line); border-radius: 999px; background: var(--surface-2);
+  overflow: hidden;
 }
-.favmake-chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--on-accent-soft); }
+.favmake-pill.on { background: var(--accent-soft); border-color: var(--accent-line); }
+.favmake-chip {
+  flex: 0 1 auto; min-width: 0; padding: 5px 8px 5px 10px; border: 0; background: none;
+  color: var(--chip-ink); font-size: 12px; font-weight: 700;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.favmake-pill.on .favmake-chip { color: var(--on-accent-soft); }
+.favmake-off {
+  flex: 0 0 auto; width: 30px; height: 30px; padding: 0; border: 0; background: none;
+  display: grid; place-items: center; color: #c98a12;
+}
+.favmake-off .ic { width: 13px; height: 13px; }
+.favmake-off:active { opacity: .55; }
 .favmake-empty { margin: 0; font-size: 11px; color: var(--muted-ink); }
 
 /* メーカー見出しの星（カタログだけ）。見出しの開閉ボタンとは別のボタンにして、

@@ -57,6 +57,60 @@ test('画面: カタログのメーカー見出しに星があり、上部に折
   assert.match(html, /<select id="dictMakerSel" aria-label="メーカーで絞る"><\/select>/);
 });
 
+test('お気に入りタブのチップからも、ワンタップで解除できる', () => {
+  const app = read('app.js');
+  const css = read('styles.css');
+  // チップと同じ丸の中に★（解除ボタン）を置く。button の入れ子にしない
+  assert.match(app, /<span class="favmake-pill\$\{on \? ' on' : ''\}">/);
+  assert.match(app, /<button type="button" class="favmake-chip" data-favmaker-pick="\$\{esc\(name\)\}"/);
+  assert.match(app, /<button type="button" class="favmake-off" data-favmaker-off="\$\{esc\(name\)\}"/);
+  assert.match(app, /aria-label="\$\{esc\(name\)\}をお気に入りメーカーから外す"/);
+  const chipAt = app.indexOf('data-favmaker-pick=');
+  const offAt = app.indexOf('data-favmaker-off=', chipAt);
+  assert.ok(chipAt > 0 && offAt > chipAt, '★がチップの後ろにない');
+  // 解除と切り替えは、それぞれ別のボタン（同じ丸の中でも取り違えない）
+  assert.equal(/<button[^>]*class="favmake-chip"[^>]*>[^<]*<button/.test(app), false, 'button が入れ子になっている');
+  // 解除のクリックは、切り替え（pick）より先に受けて、伝播を止める
+  const handler = app.slice(app.indexOf("const off = e.target.closest('[data-favmaker-off]')"), app.indexOf("const head = e.target.closest('#favMakersToggle')"));
+  assert.ok(handler.indexOf('data-favmaker-off') < handler.indexOf('data-favmaker-pick'), '解除より先に切り替えを受けている');
+  assert.match(handler, /removeFavoriteMaker\(off\.dataset\.favmakerOff, off\);/);
+  assert.match(handler, /e\.stopPropagation\(\);/);
+  // ★は押せる大きさで、登録中と同じ金色
+  assert.match(css, /\.favmake-pill \{[^}]*display: flex;/);
+  assert.match(css, /\.favmake-off \{[^}]*width: 30px; height: 30px;/);
+  assert.match(css, /\.favmake-off \{[^}]*color: #c98a12;/);
+});
+
+test('お気に入りタブの★で外すと、件数・メーカー一覧の星・開閉がそろって変わる', () => {
+  const app = read('app.js');
+  const body = app.slice(app.indexOf('function removeFavoriteMaker'), app.indexOf('/** 辞書の1件を'));
+  // 保存はこれまでと同じ道（重複なし・登録順）を通し、メーカー一覧の星も同時に消す
+  assert.match(body, /settings: toggleMakerFavorite\(state\.settings, name\)/);
+  assert.match(body, /syncMakerStar\(name, false\);/);
+  assert.match(body, /renderFavMakers\(\);/);
+  assert.match(body, /save\(\);/);
+  // 0件になったら閉じておく（次に登録したときに開いたまま出てこない）
+  assert.match(body, /if \(!list\.length\) favMakersOpen = false;/);
+  // 外したことをトーストで知らせ、件数も添える
+  assert.match(body, /toast\(`お気に入りメーカーから外しました（\$\{list\.length\}件）`\)/);
+  // 見出しの件数は描き直しで更新される
+  assert.match(app, /\$\('favMakersLabel'\)\.textContent = `お気に入りメーカー（\$\{list\.length\}件）`;/);
+  // キーボード・読み上げで操作しているときは、外した位置の次の★へ focus を移す
+  assert.match(body, /if \(hadFocus\)/);
+  assert.match(body, /stars\[Math\.min\(index, stars\.length - 1\)\]/);
+});
+
+test('メーカー一覧の星は、どちらの入口から外しても同じ設定に従う', () => {
+  const app = read('app.js');
+  // 星の見た目を合わせる処理は1か所（syncMakerStar）にまとめ、登録／解除の両方から使う
+  assert.match(app, /function syncMakerStar\(name, on\)/);
+  const toggle = app.slice(app.indexOf('function toggleFavoriteMaker'), app.indexOf('function removeFavoriteMaker'));
+  assert.match(toggle, /syncMakerStar\(name, after\);/);
+  // 同じ名前の星が複数あっても全部そろう
+  assert.match(app, /document\.querySelectorAll\('\[data-fav-maker\]'\)\.forEach/);
+  assert.match(app, /if \(star\.dataset\.favMaker !== name\) return;/);
+});
+
 test('お気に入りメーカーの星は、メーカー見出しの開閉を巻き込まない', () => {
   const app = read('app.js');
   // 星は見出しボタンの中ではなく、同じ行の別ボタン（button の入れ子にしない）
