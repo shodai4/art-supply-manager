@@ -15,7 +15,7 @@ try {
 } catch (e) { /* 保存が読めないときはライト */ }
 </script>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="styles.css?v=1.40.1">
+<link rel="stylesheet" href="styles.css?v=1.41.0">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 </head>
@@ -372,10 +372,11 @@ try {
   <button data-tab="settings" aria-selected="false">設定</button>
 </nav>
 
-<!-- 右下の＋（追加のしかたを2つから選ぶ） -->
+<!-- 右下の＋（追加のしかたを3つから選ぶ。バーコードをいちばん上に） -->
 <div class="sheet" id="sheetAdd" role="dialog" aria-modal="true" aria-labelledby="addTitle">
   <h2 id="addTitle">画材を追加<button class="close" data-close="sheetAdd" aria-label="閉じる"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></h2>
   <div class="menulist">
+    <button type="button" class="menubtn" id="btnAddScan">バーコードで読み取る</button>
     <button type="button" class="menubtn" id="btnAddCatalog">カタログから選ぶ</button>
     <button type="button" class="menubtn" id="btnAddManual">自分で入力</button>
   </div>
@@ -689,7 +690,7 @@ try {
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <!-- 動きのライブラリは同梱（CDNから読まない）。app.js より先に読んで window.gsap を用意する -->
-<script src="vendor/gsap.min.js?v=1.40.1"></script>
-<script type="module" src="app.js?v=1.40.1"></script>
+<script src="vendor/gsap.min.js?v=1.41.0"></script>
+<script type="module" src="app.js?v=1.41.0"></script>
 </body>
 </html>

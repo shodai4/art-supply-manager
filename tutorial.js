@@ -57,8 +57,8 @@ export const TUTORIAL_TABS = [
       },
       {
         image: `${TUTORIAL_ASSET_DIR}/stock-3.webp`,
-        alt: '＋を押したときに出る「カタログから選ぶ」と「自分で入力」の2択',
-        caption: '＋を押すと「カタログから選ぶ」か「自分で入力」を選べます。',
+        alt: '＋を押したときに出る「バーコードで読み取る」「カタログから選ぶ」「自分で入力」の3択',
+        caption: '＋を押すと「バーコードで読み取る」「カタログから選ぶ」「自分で入力」から選べます。',
         focus: FOCUS.bottom,
         ...SHOT,
       },

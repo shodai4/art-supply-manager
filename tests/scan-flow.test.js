@@ -292,7 +292,7 @@ test('スキャン画面に「連続スキャン」トグルとログ・完了�
 test('scan-flow.js は配信・iOSビルド・Service Worker に入っている', async () => {
   const sw = read('sw.js');
   assert.match(sw, /'\.\/scan-flow\.js'/);
-  assert.match(sw, /art-supply-manager-v63/);
+  assert.match(sw, /art-supply-manager-v64/);
   const { WEB_ASSETS } = await import('../scripts/build.mjs');
   assert.ok(WEB_ASSETS.includes('scan-flow.js'), 'scan-flow.js が WEB_ASSETS にありません');
   assert.ok(fs.existsSync(path.join(ROOT, 'scan-flow.js')));

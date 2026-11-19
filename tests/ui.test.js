@@ -252,8 +252,9 @@ test('右下の＋の上に、文字なしの読取ボタンがある（ツー�
   assert.match(app, /setProperty\('--dock-h'/);
   // 出るのは在庫・補充のタブのときだけ（＋と同じ）
   assert.match(app, /\$\('btnScan'\)\.style\.visibility = fabVisible/);
-  // 押すと読取シートが開く（動きは今までどおり）
-  assert.match(app, /\$\('btnScan'\)\.addEventListener\('click', \(\) => \{\s*openSheet\('sheetScan'\)/);
+  // 押すと読取シートが開く（動きは今までどおり。＋の「バーコードで読み取る」も同じ処理を通す）
+  assert.match(app, /\$\('btnScan'\)\.addEventListener\('click', beginScan\);/);
+  assert.match(app, /function beginScan\(\) \{\s*openSheet\('sheetScan'\);/);
 });
 
 test('設定タブの「使い方」から、写真付きのチュートリアルを開ける', async () => {

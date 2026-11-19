@@ -1,7 +1,8 @@
 /**
  * 画面の小さな整理（v1.26.0）。
  *
- *   1) 右下の「＋」は、いきなり入力シートを開かず「カタログから選ぶ / 自分で入力」の2択を出す
+ *   1) 右下の「＋」は、いきなり入力シートを開かず「バーコードで読み取る / カタログから選ぶ / 自分で入力」の3択を出す
+ *      （バーコードはv1.41.0で最上段に追加）
  *   2) ヘッダーの「全○種」は出さない
  *   3) 右上の虫眼鏡と⋯は「在庫」タブのときだけ
  *   4) パンくずのフォルダ名は読みやすい大きさ（15px）にする
@@ -19,26 +20,33 @@ const app = read('app.js');
 const html = read('index.html');
 const css = read('styles.css');
 
-/* ---------------- 1) ＋の2択メニュー ---------------- */
+/* ---------------- 1) ＋の3択メニュー ---------------- */
 
-test('「＋」は2択メニューを出し、カタログへ移る／入力シートを開くを選べる', () => {
+test('「＋」は3択メニューを出し、バーコード・カタログ・入力シートを選べる', () => {
   const sheet = html.slice(html.indexOf('id="sheetAdd"'), html.indexOf('id="sheetMore"'));
   assert.ok(sheet, '追加メニューのシートがありません');
   assert.match(sheet, /role="dialog"/);
   assert.match(sheet, /<div class="menulist">/);
+  // バーコードがいちばん上（追加のしかたの先頭）
+  assert.match(sheet, /<div class="menulist">\s*<button type="button" class="menubtn" id="btnAddScan">バーコードで読み取る<\/button>/);
   assert.match(sheet, /<button type="button" class="menubtn" id="btnAddCatalog">カタログから選ぶ<\/button>/);
   assert.match(sheet, /<button type="button" class="menubtn" id="btnAddManual">自分で入力<\/button>/);
+  // 並びは バーコード → カタログ → 自分で入力
+  assert.ok(sheet.indexOf('btnAddScan') < sheet.indexOf('btnAddCatalog'), 'バーコードがカタログより上にない');
+  assert.ok(sheet.indexOf('btnAddCatalog') < sheet.indexOf('btnAddManual'), 'カタログが自分で入力より上にない');
   // 閉じるボタンと背景タップ（#mask）で閉じられる
   assert.match(sheet, /data-close="sheetAdd"/);
   const mask = app.slice(app.indexOf("$('mask').addEventListener('click'"));
   assert.match(mask, /\[\.\.\.openSheets\]\.forEach\(closeSheet\)/);
-  // 余計な説明文・絵文字は入れない（ボタンの2行だけ）
+  // 余計な説明文・絵文字は入れない（ボタンの3行だけ）
   assert.equal(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/u.test(sheet), false, '追加メニューに絵文字がある');
-  assert.equal((sheet.match(/<button/g) || []).length, 3, 'ボタンは 閉じる・2択 の3つだけ');
+  assert.equal((sheet.match(/<button/g) || []).length, 4, 'ボタンは 閉じる・3択 の4つだけ');
 
   // 押したときの動き
   assert.match(app, /\$\('btnAdd'\)\.addEventListener\('click', \(\) => openSheet\('sheetAdd'\)\);/);
   assert.equal(/btnAdd'\)\.addEventListener\('click', \(\) => openItemSheet/.test(app), false, '＋が直接シートを開いている');
+  // バーコードは、シートを閉じてから読取を始める（右下の読取ボタンと同じ処理）
+  assert.match(app, /\$\('btnAddScan'\)\.addEventListener\('click', \(\) => \{[\s\S]{0,140}closeSheet\('sheetAdd'\);[\s\S]{0,80}beginScan\(\);/);
   assert.match(app, /\$\('btnAddCatalog'\)\.addEventListener\('click', \(\) => \{[\s\S]{0,120}closeSheet\('sheetAdd'\);[\s\S]{0,80}selectTab\('catalog'\);/);
   assert.match(app, /\$\('btnAddManual'\)\.addEventListener\('click', \(\) => \{[\s\S]{0,120}closeSheet\('sheetAdd'\);[\s\S]{0,80}openItemSheet\(null\);/);
   // タブ切り替えは1か所（下タブも同じ処理を通る）

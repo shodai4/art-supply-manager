@@ -2762,6 +2762,12 @@ $('btnAddManual').addEventListener('click', () => {
   closeSheet('sheetAdd');
   openItemSheet(null);
 });
+// 「バーコードで読み取る」は、シートを閉じてから右下の読取ボタンと同じ流れでカメラを開く
+// （登録先のフォルダも、右下から読んだときと同じ＝いま見ている場所）
+$('btnAddScan').addEventListener('click', () => {
+  closeSheet('sheetAdd');
+  beginScan();
+});
 
 // 空の一覧の「サンプルを入れる」・設定の「サンプルを入れる／消す」（ボタンは描き直されるので文書全体で受ける）
 document.addEventListener('click', (e) => {
@@ -3385,14 +3391,19 @@ let scanSwitchBusy = false; // カメラ切り替えの再起動中
 const SCAN_STOP_TIMEOUT_MS = 800; // スキャナの停止を待つ上限（止まらないときに詰まらせない）
 const SCAN_LOG_MAX = 5;     // 画面に出す直近件数
 
-$('btnScan').addEventListener('click', () => {
+/**
+ * バーコード読取を始める（右下の読取ボタンと「＋」の「バーコードで読み取る」の共通処理）。
+ * シートを開いてからカメラを起動するので、置き場所（フォルダ）もいつもと同じになる。
+ */
+function beginScan() {
   openSheet('sheetScan');
   $('manualJan').value = '';
   resetScanSession(scanSession);
   clearScanLog();
   renderScanMode();
   startScanner();
-});
+}
+$('btnScan').addEventListener('click', beginScan);
 $('btnRescan').addEventListener('click', () => { stopScanner(); startScanner(); });
 
 /* --- カメラの内／外切り替え（連続スキャンの状態とログはそのまま） --- */

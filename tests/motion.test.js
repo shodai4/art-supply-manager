@@ -73,7 +73,7 @@ test('配布物（www/・Service Worker）に motion.js と gsap.min.js が入�
     assert.ok(sw.includes(`'./${rel}'`), `${rel} が Service Worker のキャッシュ対象にありません`);
   }
   // キャッシュ版も上がっている（古いキャッシュが GSAP 無しのまま使われないように）
-  assert.match(sw, /const CACHE = 'art-supply-manager-v63';/);
+  assert.match(sw, /const CACHE = 'art-supply-manager-v64';/);
 });
 
 test('index.html は GSAP を app.js より先に読み、版を合わせている', () => {
@@ -84,7 +84,7 @@ test('index.html は GSAP を app.js より先に読み、版を合わせてい�
   assert.ok(gsapAt < appAt, 'GSAP が app.js より後に読み込まれています');
   assert.match(html, new RegExp(`<script src="vendor/gsap\\.min\\.js\\?v=${pkg.version.replace(/\./g, '\\.')}">`));
   assert.match(html, new RegExp(`app\\.js\\?v=${pkg.version.replace(/\./g, '\\.')}`));
-  assert.equal(pkg.version, '1.40.1');
+  assert.equal(pkg.version, '1.41.0');
 });
 
 /* ---------------- 2) 安全なフォールバック ---------------- */
