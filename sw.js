@@ -1,5 +1,5 @@
 // アトリコ Service Worker（オフライン用キャッシュ）
-const CACHE = 'art-supply-manager-v68';
+const CACHE = 'art-supply-manager-v69';
 const ASSETS = [
   './', './index.html', './privacy.html', './terms.html', './support.html',
   './styles.css', './app.js', './core.js', './motion.js', './icloud.js', './links.js', './images.js', './pro.js', './iap.js', './samples.js', './theme.js', './tutorial.js', './jan-database.js', './data/jan-part-1.js', './data/jan-part-2.js', './data/jan-part-3.js', './data/jan-part-4.js', './data/jan-part-5.js', './data/jan-part-6.js', './jan-extra.js',

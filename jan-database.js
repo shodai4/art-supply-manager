@@ -97,7 +97,7 @@ export const JAN_PREFIXES = [
   { prefix: "4514373", maker: "吉祥", brand: "KISSYO", makers: ["吉祥"], count: 257 },
   { prefix: "4516722", maker: "大額", brand: "", makers: ["大額"], count: 9 },
   { prefix: "4519001", maker: "スリーエムジャパン", brand: "3M", makers: ["スリーエムジャパン"], count: 6 },
-  { prefix: "4520385", maker: "ベルク", brand: "", makers: ["ベルク", "オリジン"], count: 2234 },
+  { prefix: "4520385", maker: "オリジン", brand: "", makers: ["オリジン"], count: 2234 },
   { prefix: "4521718", maker: "アーテック", brand: "", makers: ["アーテック"], count: 1 },
   { prefix: "4522966", maker: "アスカ", brand: "", makers: ["アスカ"], count: 14 },
   { prefix: "4530545", maker: "新日本造形", brand: "", makers: ["新日本造形"], count: 2 },
