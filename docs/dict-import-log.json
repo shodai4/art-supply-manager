@@ -225,7 +225,7 @@
   },
   {
     "importedAt": "2026-11-20",
-    "source": "Google Drive「AI秘書 / 05_副業・開発」の JAN_<メーカー>網羅_統合.csv（2ファイル）",
+    "source": "マルオカ工業 公式JANコード一覧（https://maruoka.co.jp/jancord/ の JAN20251016.xlsx）と、笹部洋画材料店 商品ページの「JANコード」欄（https://www.sasabegazai.co.jp/pop.html?s=1&id=…）",
     "dir": "../work/jan10k/import2",
     "files": [
       {
@@ -255,6 +255,19 @@
     "after": 104001,
     "parts": [
       "data/jan-part-6.js"
-    ]
+    ],
+    "sourceDetail": [
+      {
+        "file": "JAN_マルオカ工業_公式JAN_20251121.csv",
+        "origin": "メーカー公式のJAN・品名・品番（Excel）",
+        "rows": 2461
+      },
+      {
+        "file": "JAN_笹部_未収録_20251121.csv",
+        "origin": "笹部洋画材料店の商品ページ（JANコード欄）。20〜29のインストアコードと、メーカーを特定できない158件は除外",
+        "rows": 2334
+      }
+    ],
+    "note": "メーカーはJAN事業者コード（プレフィックス表）で1社に特定できるものだけ。4520385は製造メーカー 株式会社オリジン（ブランド アルフレーム）として収録。"
   }
 ]
