@@ -6,7 +6,7 @@
 //       アスクル https://www.askul.co.jp/p/<お申込番号>/ （商品ページの「JANコード」欄を転記・文具174件）
 //       e-画材.com https://www.e-gazai.com/shop/g/g<品番>/ （商品ページのJANコード欄を転記・画材318件）
 // 各レコードはタプル（配列）で保持し、読込時にオブジェクトへ展開する（転送量の削減）。
-// 収録 99206 件 / プレフィックス 367 件。推測・架空のJANは含まない。
+// 収録 104001 件 / プレフィックス 367 件。推測・架空のJANは含まない。
 
 export const VERIFIED_AT = "2026-11-19";
 
@@ -44,21 +44,21 @@ export const JAN_PREFIXES = [
   { prefix: "1220000", maker: "アシーナ", brand: "", makers: ["アシーナ"], count: 1 },
   { prefix: "3000001", maker: "ステッドラー", brand: "STAEDTLER", makers: ["ステッドラー"], count: 1 },
   { prefix: "3013642", maker: "ルフラン＆ブルジョア", brand: "", makers: ["ルフラン＆ブルジョア"], count: 22 },
-  { prefix: "3013643", maker: "ルフラン＆ブルジョア", brand: "", makers: ["ルフラン＆ブルジョア"], count: 100 },
+  { prefix: "3013643", maker: "ルフラン＆ブルジョア", brand: "", makers: ["ルフラン＆ブルジョア"], count: 149 },
   { prefix: "3013644", maker: "ルフラン＆ブルジョア", brand: "", makers: ["ルフラン＆ブルジョア"], count: 238 },
-  { prefix: "3013645", maker: "コンテ", brand: "CONTE", makers: ["コンテ"], count: 71 },
+  { prefix: "3013645", maker: "コンテ", brand: "CONTE", makers: ["コンテ"], count: 88 },
   { prefix: "3026981", maker: "ロットリング", brand: "ROTTRING", makers: ["ロットリング"], count: 6 },
   { prefix: "3026982", maker: "ロットリング", brand: "ROTTRING", makers: ["ロットリング"], count: 3 },
   { prefix: "3034325", maker: "ウォーターマン", brand: "WATERMAN", makers: ["ウォーターマン"], count: 4 },
   { prefix: "3037920", maker: "ロディア", brand: "RHODIA", makers: ["ロディア"], count: 22 },
   { prefix: "3037921", maker: "ロディア", brand: "RHODIA", makers: ["ロディア"], count: 7 },
-  { prefix: "3046450", maker: "セヌリエ", brand: "SENNELIER", makers: ["セヌリエ", "ラファエル"], count: 938 },
+  { prefix: "3046450", maker: "セヌリエ", brand: "SENNELIER", makers: ["セヌリエ", "ラファエル"], count: 945 },
   { prefix: "3046451", maker: "ラファエル", brand: "RAPHAEL", makers: ["ラファエル", "セヌリエ"], count: 73 },
-  { prefix: "3148950", maker: "キャンソン", brand: "CANSON", makers: ["キャンソン"], count: 51 },
+  { prefix: "3148950", maker: "キャンソン", brand: "CANSON", makers: ["キャンソン"], count: 54 },
   { prefix: "3148952", maker: "キャンソン", brand: "CANSON", makers: ["キャンソン"], count: 2 },
   { prefix: "3148954", maker: "キャンソン", brand: "CANSON", makers: ["キャンソン"], count: 2 },
   { prefix: "3148957", maker: "キャンソン", brand: "CANSON", makers: ["キャンソン"], count: 10 },
-  { prefix: "3148958", maker: "キャンソン", brand: "CANSON", makers: ["キャンソン"], count: 6 },
+  { prefix: "3148958", maker: "キャンソン", brand: "CANSON", makers: ["キャンソン"], count: 9 },
   { prefix: "3167860", maker: "ペベオ", brand: "PEBEO", makers: ["ペベオ"], count: 274 },
   { prefix: "3167861", maker: "ペベオ", brand: "PEBEO", makers: ["ペベオ"], count: 156 },
   { prefix: "3167862", maker: "ペベオ", brand: "PEBEO", makers: ["ペベオ"], count: 325 },
@@ -75,7 +75,7 @@ export const JAN_PREFIXES = [
   { prefix: "3501179", maker: "パーカー", brand: "", makers: ["パーカー", "ロットリング", "ウォーターマン"], count: 21 },
   { prefix: "3597587", maker: "ペベオ", brand: "PEBEO", makers: ["ペベオ"], count: 23 },
   { prefix: "3663619", maker: "クレールフォンテーヌ", brand: "CLAIREFONTAINE", makers: ["クレールフォンテーヌ"], count: 1 },
-  { prefix: "3700417", maker: "アルシュ", brand: "ARCHES", makers: ["アルシュ", "MBM"], count: 52 },
+  { prefix: "3700417", maker: "アルシュ", brand: "ARCHES", makers: ["アルシュ", "MBM"], count: 80 },
   { prefix: "4005401", maker: "ファーバーカステル", brand: "FABER-CASTELL", makers: ["ファーバーカステル"], count: 980 },
   { prefix: "4005402", maker: "ファーバーカステル", brand: "FABER-CASTELL", makers: ["ファーバーカステル"], count: 11 },
   { prefix: "4006381", maker: "スワンスタビロ", brand: "STABILO", makers: ["スワンスタビロ"], count: 98 },
@@ -83,7 +83,7 @@ export const JAN_PREFIXES = [
   { prefix: "4006856", maker: "ロットリング", brand: "ROTTRING", makers: ["ロットリング"], count: 8 },
   { prefix: "4007817", maker: "ステッドラー", brand: "STAEDTLER", makers: ["ステッドラー"], count: 1270 },
   { prefix: "4010220", maker: "ベッセイ", brand: "", makers: ["ベッセイ"], count: 3 },
-  { prefix: "4012380", maker: "シュミンケ", brand: "SCHMINCKE", makers: ["シュミンケ"], count: 982 },
+  { prefix: "4012380", maker: "シュミンケ", brand: "SCHMINCKE", makers: ["シュミンケ"], count: 1000 },
   { prefix: "4014515", maker: "ラミー", brand: "LAMY", makers: ["ラミー"], count: 1 },
   { prefix: "4014519", maker: "ラミー", brand: "LAMY", makers: ["ラミー"], count: 34 },
   { prefix: "4017505", maker: "ホルベイン", brand: "HOLBEIN", makers: ["ホルベイン"], count: 3 },
@@ -97,7 +97,7 @@ export const JAN_PREFIXES = [
   { prefix: "4514373", maker: "吉祥", brand: "KISSYO", makers: ["吉祥"], count: 257 },
   { prefix: "4516722", maker: "大額", brand: "", makers: ["大額"], count: 9 },
   { prefix: "4519001", maker: "スリーエムジャパン", brand: "3M", makers: ["スリーエムジャパン"], count: 6 },
-  { prefix: "4520385", maker: "ベルク", brand: "", makers: ["ベルク"], count: 173 },
+  { prefix: "4520385", maker: "ベルク", brand: "", makers: ["ベルク", "オリジン"], count: 2234 },
   { prefix: "4521718", maker: "アーテック", brand: "", makers: ["アーテック"], count: 1 },
   { prefix: "4522966", maker: "アスカ", brand: "", makers: ["アスカ"], count: 14 },
   { prefix: "4530545", maker: "新日本造形", brand: "", makers: ["新日本造形"], count: 2 },
@@ -125,7 +125,7 @@ export const JAN_PREFIXES = [
   { prefix: "4560246", maker: "新日本造形", brand: "", makers: ["新日本造形"], count: 2 },
   { prefix: "4560259", maker: "安田精工", brand: "", makers: ["安田精工"], count: 17 },
   { prefix: "4560260", maker: "安田精工", brand: "", makers: ["安田精工"], count: 932 },
-  { prefix: "4560261", maker: "笹部洋画材料店", brand: "", makers: ["笹部洋画材料店"], count: 54 },
+  { prefix: "4560261", maker: "笹部洋画材料店", brand: "", makers: ["笹部洋画材料店"], count: 92 },
   { prefix: "4560279", maker: "アートン", brand: "", makers: ["アートン"], count: 3 },
   { prefix: "4560310", maker: "世界堂", brand: "SEKAIDO", makers: ["世界堂"], count: 27 },
   { prefix: "4560391", maker: "世界堂", brand: "SEKAIDO", makers: ["世界堂"], count: 71 },
@@ -152,7 +152,7 @@ export const JAN_PREFIXES = [
   { prefix: "4580296", maker: "世界堂", brand: "SEKAIDO", makers: ["世界堂"], count: 57 },
   { prefix: "4580299", maker: "コクヨ", brand: "KOKUYO", makers: ["コクヨ"], count: 124 },
   { prefix: "4580385", maker: "NMI", brand: "", makers: ["NMI"], count: 4 },
-  { prefix: "4580410", maker: "ヴィックアート", brand: "", makers: ["ヴィックアート"], count: 53 },
+  { prefix: "4580410", maker: "ヴィックアート", brand: "", makers: ["ヴィックアート"], count: 72 },
   { prefix: "4580505", maker: "光陽オリエントジャパン", brand: "", makers: ["光陽オリエントジャパン"], count: 1 },
   { prefix: "4580821", maker: "デリ", brand: "", makers: ["デリ"], count: 7 },
   { prefix: "4582112", maker: "エスディアイジャパン", brand: "", makers: ["エスディアイジャパン"], count: 6 },
@@ -194,7 +194,7 @@ export const JAN_PREFIXES = [
   { prefix: "4902506", maker: "ぺんてる", brand: "PENTEL", makers: ["ぺんてる"], count: 4843 },
   { prefix: "4902561", maker: "不易糊工業", brand: "", makers: ["不易糊工業", "フエキ"], count: 7 },
   { prefix: "4902562", maker: "レイメイ藤井", brand: "", makers: ["レイメイ藤井", "レイメイ"], count: 21 },
-  { prefix: "4902630", maker: "墨運堂", brand: "BOKUUNDO", makers: ["墨運堂"], count: 1389 },
+  { prefix: "4902630", maker: "墨運堂", brand: "BOKUUNDO", makers: ["墨運堂"], count: 1391 },
   { prefix: "4902668", maker: "ヒサゴ", brand: "", makers: ["ヒサゴ"], count: 8 },
   { prefix: "4902681", maker: "浜田商事", brand: "", makers: ["浜田商事"], count: 4 },
   { prefix: "4902778", maker: "三菱鉛筆", brand: "UNI", makers: ["三菱鉛筆", "TANOSEE"], count: 5619 },
@@ -220,14 +220,14 @@ export const JAN_PREFIXES = [
   { prefix: "4938331", maker: "ホルベイン", brand: "HOLBEIN", makers: ["ホルベイン", "マクソン", "トリコン", "旭陽化学工業", "カラン・ダッシュ"], count: 3238 },
   { prefix: "4938901", maker: "新日本造形", brand: "", makers: ["新日本造形"], count: 36 },
   { prefix: "4939109", maker: "マツダ", brand: "MATSUDA", makers: ["マツダ"], count: 712 },
-  { prefix: "4940288", maker: "ドラパス", brand: "", makers: ["ドラパス"], count: 105 },
+  { prefix: "4940288", maker: "ドラパス", brand: "", makers: ["ドラパス"], count: 108 },
   { prefix: "4941854", maker: "文房堂", brand: "BUNPODO", makers: ["文房堂"], count: 187 },
   { prefix: "4942139", maker: "世界堂", brand: "SEKAIDO", makers: ["世界堂"], count: 39 },
   { prefix: "4942319", maker: "世界堂", brand: "SEKAIDO", makers: ["世界堂"], count: 306 },
   { prefix: "4942320", maker: "世界堂", brand: "SEKAIDO", makers: ["世界堂"], count: 1 },
   { prefix: "4943667", maker: "ホリゾン・インターナショナル", brand: "", makers: ["ホリゾン・インターナショナル"], count: 167 },
   { prefix: "4943668", maker: "名村大成堂", brand: "NAKAMURA", makers: ["名村大成堂", "ナムラ"], count: 463 },
-  { prefix: "4943718", maker: "ミューズ", brand: "MUSE", makers: ["ミューズ", "名村大成堂"], count: 398 },
+  { prefix: "4943718", maker: "ミューズ", brand: "MUSE", makers: ["ミューズ", "名村大成堂"], count: 407 },
   { prefix: "4943740", maker: "クルーズ", brand: "", makers: ["クルーズ"], count: 1 },
   { prefix: "4944486", maker: "DIC", brand: "", makers: ["DIC"], count: 1 },
   { prefix: "4945569", maker: "ニッケン刃物", brand: "", makers: ["ニッケン刃物"], count: 1 },
@@ -261,10 +261,10 @@ export const JAN_PREFIXES = [
   { prefix: "4966005", maker: "APJ", brand: "", makers: ["APJ"], count: 231 },
   { prefix: "4968276", maker: "新日本造形", brand: "", makers: ["新日本造形"], count: 1 },
   { prefix: "4968376", maker: "ミワックス", brand: "", makers: ["ミワックス"], count: 5 },
-  { prefix: "4968465", maker: "バンコ", brand: "", makers: ["バンコ", "光栄堂"], count: 9 },
+  { prefix: "4968465", maker: "バンコ", brand: "", makers: ["バンコ", "光栄堂"], count: 24 },
   { prefix: "4968796", maker: "ツバメノート", brand: "", makers: ["ツバメノート"], count: 2 },
   { prefix: "4969402", maker: "角利産業", brand: "", makers: ["角利産業"], count: 4 },
-  { prefix: "4969891", maker: "アルテージュ", brand: "ARTETJE", makers: ["アルテージュ", "アムス"], count: 264 },
+  { prefix: "4969891", maker: "アルテージュ", brand: "ARTETJE", makers: ["アルテージュ", "アムス"], count: 265 },
   { prefix: "4970051", maker: "オキナ", brand: "", makers: ["オキナ", "日本ノート"], count: 12 },
   { prefix: "4970116", maker: "ソニック", brand: "", makers: ["ソニック"], count: 17 },
   { prefix: "4970925", maker: "アサヒペン", brand: "", makers: ["アサヒペン"], count: 169 },
@@ -288,7 +288,7 @@ export const JAN_PREFIXES = [
   { prefix: "4977530", maker: "林刃物", brand: "", makers: ["林刃物"], count: 1 },
   { prefix: "4977564", maker: "プラス", brand: "PLUS", makers: ["プラス", "TANOSEE"], count: 88 },
   { prefix: "4977938", maker: "マルハチ産業", brand: "", makers: ["マルハチ産業"], count: 2 },
-  { prefix: "4979093", maker: "マルマン", brand: "MARUMAN", makers: ["マルマン", "マルオカ", "キャンソン"], count: 2005 },
+  { prefix: "4979093", maker: "マルマン", brand: "MARUMAN", makers: ["マルマン", "マルオカ", "キャンソン"], count: 2027 },
   { prefix: "4983239", maker: "コーセー", brand: "", makers: ["コーセー"], count: 1 },
   { prefix: "4985115", maker: "デリ", brand: "", makers: ["デリ"], count: 37 },
   { prefix: "4985680", maker: "タチカワ", brand: "", makers: ["タチカワ"], count: 44 },
@@ -343,7 +343,7 @@ export const JAN_PREFIXES = [
   { prefix: "4993899", maker: "ニッカー絵具", brand: "NICKER", makers: ["ニッカー絵具", "シンロイヒ"], count: 462 },
   { prefix: "4995027", maker: "APJ", brand: "", makers: ["APJ"], count: 49 },
   { prefix: "4996297", maker: "ビュートン", brand: "", makers: ["ビュートン"], count: 17 },
-  { prefix: "4997530", maker: "マルオカ工業", brand: "", makers: ["マルオカ工業"], count: 27 },
+  { prefix: "4997530", maker: "マルオカ工業", brand: "", makers: ["マルオカ工業"], count: 2491 },
   { prefix: "4997596", maker: "カラン・ダッシュ", brand: "CARAN D'ACHE", makers: ["カラン・ダッシュ"], count: 1 },
   { prefix: "4997962", maker: "TANOSEE", brand: "", makers: ["TANOSEE"], count: 1 },
   { prefix: "5011247", maker: "パーカー", brand: "", makers: ["パーカー"], count: 3 },
@@ -355,7 +355,7 @@ export const JAN_PREFIXES = [
   { prefix: "6902983", maker: "フェニックス", brand: "", makers: ["フェニックス"], count: 52 },
   { prefix: "6932599", maker: "フェニックス", brand: "", makers: ["フェニックス"], count: 83 },
   { prefix: "6933256", maker: "ファーバーカステル", brand: "FABER-CASTELL", makers: ["ファーバーカステル"], count: 14 },
-  { prefix: "6941985", maker: "フェニックス", brand: "", makers: ["フェニックス"], count: 172 },
+  { prefix: "6941985", maker: "フェニックス", brand: "", makers: ["フェニックス"], count: 208 },
   { prefix: "7314150", maker: "スナップオン・ツールズ", brand: "", makers: ["スナップオン・ツールズ"], count: 1 },
   { prefix: "7314151", maker: "スナップオン・ツールズ", brand: "", makers: ["スナップオン・ツールズ"], count: 1 },
   { prefix: "7426924", maker: "ステッドラー", brand: "STAEDTLER", makers: ["ステッドラー"], count: 1 },
@@ -609,8 +609,9 @@ import { RAW as RAW_PART_2 } from './data/jan-part-2.js';
 import { RAW as RAW_PART_3 } from './data/jan-part-3.js';
 import { RAW as RAW_PART_4 } from './data/jan-part-4.js';
 import { RAW as RAW_PART_5 } from './data/jan-part-5.js';
+import { RAW as RAW_PART_6 } from './data/jan-part-6.js';
 
-const RAW = [...RAW_PART_1, ...RAW_PART_2, ...RAW_PART_3, ...RAW_PART_4, ...RAW_PART_5];
+const RAW = [...RAW_PART_1, ...RAW_PART_2, ...RAW_PART_3, ...RAW_PART_4, ...RAW_PART_5, ...RAW_PART_6];
 
 export const JAN_DICTIONARY = RAW.map(([jan, name, maker, category, colorName, size, code, src, series, keywords]) => ({
   jan, name, maker, category, colorName, size, code, series, keywords,

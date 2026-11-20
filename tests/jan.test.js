@@ -50,7 +50,7 @@ test('出典は実在ページ（まつえだ・世界堂・ステッドラー�
   // jancode.xyz は、Drive の JAN_<メーカー>網羅_統合.csv の「出典URL」欄が指していた JAN 検索サイト
   // （2026-11-19 の15社・46,733件。世界堂で見つからない文具はここが出典）
   for (const e of JAN_DICTIONARY) {
-    assert.match(e.source, /^https:\/\/(www\.matueda\.com\/\?pid=\d+|webshop\.sekaido\.co\.jp\/product\/[A-Z0-9]+|www\.staedtler\.jp\/|www\.askul\.co\.jp\/|www\.tanomail\.com\/product\/\d+\/|www\.sasabegazai\.co\.jp\/pop\.html\?id=\d+$|www\.e-gazai\.com\/shop\/g\/g\d+\/|www\.jancode\.xyz\/\d{13}\/)/, `出典が不正: ${e.jan} ${e.source}`);
+    assert.match(e.source, /^https:\/\/(www\.matueda\.com\/\?pid=\d+|webshop\.sekaido\.co\.jp\/product\/[A-Z0-9]+|www\.staedtler\.jp\/|www\.askul\.co\.jp\/|www\.tanomail\.com\/product\/\d+\/|www\.sasabegazai\.co\.jp\/pop\.html\?(?:s=1&id=[0-9+]+|id=\d+)$|maruoka\.co\.jp\/jancord\/|www\.e-gazai\.com\/shop\/g\/g\d+\/|www\.jancode\.xyz\/\d{13}\/)/, `出典が不正: ${e.jan} ${e.source}`);
     assert.equal(/&(amp|lt|gt|quot|#\d+);/.test(e.name), false, `実体参照が残る: ${e.jan} ${e.name}`);
     assert.equal(/^[★☆※]/.test(e.name), false, `販売店の装飾が残る: ${e.jan} ${e.name}`);
   }

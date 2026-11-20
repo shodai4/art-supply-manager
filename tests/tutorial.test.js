@@ -193,7 +193,7 @@ test('Service Worker と www/（iOSバンドル）にも画像と tutorial.js �
   }
   // Service Worker（オフラインでも写真が出る）
   const sw = read('sw.js');
-  assert.match(sw, /art-supply-manager-v67/);
+  assert.match(sw, /art-supply-manager-v68/);
   assert.ok(sw.includes("'./tutorial.js'"), 'sw.js に tutorial.js がない');
   for (const image of tutorialImages()) {
     assert.ok(sw.includes(`'./${image}'`), `sw.js に ${image} がない`);
@@ -264,11 +264,11 @@ test('写真の実寸（幅・高さ）が tutorial.js の w・h と一致する
   }
 });
 
-test('説明文が今の画面に合っている（99,206件・＋のあとの「補充を確定」・設定の画材費）', () => {
+test('説明文が今の画面に合っている（104,001件・＋のあとの「補充を確定」・設定の画材費）', () => {
   const all = TUTORIAL_TABS.flatMap((tab) => tab.slides);
   const captionOf = (image) => all.find((slide) => slide.image.endsWith(image)).caption;
   // 内蔵辞書の件数は、いまの設定・カタログの表示と合わせる
-  assert.match(captionOf('catalog-1.webp'), /99,206件/);
+  assert.match(captionOf('catalog-1.webp'), /104,001件/);
   // 補充タブは「＋で買い足した分を、補充を確定でまとめて十分にする」動きになっている
   assert.match(captionOf('restock-1.webp'), /補充を確定/);
   // 設定は、いま並んでいる項目（画材費まで）を案内する

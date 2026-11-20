@@ -309,6 +309,6 @@ test('版（package.json・index.html・sw.js）がそろっている', () => {
   }
 });
 
-test('内蔵辞書の件数は減っていない（99,206件 = Drive 15社＋新規11社 61,066件を取り込み後）', () => {
-  assert.equal(JAN_DICTIONARY.length, 99206);
+test('内蔵辞書の件数は減っていない（104,001件 = マルオカ工業公式JAN・笹部の未収録分 4,795件を取り込み後）', () => {
+  assert.equal(JAN_DICTIONARY.length, 104001);
 });
