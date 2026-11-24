@@ -121,9 +121,11 @@ export async function withTimeout(promise, ms) {
   const limit = Number(ms);
   if (!Number.isFinite(limit) || limit <= 0) return promise;
   let timer;
+  // タイマーは unref しない（node --test では、誰も起こさないままイベントループが
+  // 終わってしまい「Promise resolution is still pending」でテストが中断されるため）。
+  // 約束が先に解決したら finally で必ず消すので、残るタイマーは無い。
   const guard = new Promise((resolve) => {
     timer = setTimeout(() => resolve(TIMED_OUT), limit);
-    if (timer && typeof timer.unref === 'function') timer.unref();
   });
   try {
     return await Promise.race([promise, guard]);
