@@ -15,6 +15,18 @@
 //   Info.plist の GADApplicationIdentifier は本番のアプリIDのまま（テスト広告ユニットは
 //   自分のアプリIDでもテスト広告を返すので、切り替えるのは USE_TEST_ADS だけでよい）。
 //
+// 【トラッキングの許可（ATT）】
+//   iOS 14 以降は、広告識別子（IDFA）を使う前に必ず許可ダイアログを出さないといけない。
+//   出さないまま広告を配信すると App Store 審査で落ちる（2026-11-24 のビルド1.0(94) が
+//   Guideline 2.1 - Information Needed でリジェクトされた原因がこれ）。
+//   そこで AdBanner.init() は、AdMob.initialize() より先に ensureTrackingAuthorization() を呼ぶ。
+//     - まだ聞いていない（notDetermined）ときだけ聞く。拒否・制限・許可済みは尊重して何もしない。
+//     - iOS 15 以降は、アプリが前面（表示中）になる前に頼むとダイアログが出ずに
+//       notDetermined のまま返ることがある。画面が表示されるのを待ち、ひと呼吸おいてから聞く。
+//       それでも notDetermined のままなら、もう一度だけ聞き直す。
+//     - 答えが返らないまま固まらないよう待ち時間に上限を置き、過ぎたら広告の初期化へ進む。
+//     - Web・Android、拒否（denied）・制限（restricted）、プラグインが無いときもエラーにせず続行する。
+//
 // 【広告枠の場所】
 //   画面の最下部（タブバーのさらに下・セーフエリアの上）。ネイティブのバナーは Web の上に
 //   重なって描かれるので、出している間は CSS 変数 --ad-h にバナーの高さを入れ、
@@ -77,6 +89,175 @@ export function bannerInitializeOptions() {
   };
 }
 
+/* ---------------- トラッキングの許可（ATT・iOS 14 以降） ---------------- */
+
+/** ATT の状態（iOS の ATTrackingManager.AuthorizationStatus と同じ値） */
+export const ATT_STATUS = {
+  AUTHORIZED: 'authorized',
+  DENIED: 'denied',
+  RESTRICTED: 'restricted',
+  NOT_DETERMINED: 'notDetermined',
+};
+
+/** アプリが前面（表示中）になるのを待つ上限（ミリ秒） */
+export const ATT_VISIBLE_TIMEOUT = 4000;
+/** 表示中になってから許可ダイアログを出すまでのひと呼吸（iOS 15+ で早すぎると出ないため） */
+export const ATT_SETTLE_MS = 150;
+/** ダイアログが出なかったときにもう一度だけ聞き直す回数（初回起動直後の取りこぼし対策） */
+export const ATT_ATTEMPTS = 2;
+/** 許可ダイアログの答えを待つ上限（ミリ秒）。答えないまま固まらないよう、過ぎたら広告の初期化へ進む */
+export const ATT_REQUEST_TIMEOUT = 20000;
+
+/** 時間待ち（テストでは差し替えられるよう、関数で持つ） */
+export const waitMs = (ms) => new Promise((resolve) => {
+  const n = Number(ms);
+  setTimeout(resolve, Number.isFinite(n) && n > 0 ? n : 0);
+});
+
+const TIMED_OUT = Symbol('timeout');
+
+/** 上限つきで待つ（過ぎたら TIMED_OUT。待っている約束はそのまま放っておく） */
+export async function withTimeout(promise, ms) {
+  const limit = Number(ms);
+  if (!Number.isFinite(limit) || limit <= 0) return promise;
+  let timer;
+  const guard = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(TIMED_OUT), limit);
+    if (timer && typeof timer.unref === 'function') timer.unref();
+  });
+  try {
+    return await Promise.race([promise, guard]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** プラグインの返り値（文字列・{status}）を状態の文字列にそろえる（読めなければ null） */
+export function normalizeTrackingStatus(value) {
+  const raw = typeof value === 'string' ? value : value?.status;
+  if (typeof raw !== 'string') return null;
+  const status = raw.trim();
+  return status === '' ? null : status;
+}
+
+/** 許可ダイアログを出す必要があるか（まだ聞いていないときだけ） */
+export function shouldRequestTrackingAuthorization(status) {
+  return status === ATT_STATUS.NOT_DETERMINED;
+}
+
+/** いま動いている土台（'ios' / 'android' / 'web'。分からなければ空文字） */
+export function trackingPlatform(win = typeof window !== 'undefined' ? window : undefined) {
+  const getPlatform = win?.Capacitor?.getPlatform;
+  if (typeof getPlatform !== 'function') return '';
+  try {
+    const platform = getPlatform.call(win.Capacitor);
+    return typeof platform === 'string' ? platform : '';
+  } catch {
+    return '';
+  }
+}
+
+/** 画面が表示中か（分からない環境では「表示中」とみなす。WebView では foreground のとき visible） */
+export function isDocumentVisible(doc) {
+  const state = doc?.visibilityState;
+  if (typeof state === 'string') return state !== 'hidden';
+  return true;
+}
+
+/**
+ * 画面が表示中になるまで待つ（iOS 15+ で、前面に無いあいだに頼むとダイアログが出ないため）。
+ * 待ち続けないよう上限を置き、過ぎたら false を返す。
+ */
+export async function waitUntilVisible({
+  win = typeof window !== 'undefined' ? window : undefined,
+  doc,
+  wait = waitMs,
+  timeout = ATT_VISIBLE_TIMEOUT,
+  interval = 50,
+} = {}) {
+  const target = doc ?? win?.document;
+  if (isDocumentVisible(target)) return true;
+  const span = Number.isFinite(Number(timeout)) && Number(timeout) > 0 ? Number(timeout) : 0;
+  const step = Number.isFinite(Number(interval)) && Number(interval) > 0 ? Number(interval) : 50;
+  const tries = Math.max(1, Math.ceil(span / step));
+  for (let i = 0; i < tries; i += 1) {
+    await wait(step);
+    if (isDocumentVisible(target)) return true;
+  }
+  return isDocumentVisible(target);
+}
+
+/** いまの許可状態を読む（読めない・プラグインが無いときは null。例外は飲み込む） */
+export async function readTrackingAuthorizationStatus(plugin, log) {
+  if (!plugin || typeof plugin.trackingAuthorizationStatus !== 'function') return null;
+  try {
+    return normalizeTrackingStatus(await plugin.trackingAuthorizationStatus());
+  } catch (err) {
+    if (typeof log === 'function') log('[AdMob] トラッキングの許可状態を読めませんでした', err);
+    return null;
+  }
+}
+
+/**
+ * 広告の初期化より前に、iOS のトラッキング許可（ATT）を求める。
+ * notDetermined のときだけ聞き、画面が表示されてから出す。何が起きても例外は投げない。
+ * @returns {Promise<{status:string|null, requested:boolean, attempts:number, reason:string}>}
+ */
+export async function ensureTrackingAuthorization({
+  plugin,
+  win = typeof window !== 'undefined' ? window : undefined,
+  doc,
+  log,
+  wait = waitMs,
+  visibleTimeout = ATT_VISIBLE_TIMEOUT,
+  settleMs = ATT_SETTLE_MS,
+  attempts = ATT_ATTEMPTS,
+  requestTimeout = ATT_REQUEST_TIMEOUT,
+} = {}) {
+  const result = { status: null, requested: false, attempts: 0, reason: '' };
+  if (!plugin) { result.reason = 'no-plugin'; return result; }
+  const platform = trackingPlatform(win);
+  // Android・Web に iOS の許可ダイアログは無い（Web は authorized を返すので、そのまま広告の初期化へ）
+  if (platform && platform !== 'ios') { result.reason = `not-ios-${platform}`; return result; }
+  if (typeof plugin.requestTrackingAuthorization !== 'function') { result.reason = 'unsupported'; return result; }
+
+  result.status = await readTrackingAuthorizationStatus(plugin, log);
+  if (result.status && !shouldRequestTrackingAuthorization(result.status)) {
+    // 拒否・制限・許可済み。利用者の答えは変えない（ダイアログも出さない）
+    result.reason = `already-${result.status}`;
+    return result;
+  }
+  // 状態が読めず、iOS とも言い切れないときは、ダイアログを出せないので何もしない
+  if (!result.status && platform !== 'ios') { result.reason = 'unknown-status'; return result; }
+
+  await waitUntilVisible({ win, doc, wait, timeout: visibleTimeout });
+  if (settleMs > 0) await wait(settleMs);
+
+  const tries = Number.isFinite(Number(attempts)) ? Math.max(1, Math.round(Number(attempts))) : 1;
+  for (let i = 0; i < tries; i += 1) {
+    result.attempts += 1;
+    try {
+      const answered = await withTimeout(Promise.resolve(plugin.requestTrackingAuthorization()), requestTimeout);
+      if (answered !== TIMED_OUT) result.requested = true;
+    } catch (err) {
+      // ダイアログを出せなくてもアプリは止めない（広告は非パーソナライズで配信される）
+      result.reason = 'request-failed';
+      if (typeof log === 'function') log('[AdMob] トラッキングの許可を求められませんでした', err);
+      return result;
+    }
+    result.status = await readTrackingAuthorizationStatus(plugin, log);
+    if (result.status !== ATT_STATUS.NOT_DETERMINED) {
+      result.reason = result.status ? `answered-${result.status}` : 'asked';
+      return result;
+    }
+    // notDetermined のまま = iOS がダイアログを出さなかった。少し待って、もう一度だけ聞き直す
+    if (i < tries - 1 && settleMs > 0) await wait(settleMs * 4);
+  }
+  result.reason = result.requested ? 'still-not-determined' : 'not-shown';
+  if (typeof log === 'function') log('[AdMob] トラッキングの許可ダイアログを出せませんでした', result);
+  return result;
+}
+
 /**
  * showBanner に渡すオプション。
  * 最下部（BOTTOM_CENTER）・余白0・画面幅いっぱいのアダプティブバナー。
@@ -114,10 +295,13 @@ export function clearBannerLift(doc) {
  * win / doc を渡せるのは node --test から動かすため。
  */
 export class AdBanner {
-  constructor({ win, doc, log, isPro } = {}) {
+  constructor({ win, doc, log, isPro, wait, att } = {}) {
     this.win = win ?? (typeof window !== 'undefined' ? window : undefined);
     this.doc = doc ?? (typeof document !== 'undefined' ? document : undefined);
     this.log = typeof log === 'function' ? log : () => {};
+    // 待ち時間の入れ物（node --test からは縮めるため）。ふつうは既定のまま
+    this.wait = typeof wait === 'function' ? wait : undefined;
+    this.att = att && typeof att === 'object' ? att : {};
     this.plugin = adMobPlugin(this.win);
     this.native = isNativeShell(this.win);
     // Pro（プレビュー含む）の判定。関数で渡してもらい、切り替わったら sync() で追従する
@@ -125,6 +309,7 @@ export class AdBanner {
     this.started = false;
     this.visible = false;
     this.adFreeActive = false; // Proで広告を消している状態
+    this.tracking = null; // 起動時のATTの結果（ensureTrackingAuthorization の返り値）
   }
 
   /** この環境で出すか（Webブラウザでは出さない） */
@@ -149,6 +334,9 @@ export class AdBanner {
     if (this.started) return false;
     this.started = true;
     try {
+      // 広告の初期化より前に、iOS のトラッキング許可（ATT）を求める。
+      // ここを飛ばすと許可ダイアログが出ず、App Store 審査でリジェクトされる（Guideline 2.1）。
+      await this.prepareTracking();
       await this.plugin.initialize(bannerInitializeOptions());
       this.bindEvents();
       await this.show();
@@ -158,6 +346,28 @@ export class AdBanner {
       clearBannerLift(this.doc);
       return false;
     }
+  }
+
+  /**
+   * 広告を初期化する前に、iOS のトラッキング許可（ATT）を求める。
+   * 許可ダイアログは AdMob.initialize() より必ず先・画面が表示されてから出す（iOS 15+ 対策）。
+   * 失敗しても広告の初期化は続ける（アプリを止めない）。
+   */
+  async prepareTracking() {
+    try {
+      this.tracking = await ensureTrackingAuthorization({
+        plugin: this.plugin,
+        win: this.win,
+        doc: this.doc,
+        log: this.log,
+        ...(this.wait ? { wait: this.wait } : {}),
+        ...this.att,
+      });
+    } catch (err) {
+      this.log('[AdMob] トラッキングの許可の確認でつまずきました', err);
+      this.tracking = { status: null, requested: false, attempts: 0, reason: 'error' };
+    }
+    return this.tracking;
   }
 
   /**

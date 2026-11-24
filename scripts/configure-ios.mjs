@@ -66,8 +66,8 @@ export const CONFIG_ENTRIES = [
       + '\t</array>',
     mode: 'value',
   },
-  // 広告識別子（IDFA）を使う場合の説明。いまは許可を求めていないので画面は出ないが、
-  // SDKが将来参照しても落ちないよう用意しておく（拒否しても全機能は同じように使える）。
+  // 広告識別子（IDFA）を使う場合の説明。アプリ起動時、AdMob.initialize() より先に
+  // 許可ダイアログを出す（admob.js の ensureTrackingAuthorization）。拒否しても全機能は同じように使える。
   { key: 'NSUserTrackingUsageDescription', value: '<string>利用者に合った広告を表示するために広告識別子を使う場合があります。許可しない場合も、画材の登録・読取・在庫管理などすべての機能を同じようにご利用いただけます。</string>', mode: 'value' },
 ];
 

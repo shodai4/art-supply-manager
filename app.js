@@ -4961,6 +4961,8 @@ if (typeof window !== 'undefined') {
 // iOSアプリの最下部に AdMob バナー（本番ID）。Webブラウザでは何もしない。
 // バナーの高さは CSS 変数 --ad-h に入り、タブバー・ドック・FAB・一覧の下端を押し上げる。
 // Pro（購入・復元で解放）の間は広告を出さず、その分だけタブバーとFABを下げる。
+// 起動最初の1回は、AdMob の初期化より先に iOS のトラッキング許可（ATT）のダイアログを出す
+// （admob.js の ensureTrackingAuthorization。App Store 審査の Guideline 2.1 対応）。
 adBanner = setupAdBanner({ isPro: () => isPro(state.settings) });
 
 // Proの課金（StoreKit）。iOSアプリのときだけストアを初期化し、
